@@ -1,0 +1,46 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  servlet :
+    context-path : /nextgen
+spring:
+  application:
+    name: NextGen
+  datasource:
+    url: "jdbc:mysql://localhost:3306/NextGen?createDatabaseIfNotExist=true"
+    username: root
+    password: quang
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: trinhquang02042004@gmail.com
+    password: bfuunxzrgvcsqeho
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+jwt :
+  signed-key: "prH5KZ52uBeUkW8r83pntzBa7vaIqeXc0U7Lmsw59Kopq8wwcIVDk01eAew1XS97cwh3M8a3PHH6CVwVJkv9dA"
+  access-expiration: 1800
+  refresh-expiration: 1800
+app:
+  sms:
+    provider: esms
+    esms:
+      api-url: https://rest.esms.vn/MainService.svc/json/SendMultipleMessage_V4_post_json/
+      api-key: ${SMS_API_KEY:6168A34E408B266034DEC13ED2CC94}
+      secret-key: ${SMS_SECRET_KEY:A2B5CD0D82013EE90274CE05BA0881}
+      brandname: ${SMS_BRANDNAME:Baotrixemay}
+      type: ${SMS_TYPE:2}
+      sandbox: ${SMS_SANDBOX:0}
+      otp-template: "${SMS_OTP_TEMPLATE:Ma xac nhan cua ban la %s}"
