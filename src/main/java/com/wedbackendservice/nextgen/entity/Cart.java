@@ -23,7 +23,7 @@ public class Cart {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     Long cartId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @OneToOne(fetch = FetchType.LAZY)
     User user;
 
     @CreatedDate

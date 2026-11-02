@@ -103,7 +103,7 @@ public class AuthenticationService {
         User user = userRepository.findByIdentity(identity)
                 .orElseThrow(() -> failedLogin(identity));
 
-        // Chỉ chấp nhận BCrypt. Không so sánh plaintext (xem ghi chú migrate bên dưới).
+
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw failedLogin(identity);
         }
@@ -146,7 +146,7 @@ public class AuthenticationService {
         if (!otpMatches(sessionData.getOtpCode(), request.getOtpCode())) {
             throw new AppException(ErrorCode.OTP_INVALID_OR_EXPIRED);
         }
-        tokenRedisService.deleteOtpSession(sessionToken); // dùng 1 lần
+        tokenRedisService.deleteOtpSession(sessionToken);
 
         User user = findUser(sessionData.getUserId());
         assertNotLocked(user);
@@ -427,63 +427,26 @@ public class AuthenticationService {
     }
 
     /** API 12: Thông tin người dùng hiện tại. */
-    public UserMeResponse getCurrentUser(String authHeader) throws ParseException, JOSEException {
-        String token = extractBearer(authHeader);
-        if (token == null) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
-
-        Long userId = extractUserId(verifyToken(token, TYPE_ACCESS));
+    public UserMeResponse getCurrentUser() {
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = findUser(userId);
-
-        AddressResponse address = userAddressRepository.findByUserIdAndIsDefaultTrue(userId)
-                .map(a -> AddressResponse.builder()
-                        .addressId(a.getAddressId())
-                        .recipientName(a.getRecipientName())
-                        .phone(a.getPhone())
-                        .addressLine(a.getAddressLine())
-                        .isDefault(a.getIsDefault())
-                        .build())
+        AddressResponse defaultAddress = userAddressRepository
+                .findByUserIdAndIsDefaultTrue(userId)
+                .map(usersMapper::toAddressResponse)
                 .orElse(null);
 
-        return UserMeResponse.builder()
-                .userId(user.getUserId())
-                .role(user.getRole())
-                .fullName(user.getFullName())
-                .email(user.getEmail())
-                .phone(user.getPhone())
-                .status(user.getStatus())
-                .defaultAddress(address)
-                .build();
+        UserMeResponse response = usersMapper.toUserMeResponse(user);
+        response.setDefaultAddress(defaultAddress);
+        return response;
     }
 
     /**
      * API 13: Đổi mật khẩu (Change Password).
      */
     @Transactional
-    public void changePassword(String authHeader, ChangePasswordRequest request) throws ParseException, JOSEException {
-        String token = extractBearer(authHeader);
-        if (token == null) {
-            var authentication = SecurityContextHolder.getContext().getAuthentication();
-            if (authentication != null && authentication.getCredentials() != null) {
-                token = authentication.getCredentials().toString();
-            } else if (authentication != null && authentication.getPrincipal() != null) {
-                token = String.valueOf(authentication.getPrincipal());
-            }
-        }
-        if (token == null || token.isBlank() || "null".equals(token) || "anonymousUser".equals(token)) {
-            throw new AppException(ErrorCode.SESSION_EXPIRED);
-        }
+    public void changePassword(String authHeader,ChangePasswordRequest request)  {
 
-        // 2. Giải mã và kiểm tra tính hợp lệ của token
-        SignedJWT signedJWT;
-        try {
-            signedJWT = verifyToken(token, TYPE_ACCESS);
-        } catch (AppException e) {
-            throw new AppException(ErrorCode.SESSION_EXPIRED);
-        }
-
-        Long userId = extractUserId(signedJWT);
+        Long userId = Long.valueOf(SecurityContextHolder.getContext().getAuthentication().getName());
         User user = findUser(userId);
         assertNotLocked(user);
 
@@ -505,7 +468,6 @@ public class AuthenticationService {
 
         // 6. Mã hóa mật khẩu mới và cập nhật User
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
-        user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
 
         // 7. Ghi vết vào bảng 26 Audit_Logs
@@ -541,13 +503,6 @@ public class AuthenticationService {
         }
         tokenRedisService.deleteToken(user.getUserId());
     }
-
-    @Transactional
-    public void changePassword(ChangePasswordRequest request) throws ParseException, JOSEException {
-        changePassword(null, request);
-    }
-
-
     // =====================================================================
     // HELPERS - OTP / SESSION
     // =====================================================================
@@ -729,9 +684,4 @@ public class AuthenticationService {
         }
     }
 
-    private static String extractBearer(String authHeader) {
-        return (authHeader != null && authHeader.startsWith(BEARER_PREFIX))
-                ? authHeader.substring(BEARER_PREFIX.length())
-                : null;
-    }
 }

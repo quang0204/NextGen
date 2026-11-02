@@ -1,15 +1,14 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.security.SecurityHelper;
-
-import com.wedbackendservice.nextgen.dto.response.cart.*;
 import com.wedbackendservice.nextgen.dto.request.cart.CartItemAddRequest;
 import com.wedbackendservice.nextgen.dto.request.cart.CartItemUpdateRequest;
 import com.wedbackendservice.nextgen.dto.request.cart.CartSyncRequest;
+import com.wedbackendservice.nextgen.dto.response.cart.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
+import com.wedbackendservice.nextgen.security.SecurityHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,9 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -36,15 +34,61 @@ public class CartService {
 
     /**
      * API 7.1: Lấy thông tin giỏ hàng của người dùng (Authenticated)
+     * Đọc thuần túy, không ghi tạo mới giỏ hàng trong request GET, giải quyết N+1 bằng Batch Query.
      */
-    @Transactional
-    public CartResponse getCart(String authHeader) {
-        User user = securityHelper.authenticate(authHeader);
-        Cart cart = getOrCreateCart(user);
+    @Transactional(readOnly = true)
+    public CartResponse getCart() {
+        User user = securityHelper.getCurrentUser();
+        Optional<Cart> cartOpt = cartRepository.findByUserId(user.getUserId());
 
+        if (cartOpt.isEmpty()) {
+            return CartResponse.builder()
+                    .cartId(null)
+                    .userId(user.getUserId())
+                    .items(List.of())
+                    .totalQuantity(0)
+                    .subtotal(BigDecimal.ZERO)
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+        }
+
+        Cart cart = cartOpt.get();
         List<CartItem> items = cartItemRepository.findByCartId(cart.getCartId());
-        List<CartItemResponse> itemResponses = new ArrayList<>();
 
+        if (items.isEmpty()) {
+            return CartResponse.builder()
+                    .cartId(cart.getCartId())
+                    .userId(user.getUserId())
+                    .items(List.of())
+                    .totalQuantity(0)
+                    .subtotal(BigDecimal.ZERO)
+                    .updatedAt(cart.getUpdatedAt())
+                    .build();
+        }
+
+        // Batch Query để tránh N+1
+        List<Long> variantIds = items.stream()
+                .map(item -> item.getVariant() != null ? item.getVariant().getVariantId() : null)
+                .filter(Objects::nonNull)
+                .toList();
+
+        List<Long> productIds = items.stream()
+                .map(item -> (item.getVariant() != null && item.getVariant().getProduct() != null)
+                        ? item.getVariant().getProduct().getProductId() : null)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        Map<Long, Inventory> inventoryMap = inventoryRepository.findByVariant_VariantIdIn(variantIds).stream()
+                .collect(Collectors.toMap(inv -> inv.getVariant().getVariantId(), inv -> inv, (a, b) -> a));
+
+        Map<Long, PromotionVariant> promoMap = promotionVariantRepository.findActivePromotionsForVariantIds(variantIds, LocalDateTime.now()).stream()
+                .collect(Collectors.toMap(pv -> pv.getVariant().getVariantId(), pv -> pv, (a, b) -> a));
+
+        Map<Long, String> imageMap = productImageRepository.findByProduct_ProductIdInAndIsPrimaryTrue(productIds).stream()
+                .collect(Collectors.toMap(img -> img.getProduct().getProductId(), ProductImage::getImageUrl, (a, b) -> a));
+
+        List<CartItemResponse> itemResponses = new ArrayList<>();
         int totalQuantity = 0;
         BigDecimal subtotal = BigDecimal.ZERO;
 
@@ -52,31 +96,44 @@ public class CartService {
             ProductVariant variant = item.getVariant();
             Product product = variant != null ? variant.getProduct() : null;
 
-            int availableStock = variant != null ? getAvailableStock(variant.getVariantId()) : 0;
-            boolean inStock = availableStock >= item.getQuantity();
+            int availableStock = 0;
+            if (variant != null && inventoryMap.containsKey(variant.getVariantId())) {
+                Inventory inv = inventoryMap.get(variant.getVariantId());
+                int onHand = inv.getQuantity() != null ? inv.getQuantity() : 0;
+                int reserved = inv.getReservedQuantity() != null ? inv.getReservedQuantity() : 0;
+                availableStock = Math.max(0, onHand - reserved);
+            }
 
-            PriceInfo priceInfo = resolvePrice(variant);
+            boolean inStock = availableStock >= item.getQuantity();
+            PriceInfo priceInfo = resolvePriceWithMap(variant, promoMap);
             BigDecimal lineTotal = priceInfo.currentPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
 
             subtotal = subtotal.add(lineTotal);
             totalQuantity += item.getQuantity();
 
+            String imageUrl = null;
+            if (variant != null && variant.getImageUrl() != null && !variant.getImageUrl().isBlank()) {
+                imageUrl = variant.getImageUrl();
+            } else if (product != null && imageMap.containsKey(product.getProductId())) {
+                imageUrl = imageMap.get(product.getProductId());
+            }
+
             CartItemResponse resp = CartItemResponse.builder()
                     .cartItemId(item.getCartItemId())
                     .variantId(variant != null ? variant.getVariantId() : null)
                     .productId(product != null ? product.getProductId() : null)
-                    .productName(product != null ? product.getProductName() : null)
-                    .sku(variant != null ? variant.getSku() : null)
-                    .color(variant != null ? variant.getColor() : null)
+                    .productName(product != null ? product.getProductName() : "Sản phẩm")
+                    .sku(variant != null ? variant.getSku() : "")
+                    .color(variant != null ? variant.getColor() : "")
                     .ramGb(variant != null ? variant.getRamGb() : null)
                     .romGb(variant != null ? variant.getRomGb() : null)
-                    .imageUrl(resolveImageUrl(variant))
+                    .imageUrl(imageUrl)
                     .listPrice(priceInfo.listPrice)
                     .currentPrice(priceInfo.currentPrice)
                     .isFlashSale(priceInfo.isFlashSale)
                     .quantity(item.getQuantity())
-                    .lineTotal(lineTotal)
                     .availableStock(availableStock)
+                    .lineTotal(lineTotal)
                     .inStock(inStock)
                     .addedAt(item.getCreatedAt())
                     .build();
@@ -98,14 +155,18 @@ public class CartService {
      * API 7.2: Thêm sản phẩm biến thể (SKU) vào giỏ hàng (Authenticated)
      */
     @Transactional
-    public CartItemAddResponse addItemToCart(String authHeader, CartItemAddRequest request) {
-        User user = securityHelper.authenticate(authHeader);
+    public CartItemAddResponse addItemToCart( CartItemAddRequest request) {
+        User user = securityHelper.getCurrentUser();
 
         ProductVariant variant = productVariantRepository.findById(request.getVariantId())
                 .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
 
         if ("INACTIVE".equalsIgnoreCase(variant.getStatus())) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Sản phẩm hiện không kinh doanh hoặc tạm ngừng.");
+        }
+
+        if (variant.getProduct() != null && "INACTIVE".equalsIgnoreCase(variant.getProduct().getStatus())) {
+            throw new AppException(ErrorCode.PRODUCT_INACTIVE);
         }
 
         int requestedQty = (request.getQuantity() != null && request.getQuantity() > 0) ? request.getQuantity() : 1;
@@ -159,14 +220,14 @@ public class CartService {
      * API 7.3: Thay đổi số lượng mua (+ / - / nhập số) (Authenticated)
      */
     @Transactional
-    public CartItemUpdateResponse updateItemQuantity(String authHeader, Long itemId, CartItemUpdateRequest request) {
-        User user = securityHelper.authenticate(authHeader);
+    public CartItemUpdateResponse updateItemQuantity( Long itemId, CartItemUpdateRequest request) {
+        User user = securityHelper.getCurrentUser();
 
         CartItem item = cartItemRepository.findById(itemId)
                 .orElseThrow(() -> new AppException(ErrorCode.CART_ITEM_NOT_FOUND));
 
         if (!item.getCart().getUser().getUserId().equals(user.getUserId())) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Cố tình sửa dòng giỏ hàng của tài khoản khác.");
+            throw new AppException(ErrorCode.CART_ITEM_NOT_FOUND);
         }
 
         Cart cart = item.getCart();
@@ -217,8 +278,8 @@ public class CartService {
      * API 7.4: Xóa 1 biến thể SKU khỏi giỏ hàng (Authenticated)
      */
     @Transactional
-    public CartItemDeleteResponse removeItemFromCart(String authHeader, Long itemId) {
-        User user = securityHelper.authenticate(authHeader);
+    public CartItemDeleteResponse removeItemFromCart( Long itemId) {
+        User user = securityHelper.getCurrentUser();
 
         CartItem item = cartItemRepository.findById(itemId)
                 .orElseThrow(() -> new AppException(ErrorCode.CART_ITEM_NOT_FOUND));
@@ -247,8 +308,8 @@ public class CartService {
      * API 7.5: Xóa sạch toàn bộ giỏ hàng (Authenticated)
      */
     @Transactional
-    public void clearCart(String authHeader) {
-        User user = securityHelper.authenticate(authHeader);
+    public void clearCart() {
+        User user = securityHelper.getCurrentUser();
 
         Optional<Cart> cartOpt = cartRepository.findByUserId(user.getUserId());
         if (cartOpt.isPresent()) {
@@ -261,54 +322,74 @@ public class CartService {
 
     /**
      * API 7.6: Đồng bộ giỏ hàng vãng lai (Guest) vào tài khoản khi Đăng nhập (Authenticated)
+     * Đảm bảo tính Idempotent (không cộng dồn lặp lại khi retry), trả về danh sách sản phẩm bị bỏ qua.
      */
     @Transactional
-    public CartSyncResponse syncCart(String authHeader, CartSyncRequest request) {
-        User user = securityHelper.authenticate(authHeader);
+    public CartSyncResponse syncCart(CartSyncRequest request) {
+        User user = securityHelper.getCurrentUser();
         Cart cart = getOrCreateCart(user);
 
         int syncedCount = 0;
+        List<CartSyncResponse.SkippedItem> skippedItems = new ArrayList<>();
+
         if (request != null && request.getGuestItems() != null) {
             for (CartItemAddRequest guestItem : request.getGuestItems()) {
-                if (guestItem.getVariantId() == null || guestItem.getQuantity() == null || guestItem.getQuantity() <= 0) {
+                if (guestItem == null || guestItem.getVariantId() == null || guestItem.getQuantity() == null || guestItem.getQuantity() <= 0) {
                     continue;
                 }
 
                 Optional<ProductVariant> varOpt = productVariantRepository.findById(guestItem.getVariantId());
-                if (varOpt.isEmpty() || "INACTIVE".equalsIgnoreCase(varOpt.get().getStatus())) {
+                if (varOpt.isEmpty()) {
+                    skippedItems.add(CartSyncResponse.SkippedItem.builder()
+                            .variantId(guestItem.getVariantId())
+                            .requestedQuantity(guestItem.getQuantity())
+                            .reason("Biến thể sản phẩm không tồn tại")
+                            .build());
                     continue;
                 }
 
                 ProductVariant variant = varOpt.get();
+                if ("INACTIVE".equalsIgnoreCase(variant.getStatus())
+                        || (variant.getProduct() != null && "INACTIVE".equalsIgnoreCase(variant.getProduct().getStatus()))) {
+                    skippedItems.add(CartSyncResponse.SkippedItem.builder()
+                            .variantId(variant.getVariantId())
+                            .requestedQuantity(guestItem.getQuantity())
+                            .reason("Sản phẩm đã ngừng kinh doanh hoặc tạm ẩn")
+                            .build());
+                    continue;
+                }
+
                 int availableStock = getAvailableStock(variant.getVariantId());
                 if (availableStock <= 0) {
+                    skippedItems.add(CartSyncResponse.SkippedItem.builder()
+                            .variantId(variant.getVariantId())
+                            .requestedQuantity(guestItem.getQuantity())
+                            .reason("Sản phẩm đã hết hàng trong kho")
+                            .build());
                     continue;
                 }
 
                 Optional<CartItem> existingOpt = cartItemRepository.findByCartIdAndVariantId(cart.getCartId(), variant.getVariantId());
                 if (existingOpt.isPresent()) {
+                    // Idempotent: thay vì liên tục cộng dồn, lấy số lượng lớn nhất giữa giỏ hiện tại và giỏ khách gửi
                     CartItem existing = existingOpt.get();
-                    int newQty = existing.getQuantity() + guestItem.getQuantity();
-                    if (newQty > availableStock) {
-                        newQty = availableStock;
-                    }
-                    existing.setQuantity(newQty);
+                    int targetQty = Math.max(existing.getQuantity(), guestItem.getQuantity());
+                    int finalQty = Math.min(targetQty, availableStock);
+                    existing.setQuantity(finalQty);
                     existing.setUpdatedAt(LocalDateTime.now());
                     cartItemRepository.save(existing);
                     syncedCount++;
                 } else {
                     int addQty = Math.min(guestItem.getQuantity(), availableStock);
-                    if (addQty > 0) {
-                        CartItem newItem = CartItem.builder()
-                                .cart(cart)
-                                .variant(variant)
-                                .quantity(addQty)
-                                .createdAt(LocalDateTime.now())
-                                .updatedAt(LocalDateTime.now())
-                                .build();
-                        cartItemRepository.save(newItem);
-                        syncedCount++;
-                    }
+                    CartItem newItem = CartItem.builder()
+                            .cart(cart)
+                            .variant(variant)
+                            .quantity(addQty)
+                            .createdAt(LocalDateTime.now())
+                            .updatedAt(LocalDateTime.now())
+                            .build();
+                    cartItemRepository.save(newItem);
+                    syncedCount++;
                 }
             }
         }
@@ -325,11 +406,12 @@ public class CartService {
                 .totalItems(totalItems)
                 .syncedCount(syncedCount)
                 .subtotal(subtotal)
+                .skippedItems(skippedItems)
                 .build();
     }
 
     // =========================================================================
-    // HELPER METHODS
+    // PRIVATE HELPERS
     // =========================================================================
 
     private Cart getOrCreateCart(User user) {
@@ -372,36 +454,31 @@ public class CartService {
         return new PriceInfo(listPrice, listPrice, false);
     }
 
-    public String resolveImageUrl(ProductVariant variant) {
+    private PriceInfo resolvePriceWithMap(ProductVariant variant, Map<Long, PromotionVariant> promoMap) {
         if (variant == null) {
-            return null;
+            return new PriceInfo(BigDecimal.ZERO, BigDecimal.ZERO, false);
         }
-        if (variant.getImageUrl() != null && !variant.getImageUrl().isBlank()) {
-            return variant.getImageUrl();
-        }
-        if (variant.getProduct() != null) {
-            Optional<ProductImage> primaryImg = productImageRepository.findFirstByProduct_ProductIdAndIsPrimaryTrue(
-                    variant.getProduct().getProductId());
-            if (primaryImg.isPresent() && primaryImg.get().getImageUrl() != null) {
-                return primaryImg.get().getImageUrl();
+
+        BigDecimal listPrice = variant.getPrice() != null ? variant.getPrice() :
+                (variant.getProduct() != null && variant.getProduct().getBasePrice() != null
+                        ? variant.getProduct().getBasePrice() : BigDecimal.ZERO);
+
+        if (promoMap.containsKey(variant.getVariantId())) {
+            PromotionVariant pv = promoMap.get(variant.getVariantId());
+            if (pv != null && pv.getPromotionalPrice() != null) {
+                return new PriceInfo(listPrice, pv.getPromotionalPrice(), true);
             }
-            Optional<ProductImage> firstImg = productImageRepository.findFirstByProduct_ProductIdOrderByDisplayOrderAsc(
-                    variant.getProduct().getProductId());
-            if (firstImg.isPresent() && firstImg.get().getImageUrl() != null) {
-                return firstImg.get().getImageUrl();
-            }
-            return variant.getProduct().getThumbnailUrl();
         }
-        return null;
+
+        return new PriceInfo(listPrice, listPrice, false);
     }
 
-    public BigDecimal calculateSubtotal(Long cartId) {
+    private BigDecimal calculateSubtotal(Long cartId) {
         List<CartItem> items = cartItemRepository.findByCartId(cartId);
         BigDecimal subtotal = BigDecimal.ZERO;
         for (CartItem item : items) {
-            PriceInfo pi = resolvePrice(item.getVariant());
-            BigDecimal line = pi.currentPrice.multiply(BigDecimal.valueOf(item.getQuantity()));
-            subtotal = subtotal.add(line);
+            PriceInfo priceInfo = resolvePrice(item.getVariant());
+            subtotal = subtotal.add(priceInfo.currentPrice.multiply(BigDecimal.valueOf(item.getQuantity())));
         }
         return subtotal;
     }

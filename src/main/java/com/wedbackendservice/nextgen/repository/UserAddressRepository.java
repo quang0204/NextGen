@@ -25,7 +25,7 @@ public interface UserAddressRepository extends JpaRepository<UserAddress, Long> 
     @Query("SELECT a FROM UserAddress a WHERE a.addressId = :addressId AND a.user.userId = :userId")
     Optional<UserAddress> findByAddressIdAndUserId(@Param("addressId") Long addressId, @Param("userId") Long userId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE UserAddress a SET a.isDefault = false WHERE a.user.userId = :userId")
     void resetDefaultAddressByUserId(@Param("userId") Long userId);
 

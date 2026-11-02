@@ -35,7 +35,8 @@ public class CategoriesController {
      * API 3.2: Chi tiết 1 danh mục sản phẩm (Public)
      */
     @GetMapping("/{id}")
-    public ApiResponse<CategoryResponse> getCategoryById(@PathVariable Long id) {
+    public ApiResponse<CategoryResponse> getCategoryById(
+            @PathVariable Long id) {
         return ApiResponse.<CategoryResponse>builder()
                 .success(true)
                 .statusCode(200)

@@ -186,7 +186,7 @@ public class AuthenticationController {
         return ApiResponse.<UserMeResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .data(authenticationService.getCurrentUser(authHeader))
+                .data(authenticationService.getCurrentUser())
                 .build();
     }
 

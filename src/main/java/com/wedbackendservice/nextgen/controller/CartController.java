@@ -23,13 +23,12 @@ public class CartController {
      * API 7.1: Lấy thông tin giỏ hàng của người dùng (Authenticated)
      */
     @GetMapping
-    public ApiResponse<CartResponse> getCart(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
+    public ApiResponse<CartResponse> getCart() {
         return ApiResponse.<CartResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Lấy thông tin giỏ hàng thành công")
-                .data(cartService.getCart(authHeader))
+                .data(cartService.getCart())
                 .build();
     }
 
@@ -39,13 +38,12 @@ public class CartController {
     @PostMapping("/items")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CartItemAddResponse> addItemToCart(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @Valid @RequestBody CartItemAddRequest request) {
         return ApiResponse.<CartItemAddResponse>builder()
                 .success(true)
                 .statusCode(201)
                 .message("Đã thêm sản phẩm vào giỏ hàng thành công!")
-                .data(cartService.addItemToCart(authHeader, request))
+                .data(cartService.addItemToCart(request))
                 .build();
     }
 
@@ -54,14 +52,13 @@ public class CartController {
      */
     @PutMapping("/items/{itemId}")
     public ApiResponse<CartItemUpdateResponse> updateItemQuantity(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long itemId,
             @Valid @RequestBody CartItemUpdateRequest request) {
         return ApiResponse.<CartItemUpdateResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Cập nhật số lượng thành công!")
-                .data(cartService.updateItemQuantity(authHeader, itemId, request))
+                .data(cartService.updateItemQuantity(itemId, request))
                 .build();
     }
 
@@ -70,13 +67,12 @@ public class CartController {
      */
     @DeleteMapping("/items/{itemId}")
     public ApiResponse<CartItemDeleteResponse> removeItemFromCart(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long itemId) {
         return ApiResponse.<CartItemDeleteResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Đã xóa sản phẩm khỏi giỏ hàng!")
-                .data(cartService.removeItemFromCart(authHeader, itemId))
+                .data(cartService.removeItemFromCart(itemId))
                 .build();
     }
 
@@ -84,9 +80,8 @@ public class CartController {
      * API 7.5: Xóa sạch toàn bộ giỏ hàng (Authenticated)
      */
     @DeleteMapping("/clear")
-    public ApiResponse<Void> clearCart(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader) {
-        cartService.clearCart(authHeader);
+    public ApiResponse<Void> clearCart() {
+        cartService.clearCart();
         return ApiResponse.<Void>builder()
                 .success(true)
                 .statusCode(200)
@@ -99,13 +94,12 @@ public class CartController {
      */
     @PostMapping("/sync")
     public ApiResponse<CartSyncResponse> syncCart(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @Valid @RequestBody CartSyncRequest request) {
         return ApiResponse.<CartSyncResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Đồng bộ giỏ hàng thành công!")
-                .data(cartService.syncCart(authHeader, request))
+                .data(cartService.syncCart(request))
                 .build();
     }
 }

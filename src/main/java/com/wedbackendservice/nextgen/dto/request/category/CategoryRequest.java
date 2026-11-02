@@ -28,20 +28,4 @@ public class CategoryRequest {
     @JsonProperty("isVisible")
     @JsonAlias({"isVisible", "isActive"})
     Boolean isVisible;
-
-    public String getCategoryName() {
-        return name;
-    }
-
-    public void setCategoryName(String categoryName) {
-        this.name = categoryName;
-    }
-
-    public Boolean getIsActive() {
-        return isVisible;
-    }
-
-    public void setIsActive(Boolean isActive) {
-        this.isVisible = isActive;
-    }
 }

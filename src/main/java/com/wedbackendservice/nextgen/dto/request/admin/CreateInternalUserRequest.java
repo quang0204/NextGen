@@ -4,6 +4,7 @@ import com.wedbackendservice.nextgen.enums.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -22,11 +23,22 @@ public class CreateInternalUserRequest {
     String email;
 
     @NotBlank(message = "Số điện thoại không được để trống")
+    @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Số điện thoại không hợp lệ")
     String phone;
 
-    @NotBlank(message = "Mật khẩu không được để trống")
     String password;
+    String temporaryPassword;
 
     @NotNull(message = "Vai trò không được để trống")
     Role role;
+
+    public String getEffectivePassword() {
+        if (temporaryPassword != null && !temporaryPassword.isBlank()) {
+            return temporaryPassword.trim();
+        }
+        if (password != null && !password.isBlank()) {
+            return password.trim();
+        }
+        return "";
+    }
 }

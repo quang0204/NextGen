@@ -24,4 +24,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     boolean existsByCategoryNameIgnoreCaseAndParentIsNullAndCategoryIdNot(String categoryName, Long categoryId);
 
     boolean existsByCategoryNameIgnoreCaseAndParent_CategoryIdAndCategoryIdNot(String categoryName, Long parentId, Long categoryId);
+
+    boolean existsBySlugIgnoreCase(String slug);
+
+    boolean existsBySlugIgnoreCaseAndCategoryIdNot(String slug, Long categoryId);
 }

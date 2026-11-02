@@ -26,20 +26,4 @@ public class BrandRequest {
     @JsonProperty("isVisible")
     @JsonAlias({"isVisible", "isActive"})
     Boolean isVisible;
-
-    public String getBrandName() {
-        return name;
-    }
-
-    public void setBrandName(String brandName) {
-        this.name = brandName;
-    }
-
-    public Boolean getIsActive() {
-        return isVisible;
-    }
-
-    public void setIsActive(Boolean isActive) {
-        this.isVisible = isActive;
-    }
 }

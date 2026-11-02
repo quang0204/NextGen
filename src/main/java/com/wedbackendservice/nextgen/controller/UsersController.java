@@ -1,9 +1,7 @@
 package com.wedbackendservice.nextgen.controller;
 
 import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.user.CreateAddressResponse;
-import com.wedbackendservice.nextgen.dto.response.user.UserAddressItemResponse;
-import com.wedbackendservice.nextgen.dto.response.user.UserProfileResponse;
+import com.wedbackendservice.nextgen.dto.response.user.*;
 import com.wedbackendservice.nextgen.dto.request.user.UpdateUserProfileRequest;
 import com.wedbackendservice.nextgen.dto.request.user.UserAddressRequest;
 import com.wedbackendservice.nextgen.service.UsersService;
@@ -22,106 +20,114 @@ public class UsersController {
     private final UsersService usersService;
 
     /**
-     * API 1: Lấy thông tin hồ sơ cá nhân
+     * API 2.1: Lấy thông tin hồ sơ cá nhân
      */
     @GetMapping("/profile")
-    public ApiResponse<UserProfileResponse> getUserProfile(
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ApiResponse<UserProfileResponse> getUserProfile() {
         return ApiResponse.<UserProfileResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .data(usersService.getUserProfile(authHeader))
+                .message("Lấy thông tin tài khoản thành công!")
+                .data(usersService.getUserProfile())
                 .build();
     }
 
+//    /**
+//     * API gửi mã OTP xác nhận cập nhật thông tin email/sđt
+//     */
+//    @PostMapping("/profile/otp")
+//    public ApiResponse<Void> sendProfileUpdateOtp(
+//            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+//        usersService.sendProfileUpdateOtp();
+//        return ApiResponse.<Void>builder()
+//                .success(true)
+//                .statusCode(200)
+//                .message("Mã OTP xác thực đã được gửi về email của bạn.")
+//                .build();
+//    }
+
     /**
-     * API 2: Cập nhật thông tin cá nhân
+     * API 2.2: Cập nhật thông tin cá nhân
      */
     @PutMapping("/profile")
-    public ApiResponse<Void> updateUserProfile(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ApiResponse<UserProfileResponse> updateUserProfile(
             @Valid @RequestBody UpdateUserProfileRequest request) {
-        usersService.updateUserProfile(authHeader, request);
-        return ApiResponse.<Void>builder()
+        return ApiResponse.<UserProfileResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .message("Cập nhật thông tin cá nhân thành công!")
+                .message("Cập nhật hồ sơ cá nhân thành công!")
+                .data(usersService.updateUserProfile( request))
                 .build();
     }
 
     /**
-     * API 3: Lấy danh sách sổ địa chỉ nhận hàng
+     * API 2.3: Danh sách địa chỉ nhận hàng
      */
     @GetMapping("/addresses")
-    public ApiResponse<List<UserAddressItemResponse>> getUserAddresses(
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+    public ApiResponse<List<UserAddressItemResponse>> getUserAddresses() {
         return ApiResponse.<List<UserAddressItemResponse>>builder()
                 .success(true)
                 .statusCode(200)
-                .data(usersService.getUserAddresses(authHeader))
+                .message("Lấy sổ địa chỉ thành công!")
+                .data(usersService.getUserAddresses())
                 .build();
     }
 
     /**
-     * API 4: Thêm mới 1 địa chỉ giao hàng
+     * API 2.4: Thêm mới 1 địa chỉ giao hàng
      */
     @PostMapping("/addresses")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CreateAddressResponse> createUserAddress(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
             @Valid @RequestBody UserAddressRequest request) {
-        CreateAddressResponse data = usersService.createUserAddress(authHeader, request);
         return ApiResponse.<CreateAddressResponse>builder()
                 .success(true)
                 .statusCode(201)
-                .message("Thêm địa chỉ nhận hàng thành công!")
-                .data(data)
+                .message("Thêm địa chỉ giao hàng mới thành công!")
+                .data(usersService.createUserAddress(request))
                 .build();
     }
 
     /**
-     * API 5: Sửa địa chỉ giao hàng
+     * API 2.5: Sửa địa chỉ giao hàng
      */
     @PutMapping("/addresses/{addressId}")
-    public ApiResponse<Void> updateUserAddress(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ApiResponse<UserAddressItemResponse> updateUserAddress(
             @PathVariable Long addressId,
             @Valid @RequestBody UserAddressRequest request) {
-        usersService.updateUserAddress(authHeader, addressId, request);
-        return ApiResponse.<Void>builder()
+        return ApiResponse.<UserAddressItemResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .message("Cập nhật địa chỉ thành công!")
+                .message("Cập nhật địa chỉ nhận hàng thành công!")
+                .data(usersService.updateUserAddress(addressId, request))
                 .build();
     }
 
     /**
-     * API 6: Đặt địa chỉ làm mặc định
+     * API 2.6: Đặt địa chỉ làm mặc định
      */
     @PatchMapping("/addresses/{addressId}/default")
-    public ApiResponse<Void> setDefaultAddress(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ApiResponse<SetDefaultAddressResponse> setDefaultAddress(
             @PathVariable Long addressId) {
-        usersService.setDefaultAddress(authHeader, addressId);
-        return ApiResponse.<Void>builder()
+        return ApiResponse.<SetDefaultAddressResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .message("Đã đổi địa chỉ mặc định thành công!")
+                .message("Đã đặt địa chỉ ID " + addressId + " làm mặc định thành công!")
+                .data(usersService.setDefaultAddress(addressId))
                 .build();
     }
 
     /**
-     * API 7: Xóa địa chỉ khỏi sổ địa chỉ
+     * API 2.7: Xóa địa chỉ khỏi sổ địa chỉ
      */
     @DeleteMapping("/addresses/{addressId}")
-    public ApiResponse<Void> deleteUserAddress(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
+    public ApiResponse<DeleteAddressResponse> deleteUserAddress(
             @PathVariable Long addressId) {
-        usersService.deleteUserAddress(authHeader, addressId);
-        return ApiResponse.<Void>builder()
+        return ApiResponse.<DeleteAddressResponse>builder()
                 .success(true)
                 .statusCode(200)
-                .message("Xóa địa chỉ thành công!")
+                .message("Đã xóa địa chỉ nhận hàng thành công!")
+                .data(usersService.deleteUserAddress(addressId))
                 .build();
     }
 }

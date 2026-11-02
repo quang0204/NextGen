@@ -1,10 +1,12 @@
 package com.wedbackendservice.nextgen.dto.response.admin;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.enums.UserStatus;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
@@ -13,6 +15,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AdminUserItemResponse {
     Long userId;
     String fullName;
@@ -21,5 +24,7 @@ public class AdminUserItemResponse {
     Role role;
     UserStatus status;
     String lockReason;
+    Integer totalOrders;
+    BigDecimal totalSpent;
     LocalDateTime createdAt;
 }

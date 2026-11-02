@@ -30,12 +30,4 @@ public class BrandResponse {
     Integer totalProducts;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
-
-    public String getBrandName() {
-        return name;
-    }
-
-    public Boolean getIsActive() {
-        return isVisible;
-    }
 }

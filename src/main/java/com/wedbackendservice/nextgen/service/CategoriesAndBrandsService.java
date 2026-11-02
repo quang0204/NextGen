@@ -1,23 +1,26 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.security.SecurityHelper;
-
-import com.wedbackendservice.nextgen.dto.response.brand.BrandResponse;
-import com.wedbackendservice.nextgen.dto.response.category.CategoryResponse;
 import com.wedbackendservice.nextgen.dto.request.brand.BrandRequest;
 import com.wedbackendservice.nextgen.dto.request.category.CategoryRequest;
+import com.wedbackendservice.nextgen.dto.response.brand.BrandResponse;
+import com.wedbackendservice.nextgen.dto.response.category.CategoryResponse;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.entity.Brand;
 import com.wedbackendservice.nextgen.entity.Category;
 import com.wedbackendservice.nextgen.entity.User;
+import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.CategoryMapper;
 import com.wedbackendservice.nextgen.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.repository.BrandRepository;
 import com.wedbackendservice.nextgen.repository.CategoryRepository;
 import com.wedbackendservice.nextgen.repository.ProductRepository;
+import com.wedbackendservice.nextgen.security.SecurityHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PostAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,16 +39,19 @@ public class CategoriesAndBrandsService {
     private final BrandRepository brandRepository;
     private final ProductRepository productRepository;
     private final AuditLogRepository auditLogRepository;
+    private final CategoryMapper  categoryMapper;
 
     // =========================================================================
     // CATEGORIES
     // =========================================================================
 
     /**
-     * API 3.1: Lấy cây danh mục phân cấp cha/con (Public)
+     * API 3.1: Lấy cây danh mục phân cấp cha/con (Public, bảo vệ includeHidden)
      */
     public List<CategoryResponse> getCategoriesTree(boolean includeHidden) {
-        List<Category> allCategories = includeHidden
+        boolean canSeeHidden = includeHidden && isStaffOrAdmin();
+
+        List<Category> allCategories = canSeeHidden
                 ? categoryRepository.findAll()
                 : categoryRepository.findAllActive();
 
@@ -56,15 +62,9 @@ public class CategoriesAndBrandsService {
 
         for (Category cat : allCategories) {
             int count = productCountMap.getOrDefault(cat.getCategoryId(), 0);
-            CategoryResponse resp = CategoryResponse.builder()
-                    .categoryId(cat.getCategoryId())
-                    .parentId(cat.getParent() != null ? cat.getParent().getCategoryId() : null)
-                    .name(cat.getCategoryName())
-                    .description(cat.getDescription())
-                    .isVisible(cat.getIsActive())
-                    .productCount(count)
-                    .children(new ArrayList<>())
-                    .build();
+            CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
+            resp.setProductCount(count);
+            resp.setChildren(new ArrayList<>());
 
             if (cat.getParent() == null) {
                 rootResponses.add(resp);
@@ -77,47 +77,48 @@ public class CategoriesAndBrandsService {
         rootResponses.sort(Comparator.comparing(CategoryResponse::getCategoryId));
 
         for (CategoryResponse root : rootResponses) {
-            attachChildren(root, childrenMap);
+            attachChildrenAndSumCounts(root, childrenMap);
         }
 
         return rootResponses;
     }
 
-    private void attachChildren(CategoryResponse parent, Map<Long, List<CategoryResponse>> childrenMap) {
+    private int attachChildrenAndSumCounts(CategoryResponse parent, Map<Long, List<CategoryResponse>> childrenMap) {
         List<CategoryResponse> children = childrenMap.getOrDefault(parent.getCategoryId(), new ArrayList<>());
         children.sort(Comparator.comparing(CategoryResponse::getCategoryId));
         parent.setChildren(children);
+
+        int totalCount = parent.getProductCount() != null ? parent.getProductCount() : 0;
         for (CategoryResponse child : children) {
-            attachChildren(child, childrenMap);
+            totalCount += attachChildrenAndSumCounts(child, childrenMap);
         }
+        parent.setProductCount(totalCount);
+        return totalCount;
     }
 
     /**
-     * API 3.2: Chi tiết danh mục sản phẩm (Public)
+     * API 3.2: Chi tiết danh mục sản phẩm (Public, chặn ẩn với khách vãng lai)
      */
     public CategoryResponse getCategoryById(Long id) {
         Category cat = categoryRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
-        int productCount = (int) productRepository.countByCategory_CategoryId(id);
+        if (!Boolean.TRUE.equals(cat.getIsActive()) && !isStaffOrAdmin()) {
+            throw new AppException(ErrorCode.CATEGORY_NOT_FOUND);
+        }
 
-        return CategoryResponse.builder()
-                .categoryId(cat.getCategoryId())
-                .parentId(cat.getParent() != null ? cat.getParent().getCategoryId() : null)
-                .parentName(cat.getParent() != null ? cat.getParent().getCategoryName() : null)
-                .name(cat.getCategoryName())
-                .description(cat.getDescription())
-                .isVisible(cat.getIsActive())
-                .productCount(productCount)
-                .build();
+        int productCount = (int) productRepository.countByCategory_CategoryId(id);
+        CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
+        resp.setProductCount(productCount);
+        return resp;
     }
 
     /**
      * API 3.3: Tạo mới danh mục sản phẩm (STAFF / ADMIN)
      */
     @Transactional
-    public CategoryResponse createCategory(String authHeader, CategoryRequest request) {
-        User operator = securityHelper.authenticateStaffOrAdmin(authHeader);
+    public CategoryResponse createCategory( CategoryRequest request) {
+        User operator = securityHelper.getCurrentUser();
 
         if (request.getName() == null || request.getName().trim().isBlank()) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Tên danh mục không được để trống");
@@ -141,6 +142,10 @@ public class CategoriesAndBrandsService {
                 ? toSlug(request.getSlug())
                 : toSlug(categoryName);
 
+        if (categoryRepository.existsBySlugIgnoreCase(slug)) {
+            throw new AppException(ErrorCode.CATEGORY_SLUG_ALREADY_EXISTS);
+        }
+
         Boolean isVisible = request.getIsVisible() != null ? request.getIsVisible() : true;
 
         Category category = Category.builder()
@@ -150,8 +155,6 @@ public class CategoriesAndBrandsService {
                 .description(request.getDescription())
                 .iconUrl(request.getIconUrl())
                 .isActive(isVisible)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
                 .build();
 
         Category saved = categoryRepository.save(category);
@@ -162,24 +165,18 @@ public class CategoriesAndBrandsService {
                 .entityName("Category")
                 .entityId(saved.getCategoryId())
                 .newValue(saved.getCategoryName())
-                .createdAt(LocalDateTime.now())
                 .build());
-
-        return CategoryResponse.builder()
-                .categoryId(saved.getCategoryId())
-                .parentId(saved.getParent() != null ? saved.getParent().getCategoryId() : null)
-                .name(saved.getCategoryName())
-                .description(saved.getDescription())
-                .isVisible(saved.getIsActive())
-                .build();
+        CategoryResponse resp = categoryMapper.tocategoryResponse(saved);
+        resp.setProductCount(0);
+        return resp;
     }
 
     /**
      * API 3.4: Cập nhật thông tin danh mục (STAFF / ADMIN)
      */
     @Transactional
-    public CategoryResponse updateCategory(String authHeader, Long id, CategoryRequest request) {
-        User operator = securityHelper.authenticateStaffOrAdmin(authHeader);
+    public CategoryResponse updateCategory(Long id, CategoryRequest request) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
 
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
@@ -192,10 +189,20 @@ public class CategoriesAndBrandsService {
         Category parent = null;
         if (request.getParentId() != null) {
             if (request.getParentId().equals(id)) {
-                throw new AppException(ErrorCode.INVALID_REQUEST, "Danh mục cha không thể là chính nó.");
+                throw new AppException(ErrorCode.CATEGORY_CYCLE_DETECTED);
             }
             parent = categoryRepository.findById(request.getParentId())
                     .orElseThrow(() -> new AppException(ErrorCode.INVALID_REQUEST, "Danh mục cha không tồn tại."));
+
+            // Chặn gán cha là chính nó hoặc con cháu của nó (phát hiện vòng lặp cây)
+            Category current = parent;
+            while (current != null) {
+                if (current.getCategoryId().equals(id)) {
+                    throw new AppException(ErrorCode.CATEGORY_CYCLE_DETECTED);
+                }
+                current = current.getParent();
+            }
+
             if (categoryRepository.existsByCategoryNameIgnoreCaseAndParent_CategoryIdAndCategoryIdNot(categoryName, request.getParentId(), id)) {
                 throw new AppException(ErrorCode.CATEGORY_ALREADY_EXISTS);
             }
@@ -210,15 +217,15 @@ public class CategoriesAndBrandsService {
                 ? toSlug(request.getSlug())
                 : toSlug(categoryName);
 
+        if (categoryRepository.existsBySlugIgnoreCaseAndCategoryIdNot(slug, id)) {
+            throw new AppException(ErrorCode.CATEGORY_SLUG_ALREADY_EXISTS);
+        }
+
         category.setParent(parent);
         category.setCategoryName(categoryName);
         category.setSlug(slug);
-        if (request.getDescription() != null) {
-            category.setDescription(request.getDescription());
-        }
-        if (request.getIconUrl() != null) {
-            category.setIconUrl(request.getIconUrl());
-        }
+        category.setDescription(request.getDescription());
+        category.setIconUrl(request.getIconUrl());
         if (request.getIsVisible() != null) {
             category.setIsActive(request.getIsVisible());
         }
@@ -233,24 +240,20 @@ public class CategoriesAndBrandsService {
                 .entityId(id)
                 .oldValue(oldValue)
                 .newValue(updated.getCategoryName())
-                .createdAt(LocalDateTime.now())
                 .build());
 
-        return CategoryResponse.builder()
-                .categoryId(updated.getCategoryId())
-                .parentId(updated.getParent() != null ? updated.getParent().getCategoryId() : null)
-                .name(updated.getCategoryName())
-                .description(updated.getDescription())
-                .isVisible(updated.getIsActive())
-                .build();
+        int productCount = (int) productRepository.countByCategory_CategoryId(id);
+        CategoryResponse resp = categoryMapper.tocategoryResponse(updated);
+        resp.setProductCount(productCount);
+        return resp;
     }
 
     /**
      * API 3.5: Xóa danh mục (ADMIN)
      */
     @Transactional
-    public void deleteCategory(String authHeader, Long id) {
-        User operator = securityHelper.authenticateAdmin(authHeader);
+    public void deleteCategory(Long id) {
+        User operator = securityHelper.authenticateAdmin();
 
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
@@ -284,49 +287,46 @@ public class CategoriesAndBrandsService {
     // =========================================================================
 
     /**
-     * API 3.6: Danh sách thương hiệu đối tác (Public)
+     * API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho staff)
      */
-    public List<BrandResponse> getBrands() {
-        List<Brand> activeBrands = brandRepository.findAllActive();
+    public List<BrandResponse> getBrands(boolean includeHidden) {
+        boolean canSeeHidden = includeHidden && isStaffOrAdmin();
+
+        List<Brand> brands = canSeeHidden
+                ? brandRepository.findAll()
+                : brandRepository.findAllActive();
+
         Map<Long, Integer> productCountMap = getBrandProductCounts();
 
-        return activeBrands.stream()
-                .map(b -> BrandResponse.builder()
-                        .brandId(b.getBrandId())
-                        .name(b.getBrandName())
-                        .logoUrl(b.getLogoUrl())
-                        .description(b.getDescription())
-                        .isVisible(b.getIsActive())
-                        .totalProducts(productCountMap.getOrDefault(b.getBrandId(), 0))
-                        .build())
+        return brands.stream()
+                .map(b -> toBrandResponse(b, productCountMap.getOrDefault(b.getBrandId(), 0)))
                 .toList();
     }
-
     /**
-     * API 3.7: Chi tiết thương hiệu và logo (Public)
+     * API 3.7: Chi tiết thương hiệu và logo (Public, chặn ẩn với khách vãng lai)
      */
-    public BrandResponse getBrandById(Long id) {
+    public BrandResponse getBrandById(String authHeader, Long id) {
         Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
 
-        int totalProducts = (int) productRepository.countByBrand_BrandId(id);
+        if (!Boolean.TRUE.equals(brand.getIsActive()) && !isStaffOrAdmin()) {
+            throw new AppException(ErrorCode.BRAND_NOT_FOUND);
+        }
 
-        return BrandResponse.builder()
-                .brandId(brand.getBrandId())
-                .name(brand.getBrandName())
-                .logoUrl(brand.getLogoUrl())
-                .description(brand.getDescription())
-                .isVisible(brand.getIsActive())
-                .totalProducts(totalProducts)
-                .build();
+        int totalProducts = (int) productRepository.countByBrand_BrandId(id);
+        return toBrandResponse(brand, totalProducts);
+    }
+
+    public BrandResponse getBrandById(Long id) {
+        return getBrandById(null, id);
     }
 
     /**
      * API 3.8: Thêm mới thương hiệu đối tác (STAFF / ADMIN)
      */
     @Transactional
-    public BrandResponse createBrand(String authHeader, BrandRequest request) {
-        User operator = securityHelper.authenticateStaffOrAdmin(authHeader);
+    public BrandResponse createBrand(BrandRequest request) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
 
         if (request.getName() == null || request.getName().trim().isBlank()) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Tên thương hiệu không được để trống");
@@ -340,6 +340,10 @@ public class CategoriesAndBrandsService {
         String slug = (request.getSlug() != null && !request.getSlug().isBlank())
                 ? toSlug(request.getSlug())
                 : toSlug(brandName);
+
+        if (brandRepository.existsBySlugIgnoreCase(slug)) {
+            throw new AppException(ErrorCode.BRAND_SLUG_ALREADY_EXISTS);
+        }
 
         Boolean isVisible = request.getIsVisible() != null ? request.getIsVisible() : true;
 
@@ -364,21 +368,15 @@ public class CategoriesAndBrandsService {
                 .createdAt(LocalDateTime.now())
                 .build());
 
-        return BrandResponse.builder()
-                .brandId(saved.getBrandId())
-                .name(saved.getBrandName())
-                .logoUrl(saved.getLogoUrl())
-                .description(saved.getDescription())
-                .isVisible(saved.getIsActive())
-                .build();
+        return toBrandResponse(saved, 0);
     }
 
     /**
      * API 3.9: Cập nhật thương hiệu và logo (STAFF / ADMIN)
      */
     @Transactional
-    public BrandResponse updateBrand(String authHeader, Long id, BrandRequest request) {
-        User operator = securityHelper.authenticateStaffOrAdmin(authHeader);
+    public BrandResponse updateBrand(Long id, BrandRequest request) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
 
         Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
@@ -397,14 +395,14 @@ public class CategoriesAndBrandsService {
                 ? toSlug(request.getSlug())
                 : toSlug(brandName);
 
+        if (brandRepository.existsBySlugIgnoreCaseAndBrandIdNot(slug, id)) {
+            throw new AppException(ErrorCode.BRAND_SLUG_ALREADY_EXISTS);
+        }
+
         brand.setBrandName(brandName);
         brand.setSlug(slug);
-        if (request.getLogoUrl() != null) {
-            brand.setLogoUrl(request.getLogoUrl());
-        }
-        if (request.getDescription() != null) {
-            brand.setDescription(request.getDescription());
-        }
+        brand.setLogoUrl(request.getLogoUrl());
+        brand.setDescription(request.getDescription());
         if (request.getIsVisible() != null) {
             brand.setIsActive(request.getIsVisible());
         }
@@ -422,21 +420,16 @@ public class CategoriesAndBrandsService {
                 .createdAt(LocalDateTime.now())
                 .build());
 
-        return BrandResponse.builder()
-                .brandId(updated.getBrandId())
-                .name(updated.getBrandName())
-                .logoUrl(updated.getLogoUrl())
-                .description(updated.getDescription())
-                .isVisible(updated.getIsActive())
-                .build();
+        int totalProducts = (int) productRepository.countByBrand_BrandId(id);
+        return toBrandResponse(updated, totalProducts);
     }
 
     /**
-     * API 3.10: Xóa thương hiệu đối tác (ADMIN)
+     * API 3.10: Xóa thương hiệu (ADMIN)
      */
     @Transactional
-    public void deleteBrand(String authHeader, Long id) {
-        User operator = securityHelper.authenticateAdmin(authHeader);
+    public void deleteBrand(Long id) {
+        User operator = securityHelper.authenticateAdmin();
 
         Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
@@ -455,50 +448,78 @@ public class CategoriesAndBrandsService {
                 .entityName("Brand")
                 .entityId(id)
                 .oldValue(brand.getBrandName())
-                .createdAt(LocalDateTime.now())
                 .build());
     }
 
     // =========================================================================
-    // HELPERS & MAPPERS
+    // PRIVATE HELPERS
     // =========================================================================
 
+
+    private BrandResponse toBrandResponse(Brand brand, int totalProducts) {
+        return BrandResponse.builder()
+                .brandId(brand.getBrandId())
+                .name(brand.getBrandName())
+                .slug(brand.getSlug())
+                .logoUrl(brand.getLogoUrl())
+                .description(brand.getDescription())
+                .isVisible(brand.getIsActive())
+                .totalProducts(totalProducts)
+                .build();
+    }
+
+    private boolean isStaffOrAdmin() {
+        try {
+            User user = securityHelper.getCurrentUser();
+            return user.getRole() == Role.STAFF || user.getRole() == Role.ADMIN;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private Map<Long, Integer> getCategoryProductCounts() {
-        Map<Long, Integer> map = new HashMap<>();
+        Map<Long, Integer> countMap = new HashMap<>();
         List<Object[]> rows = productRepository.countProductsGroupedByCategory();
         if (rows != null) {
             for (Object[] row : rows) {
-                if (row[0] != null && row[1] != null) {
-                    map.put((Long) row[0], ((Number) row[1]).intValue());
+                if (row.length >= 2 && row[0] != null && row[1] != null) {
+                    Long catId = ((Number) row[0]).longValue();
+                    Integer count = ((Number) row[1]).intValue();
+                    countMap.put(catId, count);
                 }
             }
         }
-        return map;
+        return countMap;
     }
 
     private Map<Long, Integer> getBrandProductCounts() {
-        Map<Long, Integer> map = new HashMap<>();
+        Map<Long, Integer> countMap = new HashMap<>();
         List<Object[]> rows = productRepository.countProductsGroupedByBrand();
         if (rows != null) {
             for (Object[] row : rows) {
-                if (row[0] != null && row[1] != null) {
-                    map.put((Long) row[0], ((Number) row[1]).intValue());
+                if (row.length >= 2 && row[0] != null && row[1] != null) {
+                    Long brandId = ((Number) row[0]).longValue();
+                    Integer count = ((Number) row[1]).intValue();
+                    countMap.put(brandId, count);
                 }
             }
         }
-        return map;
+        return countMap;
     }
+
+    private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
+    private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
 
     public static String toSlug(String input) {
         if (input == null || input.isBlank()) {
             return "";
         }
-        String normalized = Normalizer.normalize(input.trim().toLowerCase(), Normalizer.Form.NFD);
-        Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
-        String noAccents = pattern.matcher(normalized).replaceAll("");
-        noAccents = noAccents.replace('đ', 'd').replace('Đ', 'd');
-        return noAccents.replaceAll("[^a-z0-9\\s-]", "")
-                .replaceAll("\\s+", "-")
-                .replaceAll("-+", "-");
+        String nowhitespace = WHITESPACE.matcher(input.trim()).replaceAll("-");
+        String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
+        String slug = Pattern.compile("\\p{InCombiningDiacriticalMarks}+").matcher(normalized).replaceAll("");
+        slug = slug.replace("đ", "d").replace("Đ", "d");
+        slug = NONLATIN.matcher(slug).replaceAll("");
+        slug = slug.replaceAll("-{2,}", "-");
+        return slug.toLowerCase(Locale.ENGLISH).replaceAll("^-|-$", "");
     }
 }

@@ -33,7 +33,6 @@ public class User {
     String email;
     String phone;
     String passwordHash;
-    String avatarUrl;
 
     @Enumerated(EnumType.STRING)
     UserStatus status;

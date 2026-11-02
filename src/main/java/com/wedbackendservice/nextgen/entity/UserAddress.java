@@ -21,33 +21,19 @@ import java.time.LocalDateTime;
 public class UserAddress {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "address_id")
     Long addressId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
     User user;
 
-    @Column(name = "recipient_name")
     String recipientName;
-
     String phone;
-
-    @Column(name = "address_line")
     String addressLine;
-
-    @Column(name = "is_default")
     Boolean isDefault;
 
     @CreatedDate
-    @Column(name = "created_at")
     LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(name = "updated_at")
     LocalDateTime updatedAt;
-
-    public Long getUserId() {
-        return user != null ? user.getUserId() : null;
-    }
 }

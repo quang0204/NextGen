@@ -14,4 +14,5 @@ import lombok.experimental.FieldDefaults;
 public class UpdateUserRoleRequest {
     @NotNull(message = "Vai trò không được để trống")
     Role role;
+    String reason;
 }

@@ -34,12 +34,4 @@ public class CategoryResponse {
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
     List<CategoryResponse> children;
-
-    public String getCategoryName() {
-        return name;
-    }
-
-    public Boolean getIsActive() {
-        return isVisible;
-    }
 }

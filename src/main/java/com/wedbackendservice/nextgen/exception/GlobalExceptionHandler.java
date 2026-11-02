@@ -38,6 +38,7 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(message)
+                        .error(errorCode.name())
                         .build());
     }
 
@@ -54,16 +55,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException exception) {
-        String defaultMsg = exception.getBindingResult().getFieldErrors().stream()
-                .map(DefaultMessageSourceResolvable::getDefaultMessage)
-                .findFirst()
-                .orElse("Dữ liệu yêu cầu không hợp lệ.");
+        java.util.List<ApiResponse.ValidationErrorDetail> errorDetails = exception.getBindingResult().getFieldErrors().stream()
+                .map(err -> ApiResponse.ValidationErrorDetail.builder()
+                        .field(err.getField())
+                        .message(err.getDefaultMessage())
+                        .build())
+                .toList();
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.<Void>builder()
                         .success(false)
                         .statusCode(HttpStatus.BAD_REQUEST.value())
-                        .message(defaultMsg)
+                        .message("Dữ liệu đầu vào không hợp lệ!")
+                        .errors(errorDetails)
                         .build());
     }
 

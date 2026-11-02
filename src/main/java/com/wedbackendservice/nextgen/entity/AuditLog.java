@@ -20,37 +20,17 @@ import java.time.LocalDateTime;
 public class AuditLog {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "log_id")
     Long logId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
     User user;
 
-    @Column(nullable = false)
     String action;
-
-    @Column(name = "entity_name")
     String entityName;
-
-    @Column(name = "entity_id")
     Long entityId;
-
-    @Column(name = "old_value")
     String oldValue;
-
-    @Column(name = "new_value")
     String newValue;
 
     @CreatedDate
-    @Column(name = "created_at")
     LocalDateTime createdAt;
-
-    public Long getUserId() {
-        return user != null ? user.getUserId() : null;
-    }
-
-    public Long getAuditId() {
-        return logId;
-    }
 }

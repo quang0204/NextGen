@@ -23,13 +23,12 @@ public class AdminBrandsController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BrandResponse> createBrand(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @Valid @RequestBody BrandRequest request) {
         return ApiResponse.<BrandResponse>builder()
                 .success(true)
                 .statusCode(201)
                 .message("Thêm thương hiệu đối tác mới thành công!")
-                .data(categoriesAndBrandsService.createBrand(authHeader, request))
+                .data(categoriesAndBrandsService.createBrand(request))
                 .build();
     }
 
@@ -38,14 +37,13 @@ public class AdminBrandsController {
      */
     @PutMapping("/{id}")
     public ApiResponse<BrandResponse> updateBrand(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long id,
             @Valid @RequestBody BrandRequest request) {
         return ApiResponse.<BrandResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Cập nhật thương hiệu thành công!")
-                .data(categoriesAndBrandsService.updateBrand(authHeader, id, request))
+                .data(categoriesAndBrandsService.updateBrand(id, request))
                 .build();
     }
 
@@ -54,9 +52,8 @@ public class AdminBrandsController {
      */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteBrand(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long id) {
-        categoriesAndBrandsService.deleteBrand(authHeader, id);
+        categoriesAndBrandsService.deleteBrand(id);
         return ApiResponse.<Void>builder()
                 .success(true)
                 .statusCode(200)

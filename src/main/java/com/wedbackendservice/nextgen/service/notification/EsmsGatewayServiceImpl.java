@@ -50,7 +50,7 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
 
     @Value("${app.sms.esms.type:2}")
     private String smsType;
-    @Value("${app.sms..esms.otp-template}")
+    @Value("${app.sms.esms.otp-template}")
     private String otpTemplate;
 
     public EsmsGatewayServiceImpl(ObjectMapper objectMapper) {

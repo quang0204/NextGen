@@ -16,4 +16,8 @@ public interface BrandRepository extends JpaRepository<Brand, Long> {
     boolean existsByBrandNameIgnoreCase(String brandName);
 
     boolean existsByBrandNameIgnoreCaseAndBrandIdNot(String brandName, Long brandId);
+
+    boolean existsBySlugIgnoreCase(String slug);
+
+    boolean existsBySlugIgnoreCaseAndBrandIdNot(String slug, Long brandId);
 }

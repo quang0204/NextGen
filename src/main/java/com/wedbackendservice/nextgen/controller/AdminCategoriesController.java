@@ -23,13 +23,12 @@ public class AdminCategoriesController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CategoryResponse> createCategory(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @Valid @RequestBody CategoryRequest request) {
         return ApiResponse.<CategoryResponse>builder()
                 .success(true)
                 .statusCode(201)
                 .message("Tạo danh mục mới thành công!")
-                .data(categoriesAndBrandsService.createCategory(authHeader, request))
+                .data(categoriesAndBrandsService.createCategory(request))
                 .build();
     }
 
@@ -38,14 +37,13 @@ public class AdminCategoriesController {
      */
     @PutMapping("/{id}")
     public ApiResponse<CategoryResponse> updateCategory(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long id,
             @Valid @RequestBody CategoryRequest request) {
         return ApiResponse.<CategoryResponse>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Cập nhật thông tin danh mục thành công!")
-                .data(categoriesAndBrandsService.updateCategory(authHeader, id, request))
+                .data(categoriesAndBrandsService.updateCategory(id, request))
                 .build();
     }
 
@@ -54,9 +52,8 @@ public class AdminCategoriesController {
      */
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteCategory(
-            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String authHeader,
             @PathVariable Long id) {
-        categoriesAndBrandsService.deleteCategory(authHeader, id);
+        categoriesAndBrandsService.deleteCategory(id);
         return ApiResponse.<Void>builder()
                 .success(true)
                 .statusCode(200)

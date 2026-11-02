@@ -21,4 +21,5 @@ public class UserProfileResponse {
     String phone;
     UserStatus status;
     LocalDateTime createdAt;
+    LocalDateTime updatedAt;
 }

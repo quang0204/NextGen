@@ -1,17 +1,14 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.security.SecurityHelper;
-
 import com.nimbusds.jwt.SignedJWT;
-import com.wedbackendservice.nextgen.dto.session.TokenPair;
-import com.wedbackendservice.nextgen.dto.response.admin.*;
-import com.wedbackendservice.nextgen.dto.response.user.UserAddressItemResponse;
 import com.wedbackendservice.nextgen.dto.request.admin.CreateInternalUserRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserRoleRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserStatusRequest;
+import com.wedbackendservice.nextgen.dto.response.admin.*;
+import com.wedbackendservice.nextgen.dto.response.user.UserAddressItemResponse;
+import com.wedbackendservice.nextgen.dto.session.TokenPair;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.entity.Order;
-import com.wedbackendservice.nextgen.entity.UserAddress;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.enums.UserStatus;
@@ -21,6 +18,7 @@ import com.wedbackendservice.nextgen.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.repository.OrderRepository;
 import com.wedbackendservice.nextgen.repository.UserAddressRepository;
 import com.wedbackendservice.nextgen.repository.UserRepository;
+import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +31,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Date;
@@ -43,6 +42,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AdminUsersService {
 
+    private static final int MAX_PAGE_SIZE = 100;
+    private static final int DEFAULT_PAGE_SIZE = 15;
+    private static final int DETAIL_HISTORY_LIMIT = 20;
+
     private final SecurityHelper securityHelper;
     private final UserRepository userRepository;
     private final UserAddressRepository userAddressRepository;
@@ -52,41 +55,69 @@ public class AdminUsersService {
     private final PasswordEncoder passwordEncoder;
 
     /**
-     * API 8: Danh sách người dùng (Admin)
+     * API 2.8: Danh sách người dùng (Tìm kiếm, phân trang, lọc theo Role & Status)
      */
-    public AdminUserListResponse getUsersList(String authHeader, int page, int size,
-                                             String keyword, String role, String status) {
-        securityHelper.authenticateAdmin(authHeader);
+    public AdminUserListResponse getUsersList(int page, int limit,
+                                             String search, String role, String status,
+                                             String sortBy, String sortDir) {
+        securityHelper.authenticateAdmin();
 
         int safePage = Math.max(page, 1);
-        int safeSize = size > 0 ? size : 10;
-        Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        int safeLimit = limit > 0 ? Math.min(limit, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        String sortProperty = "createdAt";
+        if (sortBy != null && !sortBy.isBlank()) {
+            if ("fullName".equalsIgnoreCase(sortBy.trim())) {
+                sortProperty = "fullName";
+            } else if ("status".equalsIgnoreCase(sortBy.trim())) {
+                sortProperty = "status";
+            }
+        }
+        Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(safePage - 1, safeLimit, Sort.by(direction, sortProperty));
+
+        // Validate role input if provided
+        final Role roleFilter;
+        if (role != null && !role.isBlank() && !"ALL".equalsIgnoreCase(role.trim())) {
+            try {
+                roleFilter = Role.valueOf(role.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new AppException(ErrorCode.ROLE_INVALID);
+            }
+        } else {
+            roleFilter = null;
+        }
+
+        // Validate status input if provided
+        final UserStatus statusFilter;
+        if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status.trim())) {
+            try {
+                statusFilter = UserStatus.valueOf(status.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new AppException(ErrorCode.STATUS_INVALID);
+            }
+        } else {
+            statusFilter = null;
+        }
 
         Specification<User> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (keyword != null && !keyword.isBlank()) {
-                String searchPattern = "%" + keyword.trim().toLowerCase() + "%";
-                Predicate namePredicate = cb.like(cb.lower(root.get("fullName")), searchPattern);
-                Predicate emailPredicate = cb.like(cb.lower(root.get("email")), searchPattern);
-                Predicate phonePredicate = cb.like(root.get("phone"), searchPattern);
+            if (search != null && !search.isBlank()) {
+                String escaped = escapeLike(search.trim().toLowerCase());
+                String searchPattern = "%" + escaped + "%";
+                Predicate namePredicate = cb.like(cb.lower(root.get("fullName")), searchPattern, '\\');
+                Predicate emailPredicate = cb.like(cb.lower(root.get("email")), searchPattern, '\\');
+                Predicate phonePredicate = cb.like(root.get("phone"), searchPattern, '\\');
                 predicates.add(cb.or(namePredicate, emailPredicate, phonePredicate));
             }
 
-            if (role != null && !role.isBlank() && !"ALL".equalsIgnoreCase(role.trim())) {
-                try {
-                    Role roleEnum = Role.valueOf(role.trim().toUpperCase());
-                    predicates.add(cb.equal(root.get("role"), roleEnum));
-                } catch (IllegalArgumentException ignored) {
-                }
+            if (roleFilter != null) {
+                predicates.add(cb.equal(root.get("role"), roleFilter));
             }
 
-            if (status != null && !status.isBlank() && !"ALL".equalsIgnoreCase(status.trim())) {
-                try {
-                    UserStatus statusEnum = UserStatus.valueOf(status.trim().toUpperCase());
-                    predicates.add(cb.equal(root.get("status"), statusEnum));
-                } catch (IllegalArgumentException ignored) {
-                }
+            if (statusFilter != null) {
+                predicates.add(cb.equal(root.get("status"), statusFilter));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
@@ -95,22 +126,28 @@ public class AdminUsersService {
         Page<User> pageResult = userRepository.findAll(spec, pageable);
 
         List<AdminUserItemResponse> items = pageResult.getContent().stream()
-                .map(u -> AdminUserItemResponse.builder()
-                        .userId(u.getUserId())
-                        .fullName(u.getFullName())
-                        .email(u.getEmail())
-                        .phone(u.getPhone())
-                        .role(u.getRole())
-                        .status(u.getStatus())
-                        .lockReason(u.getLockReason())
-                        .createdAt(u.getCreatedAt())
-                        .build())
+                .map(u -> {
+                    long totalOrders = orderRepository.countByUser_UserId(u.getUserId());
+                    BigDecimal totalSpent = orderRepository.sumTotalSpentByUserId(u.getUserId());
+                    return AdminUserItemResponse.builder()
+                            .userId(u.getUserId())
+                            .fullName(u.getFullName())
+                            .email(u.getEmail())
+                            .phone(u.getPhone())
+                            .role(u.getRole())
+                            .status(u.getStatus())
+                            .lockReason(u.getLockReason())
+                            .totalOrders((int) totalOrders)
+                            .totalSpent(totalSpent)
+                            .createdAt(u.getCreatedAt())
+                            .build();
+                })
                 .toList();
 
         PaginationResponse pagination = PaginationResponse.builder()
                 .page(safePage)
-                .size(safeSize)
-                .totalItems(pageResult.getTotalElements())
+                .size(safeLimit)
+                .totalItems((int) pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
                 .build();
 
@@ -119,15 +156,14 @@ public class AdminUsersService {
                 .pagination(pagination)
                 .build();
     }
-
     /**
-     * API 9 (bảng tổng hợp): Xem chi tiết 1 người dùng kèm đơn hàng, địa chỉ, nhật ký
+     * API 2.9: Xem hồ sơ toàn diện của một tài khoản (Profile, Addresses, ShoppingSummary, RecentOrders)
      */
-    public AdminUserDetailResponse getUserDetail(String authHeader, Long userId) {
-        securityHelper.authenticateAdmin(authHeader);
+    public AdminUserDetailResponse getUserDetail(Long userId) {
+        securityHelper.authenticateAdmin();
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIST));
 
         List<UserAddressItemResponse> addresses = userAddressRepository
                 .findByUserIdOrderByIsDefaultDescAddressIdDesc(userId).stream()
@@ -140,8 +176,45 @@ public class AdminUsersService {
                         .build())
                 .toList();
 
-        List<AdminUserDetailResponse.UserOrderSummary> orders = orderRepository
-                .findByUserIdOrderByCreatedAtDesc(userId).stream()
+        List<Order> userOrders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId);
+
+        long totalOrders = userOrders.size();
+        long completedOrders = userOrders.stream().filter(o -> "COMPLETED".equalsIgnoreCase(o.getStatus())).count();
+        long cancelledOrders = userOrders.stream().filter(o -> "CANCELLED".equalsIgnoreCase(o.getStatus())).count();
+        BigDecimal lifetimeValue = orderRepository.sumLifetimeValueByUserId(userId);
+
+        AdminUserDetailResponse.ShoppingSummary shoppingSummary = AdminUserDetailResponse.ShoppingSummary.builder()
+                .totalOrders((int) totalOrders)
+                .completedOrders((int) completedOrders)
+                .cancelledOrders((int) cancelledOrders)
+                .lifetimeValue(lifetimeValue)
+                .build();
+
+        List<AdminUserDetailResponse.RecentOrderSummary> recentOrders = userOrders.stream()
+                .limit(DETAIL_HISTORY_LIMIT)
+                .map(o -> AdminUserDetailResponse.RecentOrderSummary.builder()
+                        .orderId(o.getOrderId())
+                        .orderCode(o.getOrderCode())
+                        .totalAmount(o.getFinalAmount())
+                        .status(o.getStatus())
+                        .createdAt(o.getCreatedAt())
+                        .build())
+                .toList();
+
+        AdminUserDetailResponse.UserProfileSummary profileSummary = AdminUserDetailResponse.UserProfileSummary.builder()
+                .userId(user.getUserId())
+                .fullName(user.getFullName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .lockReason(user.getLockReason())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+
+        List<AdminUserDetailResponse.UserOrderSummary> orders = userOrders.stream()
+                .limit(DETAIL_HISTORY_LIMIT)
                 .map(o -> AdminUserDetailResponse.UserOrderSummary.builder()
                         .orderId(o.getOrderId())
                         .orderCode(o.getOrderCode())
@@ -153,6 +226,7 @@ public class AdminUsersService {
 
         List<AdminUserDetailResponse.UserAuditLogSummary> auditLogs = auditLogRepository
                 .findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .limit(DETAIL_HISTORY_LIMIT)
                 .map(a -> AdminUserDetailResponse.UserAuditLogSummary.builder()
                         .logId(a.getLogId())
                         .action(a.getAction())
@@ -173,87 +247,99 @@ public class AdminUsersService {
                 .lockReason(user.getLockReason())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .profile(profileSummary)
                 .addresses(addresses)
+                .shoppingSummary(shoppingSummary)
+                .recentOrders(recentOrders)
                 .orders(orders)
                 .auditLogs(auditLogs)
                 .build();
     }
 
     /**
-     * API 10 (theo bảng) / API 9 (theo đặc tả): Cấp tài khoản nội bộ (STAFF hoặc ADMIN)
+     * API 2.10: Admin tạo tài khoản nội bộ trực tiếp cho nhân viên (STAFF) hoặc ADMIN
      */
     @Transactional
-    public void createInternalUser(String authHeader, CreateInternalUserRequest request) {
-        User adminUser = securityHelper.authenticateAdmin(authHeader);
+    public CreateInternalUserResponse createInternalUser(CreateInternalUserRequest request) {
+        User adminUser = securityHelper.authenticateAdmin();
 
-        String email = request.getEmail().trim();
+        String email = request.getEmail().trim().toLowerCase();
         String phone = request.getPhone().trim();
+        String rawPassword = request.getEffectivePassword();
 
-        if (userRepository.countByEmailOrPhone(email, phone) > 0) {
-            log.warn("Email [{}] hoặc SĐT [{}] đã tồn tại khi tạo user nội bộ", email, phone);
-            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+        if (rawPassword == null || rawPassword.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Mật khẩu không được để trống");
         }
 
-        if (request.getRole() != Role.STAFF && request.getRole() != Role.ADMIN) {
-            throw new AppException(ErrorCode.ROLE_INVALID, "Chỉ được phép tạo tài khoản vai trò STAFF hoặc ADMIN");
+        if (userRepository.countByEmailOrPhone(email, phone) > 0) {
+            throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
         }
 
         User newUser = User.builder()
                 .fullName(request.getFullName().trim())
                 .email(email)
                 .phone(phone)
-                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .passwordHash(passwordEncoder.encode(rawPassword))
                 .role(request.getRole())
                 .status(UserStatus.ACTIVE)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
                 .build();
 
-        newUser = userRepository.save(newUser);
+        User savedUser = userRepository.save(newUser);
 
         auditLogRepository.save(AuditLog.builder()
                 .user(adminUser)
                 .action("CREATE_INTERNAL_USER")
                 .entityName("User")
-                .entityId(newUser.getUserId())
-                .newValue(newUser.getRole().name())
+                .entityId(savedUser.getUserId())
+                .newValue(savedUser.getRole().name())
                 .createdAt(LocalDateTime.now())
                 .build());
+
+        return CreateInternalUserResponse.builder()
+                .userId(savedUser.getUserId())
+                .fullName(savedUser.getFullName())
+                .email(savedUser.getEmail())
+                .phone(savedUser.getPhone())
+                .role(savedUser.getRole().name())
+                .status(savedUser.getStatus().name())
+                .mustChangePassword(true)
+                .createdAt(savedUser.getCreatedAt())
+                .build();
     }
 
     /**
-     * API 12 (theo bảng) / API 10 (theo đặc tả): Khóa / Mở khóa tài khoản
+     * API 2.11: Khóa / Mở khóa tài khoản người dùng
      */
     @Transactional
-    public void updateUserStatus(String authHeader, Long userId, UpdateUserStatusRequest request) {
-        User adminUser = securityHelper.authenticateAdmin(authHeader);
+    public UpdateUserStatusResponse updateUserStatus( Long userId, UpdateUserStatusRequest request) {
+        User adminUser = securityHelper.authenticateAdmin();
 
         if (adminUser.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Quản trị viên không thể tự khóa tài khoản của chính mình.");
         }
 
         User targetUser = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIST));
 
         UserStatus oldStatus = targetUser.getStatus();
 
         if (request.getStatus() == UserStatus.LOCKED) {
+            // Chặn khóa Admin nếu là Admin duy nhất còn hoạt động
+            if (targetUser.getRole() == Role.ADMIN) {
+                long activeAdminCount = userRepository.countByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE);
+                if (activeAdminCount <= 1) {
+                    throw new AppException(ErrorCode.CANNOT_LOCK_LAST_ADMIN);
+                }
+            }
+
             if (request.getLockReason() == null || request.getLockReason().isBlank()) {
                 throw new AppException(ErrorCode.LOCK_REASON_REQUIRED);
             }
             targetUser.setStatus(UserStatus.LOCKED);
             targetUser.setLockReason(request.getLockReason().trim());
 
-            // Vô hiệu hóa token và xóa session Redis của user bị khóa
-            TokenPair tokenPair = tokenRedisService.getTokenPair(targetUser.getUserId());
-            if (tokenPair != null && tokenPair.getRefreshToken() != null) {
-                try {
-                    Date refreshExp = SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
-                    tokenRedisService.blacklistToken(targetUser.getUserId(), tokenPair, refreshExp);
-                } catch (Exception ignored) {
-                }
-            }
-            tokenRedisService.deleteToken(targetUser.getUserId());
+            // Thu hồi toàn bộ JWT Token đang hoạt động (Blacklist refresh token trong Redis)
+            revokeUserTokens(targetUser.getUserId());
         } else {
             targetUser.setStatus(UserStatus.ACTIVE);
             targetUser.setLockReason(null);
@@ -262,6 +348,7 @@ public class AdminUsersService {
         targetUser.setUpdatedAt(LocalDateTime.now());
         userRepository.save(targetUser);
 
+        // Ghi log vết kiểm toán vào Audit_Logs
         auditLogRepository.save(AuditLog.builder()
                 .user(adminUser)
                 .action(request.getStatus() == UserStatus.LOCKED ? "LOCK_USER" : "UNLOCK_USER")
@@ -271,27 +358,51 @@ public class AdminUsersService {
                 .newValue(request.getStatus().name())
                 .createdAt(LocalDateTime.now())
                 .build());
+
+        String operatorEmail = adminUser.getEmail() != null ? adminUser.getEmail() : adminUser.getFullName();
+
+        return UpdateUserStatusResponse.builder()
+                .userId(targetUser.getUserId())
+                .fullName(targetUser.getFullName())
+                .status(targetUser.getStatus().name())
+                .lockReason(targetUser.getLockReason())
+                .updatedBy(operatorEmail)
+                .updatedAt(targetUser.getUpdatedAt())
+                .build();
     }
 
     /**
-     * API 11: Thay đổi vai trò người dùng (CUSTOMER ↔ STAFF ↔ ADMIN)
+     * API 2.12: Thay đổi phân quyền RBAC của tài khoản người dùng
      */
     @Transactional
-    public void updateUserRole(String authHeader, Long userId, UpdateUserRoleRequest request) {
-        User adminUser = securityHelper.authenticateAdmin(authHeader);
+    public UpdateUserRoleResponse updateUserRole(Long userId, UpdateUserRoleRequest request) {
+        User adminUser = securityHelper.authenticateAdmin();
 
         if (adminUser.getUserId().equals(userId) && request.getRole() != Role.ADMIN) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Quản trị viên không thể tự hạ quyền của chính mình.");
         }
 
         User targetUser = userRepository.findById(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIST));
 
         Role oldRole = targetUser.getRole();
+
+        // Chặn hạ quyền Admin nếu là Admin duy nhất còn hoạt động
+        if (oldRole == Role.ADMIN && request.getRole() != Role.ADMIN) {
+            long activeAdminCount = userRepository.countByRoleAndStatus(Role.ADMIN, UserStatus.ACTIVE);
+            if (activeAdminCount <= 1) {
+                throw new AppException(ErrorCode.CANNOT_DEMOTE_LAST_ADMIN);
+            }
+        }
+
         targetUser.setRole(request.getRole());
         targetUser.setUpdatedAt(LocalDateTime.now());
         userRepository.save(targetUser);
 
+        // Thu hồi toàn bộ session đăng nhập cũ khi thay đổi vai trò để quyền mới có hiệu lực ngay
+        revokeUserTokens(targetUser.getUserId());
+
+        // Ghi nhận Audit_Logs với old_value và new_value
         auditLogRepository.save(AuditLog.builder()
                 .user(adminUser)
                 .action("UPDATE_ROLE")
@@ -299,7 +410,34 @@ public class AdminUsersService {
                 .entityId(targetUser.getUserId())
                 .oldValue(oldRole != null ? oldRole.name() : null)
                 .newValue(request.getRole().name())
-                .createdAt(LocalDateTime.now())
                 .build());
+
+        String operatorEmail = adminUser.getEmail() != null ? adminUser.getEmail() : adminUser.getFullName();
+
+        return UpdateUserRoleResponse.builder()
+                .userId(targetUser.getUserId())
+                .fullName(targetUser.getFullName())
+                .previousRole(oldRole != null ? oldRole.name() : null)
+                .newRole(request.getRole().name())
+                .reason(request.getReason())
+                .updatedBy(operatorEmail)
+                .build();
+    }
+
+    private void revokeUserTokens(Long userId) {
+        TokenPair tokenPair = tokenRedisService.getTokenPair(userId);
+        if (tokenPair != null && tokenPair.getRefreshToken() != null) {
+            try {
+                Date refreshExp = SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
+                tokenRedisService.blacklistToken(userId, tokenPair, refreshExp);
+            } catch (Exception ignored) {
+            }
+        }
+        tokenRedisService.deleteToken(userId);
+    }
+
+    private static String escapeLike(String input) {
+        if (input == null) return "";
+        return input.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 }
