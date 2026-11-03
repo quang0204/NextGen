@@ -15,9 +15,7 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "cart_items", uniqueConstraints = {
-        @UniqueConstraint(name = "uk_cart_variant", columnNames = {"cart_id", "variant_id"})
-})
+@Table(name = "cart_items")
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CartItem {

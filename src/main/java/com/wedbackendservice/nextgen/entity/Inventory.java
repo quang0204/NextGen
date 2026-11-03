@@ -26,7 +26,6 @@ public class Inventory {
     ProductVariant variant;
 
     @Builder.Default
-    @Column(nullable = false)
     Integer quantity = 0;
 
     @Builder.Default
