@@ -34,6 +34,13 @@ public class InventoryTransaction {
     String transactionType;
     String formCode;
     Integer quantity;
+
+    @Column(name = "qty_before")
+    Integer qtyBefore;
+
+    @Column(name = "qty_after")
+    Integer qtyAfter;
+
     String reason;
 
     @CreatedDate

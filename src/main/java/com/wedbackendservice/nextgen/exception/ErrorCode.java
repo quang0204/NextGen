@@ -60,7 +60,13 @@ public enum ErrorCode {
     DUPLICATE_PHONE(1047, "Số điện thoại đã được sử dụng bởi một tài khoản khác!", HttpStatus.CONFLICT),
     EMAIL_ALREADY_EXISTS(1046, "Địa chỉ Email đã được sử dụng bởi tài khoản khác!", HttpStatus.CONFLICT),
     PHONE_ALREADY_EXISTS(1047, "Số điện thoại đã được đăng ký bởi tài khoản khác!", HttpStatus.CONFLICT),
-    CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST);
+    CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST),
+
+    // Nhóm 5: Kho vận & Tồn kho biến thể
+    ERR_STOCK_ADJUST_INVALID(1050, "Số lượng kiểm kê thực tế không được nhỏ hơn số lượng đang giữ chỗ.", HttpStatus.BAD_REQUEST),
+    ERR_INVALID_DATE_FORMAT(1051, "Định dạng ngày lọc không hợp lệ.", HttpStatus.BAD_REQUEST),
+    ERR_VARIANT_NOT_FOUND(1052, "Không tìm thấy dữ liệu tồn kho cho biến thể.", HttpStatus.NOT_FOUND),
+    ERR_FORBIDDEN_ACCESS(1053, "Bạn không có quyền truy cập vào danh mục kho vận này!", HttpStatus.FORBIDDEN);
 
     int code;
     String message;
