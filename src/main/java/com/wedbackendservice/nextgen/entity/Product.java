@@ -32,7 +32,6 @@ public class Product {
     Brand brand;
 
     String productName;
-    @Column(unique = true)
     String slug;
     String description;
     BigDecimal basePrice;

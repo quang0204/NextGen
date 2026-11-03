@@ -24,8 +24,8 @@ public class Brand {
     Long brandId;
 
     String brandName;
-    String slug;
     String logoUrl;
+    String slug;
     String description;
 
     @Builder.Default

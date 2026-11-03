@@ -42,7 +42,7 @@ public class AdminUsersController {
                     sortBy != null ? sortBy : "createdAt",
                     sortDir != null ? sortDir : "desc");
         } else {
-            data = adminUsersService.getUsersList(page, effectiveLimit, effectiveSearch, role, status);
+            data = adminUsersService.getUsersList(page, effectiveLimit, effectiveSearch, role, status,sortBy,sortDir);
         }
 
         return ApiResponse.<AdminUserListResponse>builder()
