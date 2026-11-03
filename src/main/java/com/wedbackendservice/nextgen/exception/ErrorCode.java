@@ -60,7 +60,9 @@ public enum ErrorCode {
     DUPLICATE_PHONE(1047, "Số điện thoại đã được sử dụng bởi một tài khoản khác!", HttpStatus.CONFLICT),
     EMAIL_ALREADY_EXISTS(1046, "Địa chỉ Email đã được sử dụng bởi tài khoản khác!", HttpStatus.CONFLICT),
     PHONE_ALREADY_EXISTS(1047, "Số điện thoại đã được đăng ký bởi tài khoản khác!", HttpStatus.CONFLICT),
-    CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST);
+    CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST),
+    OTP_SEND_LIMIT_EXCEEDED(1049, "Bạn đã yêu cầu gửi mã OTP quá số lần cho phép. Vui lòng thử lại sau.", HttpStatus.TOO_MANY_REQUESTS),
+    OTP_ATTEMPTS_EXCEEDED(1050, "Bạn đã nhập sai mã OTP quá 5 lần. Phiên xác thực đã bị hủy để đảm bảo an toàn.", HttpStatus.BAD_REQUEST);
 
     int code;
     String message;

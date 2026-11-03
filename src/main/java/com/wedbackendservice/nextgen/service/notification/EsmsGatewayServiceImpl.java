@@ -53,12 +53,15 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
     @Value("${app.sms.esms.otp-template}")
     private String otpTemplate;
 
-    public EsmsGatewayServiceImpl(ObjectMapper objectMapper) {
+    public EsmsGatewayServiceImpl(
+            ObjectMapper objectMapper,
+            @Value("${app.sms.esms.connect-timeout-ms:5000}") int connectTimeoutMs,
+            @Value("${app.sms.esms.read-timeout-ms:10000}") int readTimeoutMs) {
         this.objectMapper = objectMapper;
 
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5_000);
-        factory.setReadTimeout(10_000);
+        factory.setConnectTimeout(java.time.Duration.ofMillis(connectTimeoutMs));
+        factory.setReadTimeout(java.time.Duration.ofMillis(readTimeoutMs));
         this.restClient = RestClient.builder().requestFactory(factory).build();
     }
 

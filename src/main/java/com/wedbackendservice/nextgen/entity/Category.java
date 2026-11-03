@@ -27,8 +27,8 @@ public class Category {
     Category parent;
 
     String categoryName;
-    String slug;
     String description;
+    String slug;
     String iconUrl;
 
     @Builder.Default

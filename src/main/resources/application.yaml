@@ -31,6 +31,9 @@ spring:
           auth: true
           starttls:
             enable: true
+          connectiontimeout: 5000
+          timeout: 10000
+          writetimeout: 5000
 jwt :
   signed-key: "prH5KZ52uBeUkW8r83pntzBa7vaIqeXc0U7Lmsw59Kopq8wwcIVDk01eAew1XS97cwh3M8a3PHH6CVwVJkv9dA"
   access-expiration: 1800
@@ -46,3 +49,5 @@ app:
       type: ${SMS_TYPE:2}
       sandbox: ${SMS_SANDBOX:0}
       otp-template: "${SMS_OTP_TEMPLATE:Ma xac nhan cua ban la %s}"
+      connect-timeout-ms: ${SMS_CONNECT_TIMEOUT_MS:5000}
+      read-timeout-ms: ${SMS_READ_TIMEOUT_MS:10000}
