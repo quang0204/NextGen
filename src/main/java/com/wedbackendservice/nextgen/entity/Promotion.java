@@ -33,6 +33,8 @@ public class Promotion {
     LocalDateTime startDate;
     LocalDateTime endDate;
 
+    String status;
+
     @Builder.Default
     Boolean isActive = true;
 
@@ -41,4 +43,44 @@ public class Promotion {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
+
+    public String getName() {
+        return promotionName != null ? promotionName : "";
+    }
+
+    public void setName(String name) {
+        this.promotionName = name;
+    }
+
+    public LocalDateTime getStartAt() {
+        return startDate;
+    }
+
+    public void setStartAt(LocalDateTime startAt) {
+        this.startDate = startAt;
+    }
+
+    public LocalDateTime getEndAt() {
+        return endDate;
+    }
+
+    public void setEndAt(LocalDateTime endAt) {
+        this.endDate = endAt;
+    }
+
+    public String resolveStatus(LocalDateTime now) {
+        if (status != null && !status.isBlank()) {
+            return status;
+        }
+        if (Boolean.FALSE.equals(isActive)) {
+            return "PAUSED";
+        }
+        if (startDate != null && now.isBefore(startDate)) {
+            return "UPCOMING";
+        }
+        if (endDate != null && now.isAfter(endDate)) {
+            return "ENDED";
+        }
+        return "ACTIVE";
+    }
 }

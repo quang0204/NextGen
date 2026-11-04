@@ -63,8 +63,29 @@ public enum ErrorCode {
     EMAIL_ALREADY_EXISTS(1046, "Địa chỉ Email đã được sử dụng bởi tài khoản khác!", HttpStatus.CONFLICT),
     PHONE_ALREADY_EXISTS(1047, "Số điện thoại đã được đăng ký bởi tài khoản khác!", HttpStatus.CONFLICT),
     CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST),
-    OTP_SEND_LIMIT_EXCEEDED(1049, "Bạn đã yêu cầu gửi mã OTP quá số lần cho phép. Vui lòng thử lại sau.", HttpStatus.TOO_MANY_REQUESTS),
-    OTP_ATTEMPTS_EXCEEDED(1050, "Bạn đã nhập sai mã OTP quá 5 lần. Phiên xác thực đã bị hủy để đảm bảo an toàn.", HttpStatus.BAD_REQUEST);
+
+    // Nhóm 5: Kho vận & Tồn kho biến thể
+    ERR_STOCK_ADJUST_INVALID(1050, "Số lượng kiểm kê thực tế không được nhỏ hơn số lượng đang giữ chỗ.", HttpStatus.BAD_REQUEST),
+    ERR_INVALID_DATE_FORMAT(1051, "Định dạng ngày lọc không hợp lệ.", HttpStatus.BAD_REQUEST),
+    ERR_VARIANT_NOT_FOUND(1052, "Không tìm thấy dữ liệu tồn kho cho biến thể.", HttpStatus.NOT_FOUND),
+    ERR_FORBIDDEN_ACCESS(1053, "Bạn không có quyền truy cập vào danh mục kho vận này!", HttpStatus.FORBIDDEN),
+
+    // Nhóm 6: Khuyến mãi & Voucher
+    ERR_PROMO_PRICE_INVALID(1060, "Giá khuyến mãi phải nhỏ hơn giá niêm yết của biến thể", HttpStatus.BAD_REQUEST),
+    ERR_PROMOTION_NOT_FOUND(1061, "Không tìm thấy chiến dịch khuyến mãi", HttpStatus.NOT_FOUND),
+    ERR_VOUCHER_NOT_FOUND(1062, "Không tìm thấy voucher", HttpStatus.NOT_FOUND),
+    ERR_VOUCHER_DUPLICATE_CODE(1063, "Mã voucher đã tồn tại trên hệ thống!", HttpStatus.CONFLICT),
+    ERR_VOUCHER_EXPIRED(1064, "Mã giảm giá đã hết hạn sử dụng", HttpStatus.BAD_REQUEST),
+    ERR_VOUCHER_LIMIT_REACHED(1065, "Mã giảm giá đã hết lượt sử dụng trong toàn hệ thống", HttpStatus.BAD_REQUEST),
+    ERR_VOUCHER_MIN_ORDER(1066, "Giá trị đơn hàng chưa đạt mức tối thiểu để áp dụng mã", HttpStatus.BAD_REQUEST),
+    ERR_FORBIDDEN(1067, "Tài khoản của bạn không có quyền quản trị phân hệ khuyến mãi!", HttpStatus.FORBIDDEN),
+
+    // Nhóm 8: Đơn hàng & Tiến trình xử lý
+    ERR_STOCK_INSUFFICIENT(1070, "Số lượng tồn kho khả dụng không đủ để đáp ứng đơn hàng.", HttpStatus.CONFLICT),
+    ERR_ORDER_CANNOT_CANCEL(1071, "Không thể hủy đơn hàng do đơn đã được xác nhận hoặc đang trong quá trình giao hàng!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_INVALID_STATE(1072, "Thao tác không hợp lệ đối với trạng thái hiện tại của đơn hàng!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_NOT_CONFIRMED(1073, "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND);
 
     int code;
     String message;

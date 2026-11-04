@@ -30,4 +30,12 @@ public class PromotionVariant {
     BigDecimal promotionalPrice;
     @CreatedDate
     LocalDateTime createdAt;
+
+    public BigDecimal getPromoPrice() {
+        return promotionalPrice;
+    }
+
+    public void setPromoPrice(BigDecimal promoPrice) {
+        this.promotionalPrice = promoPrice;
+    }
 }

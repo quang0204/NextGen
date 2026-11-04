@@ -18,6 +18,7 @@ public class ApiResponse<T> {
     Integer statusCode;
     String message;
     String error;
+    String errorCode;
     List<ValidationErrorDetail> errors;
     T data;
     String timestamp;

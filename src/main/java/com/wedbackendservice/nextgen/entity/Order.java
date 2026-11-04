@@ -36,6 +36,7 @@ public class Order {
     BigDecimal shippingFee;
     BigDecimal finalAmount;
     String status;
+    String paymentMethod;
     String paymentStatus;
     String shippingAddress;
     String recipientName;
@@ -50,4 +51,16 @@ public class Order {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
+
+    public BigDecimal getSubtotal() {
+        return totalAmount != null ? totalAmount : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getVoucherDiscount() {
+        return discountAmount != null ? discountAmount : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getFinalTotal() {
+        return finalAmount != null ? finalAmount : (totalAmount != null ? totalAmount : BigDecimal.ZERO);
+    }
 }

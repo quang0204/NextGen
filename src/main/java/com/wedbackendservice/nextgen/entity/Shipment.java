@@ -7,6 +7,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -38,6 +39,18 @@ public class Shipment {
     String failReason;
     String notes;
 
+    @Column(name = "recipient_name")
+    String recipientName;
+
+    @Column(name = "recipient_phone")
+    String recipientPhone;
+
+    @Column(name = "shipping_address")
+    String shippingAddress;
+
+    @Column(name = "cod_amount")
+    BigDecimal codAmount;
+
     @Version
     Long version;
 
@@ -46,4 +59,28 @@ public class Shipment {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
+
+    public String getTrackingCode() {
+        return trackingNumber;
+    }
+
+    public void setTrackingCode(String code) {
+        this.trackingNumber = code;
+    }
+
+    public String getCarrier() {
+        return carrierName;
+    }
+
+    public void setCarrier(String carrier) {
+        this.carrierName = carrier;
+    }
+
+    public String getStatus() {
+        return shippingStatus;
+    }
+
+    public void setStatus(String status) {
+        this.shippingStatus = status;
+    }
 }

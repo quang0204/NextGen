@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
 import java.nio.file.AccessDeniedException;
+import java.time.Instant;
 
 @ControllerAdvice
 @Slf4j
@@ -25,6 +26,9 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(errorCode.getMessage())
+                        .error(errorCode.name())
+                        .errorCode(errorCode.name())
+                        .timestamp(Instant.now().toString())
                         .build());
     }
 
@@ -40,6 +44,8 @@ public class GlobalExceptionHandler {
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(message)
                         .error(errorCode.name())
+                        .errorCode(errorCode.name())
+                        .timestamp(Instant.now().toString())
                         .build());
     }
 
@@ -51,6 +57,9 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(errorCode.getMessage())
+                        .error(errorCode.name())
+                        .errorCode(errorCode.name())
+                        .timestamp(Instant.now().toString())
                         .build());
     }
 
@@ -68,7 +77,10 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .statusCode(HttpStatus.BAD_REQUEST.value())
                         .message("Dữ liệu đầu vào không hợp lệ!")
+                        .error("ERR_INVALID_PARAM")
+                        .errorCode("ERR_INVALID_PARAM")
                         .errors(errorDetails)
+                        .timestamp(Instant.now().toString())
                         .build());
     }
 
@@ -79,6 +91,9 @@ public class GlobalExceptionHandler {
                         .success(false)
                         .statusCode(HttpStatus.BAD_REQUEST.value())
                         .message("Dữ liệu yêu cầu không hợp lệ.")
+                        .error("INVALID_REQUEST")
+                        .errorCode("INVALID_REQUEST")
+                        .timestamp(Instant.now().toString())
                         .build());
     }
     @ExceptionHandler(AuthenticationException.class)

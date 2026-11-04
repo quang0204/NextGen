@@ -6,6 +6,7 @@ import com.wedbackendservice.nextgen.enums.UserStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.UserRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
@@ -28,13 +29,49 @@ public class SecurityHelper {
     protected String signedKey;
 
     private final UserRepository userRepository;
+    private final TokenRedisService tokenRedisService;
+    private final HttpServletRequest httpServletRequest;
 
     public User getCurrentUser() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
+        Long userId = null;
+
+        // 1. Trích xuất và xác thực Bearer token từ Authorization Header nếu có
+        if (httpServletRequest != null) {
+            String authHeader = httpServletRequest.getHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith(BEARER_PREFIX)) {
+                String token = authHeader.substring(BEARER_PREFIX.length()).trim();
+                try {
+                    SignedJWT signedJWT = SignedJWT.parse(token);
+                    JWSVerifier verifier = new MACVerifier(signedKey.getBytes(StandardCharsets.UTF_8));
+                    if (signedJWT.verify(verifier)) {
+                        JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+                        Date exp = claims.getExpirationTime();
+                        if (exp != null && exp.after(new Date())) {
+                            Long parsedId = Long.valueOf(claims.getSubject());
+                            if (tokenRedisService == null || !tokenRedisService.isTokenBlacklisted(parsedId, token)) {
+                                userId = parsedId;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Parse JWT từ Authorization header thất bại: {}", e.getMessage());
+                }
+            }
+        }
+
+        // 2. Nếu chưa có từ header, kiểm tra SecurityContextHolder
+        if (userId == null) {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication != null && !"anonymousUser".equals(authentication.getName())) {
+                try {
+                    userId = Long.valueOf(authentication.getName());
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        if (userId == null) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        Long userId = Long.valueOf(authentication.getName());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
@@ -45,6 +82,7 @@ public class SecurityHelper {
 
         return user;
     }
+
     public Authentication getAuthentication() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null) {
