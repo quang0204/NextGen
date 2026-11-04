@@ -39,6 +39,8 @@ jwt :
   access-expiration: 1800
   refresh-expiration: 1800
 app:
+  cors:
+    allowed-origins: "http://localhost:8080,http://localhost:3000"
   sms:
     provider: esms
     esms:

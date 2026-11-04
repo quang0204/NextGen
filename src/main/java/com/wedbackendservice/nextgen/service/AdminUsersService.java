@@ -4,6 +4,7 @@ import com.nimbusds.jwt.SignedJWT;
 import com.wedbackendservice.nextgen.dto.request.admin.CreateInternalUserRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserRoleRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserStatusRequest;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.admin.*;
 import com.wedbackendservice.nextgen.dto.response.user.UserAddressItemResponse;
 import com.wedbackendservice.nextgen.dto.session.TokenPair;
@@ -14,11 +15,13 @@ import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.enums.UserStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.UsersMapper;
 import com.wedbackendservice.nextgen.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.repository.OrderRepository;
 import com.wedbackendservice.nextgen.repository.UserAddressRepository;
 import com.wedbackendservice.nextgen.repository.UserRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
+import com.wedbackendservice.nextgen.util.PaginationUtil;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,17 +36,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AdminUsersService {
 
-    private static final int MAX_PAGE_SIZE = 100;
-    private static final int DEFAULT_PAGE_SIZE = 15;
     private static final int DETAIL_HISTORY_LIMIT = 20;
 
     private final SecurityHelper securityHelper;
@@ -53,17 +54,15 @@ public class AdminUsersService {
     private final AuditLogRepository auditLogRepository;
     private final TokenRedisService tokenRedisService;
     private final PasswordEncoder passwordEncoder;
+    private final UsersMapper  usersMapper;
 
     /**
      * API 2.8: Danh sách người dùng (Tìm kiếm, phân trang, lọc theo Role & Status)
      */
-    public AdminUserListResponse getUsersList(int page, int limit,
-                                             String search, String role, String status,
-                                             String sortBy, String sortDir) {
-        securityHelper.authenticateAdmin();
-
-        int safePage = Math.max(page, 1);
-        int safeLimit = limit > 0 ? Math.min(limit, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+    public PageResponse<AdminUserItemResponse> getUsersList(int page, int limit,
+                                                            String search, String role, String status,
+                                                            String sortBy, String sortDir) {
+        log.debug("Get users list: page={}, limit={}, search={}, role={}, status={}", page, limit, search, role, status);
 
         String sortProperty = "createdAt";
         if (sortBy != null && !sortBy.isBlank()) {
@@ -74,7 +73,7 @@ public class AdminUsersService {
             }
         }
         Sort.Direction direction = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
-        Pageable pageable = PageRequest.of(safePage - 1, safeLimit, Sort.by(direction, sortProperty));
+        Pageable pageable = PaginationUtil.createPageable(page, limit, Sort.by(direction, sortProperty));
 
         // Validate role input if provided
         final Role roleFilter;
@@ -124,44 +123,38 @@ public class AdminUsersService {
         };
 
         Page<User> pageResult = userRepository.findAll(spec, pageable);
+        List<User> users = pageResult.getContent();
+        if (users.isEmpty()) {
+            return PageResponse.from(pageResult, u -> null);
+        }
 
-        List<AdminUserItemResponse> items = pageResult.getContent().stream()
-                .map(u -> {
-                    long totalOrders = orderRepository.countByUser_UserId(u.getUserId());
-                    BigDecimal totalSpent = orderRepository.sumTotalSpentByUserId(u.getUserId());
-                    return AdminUserItemResponse.builder()
-                            .userId(u.getUserId())
-                            .fullName(u.getFullName())
-                            .email(u.getEmail())
-                            .phone(u.getPhone())
-                            .role(u.getRole())
-                            .status(u.getStatus())
-                            .lockReason(u.getLockReason())
-                            .totalOrders((int) totalOrders)
-                            .totalSpent(totalSpent)
-                            .createdAt(u.getCreatedAt())
-                            .build();
-                })
-                .toList();
+        List<Long> userIds = users.stream().map(User::getUserId).toList();
+        Map<Long, Object[]> stats = orderRepository.statsByUserIds(userIds).stream()
+                .collect(Collectors.toMap(r -> (Long) r[0], r -> r, (a, b) -> a));
 
-        PaginationResponse pagination = PaginationResponse.builder()
-                .page(safePage)
-                .size(safeLimit)
-                .totalItems((int) pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .build();
+        Page<AdminUserItemResponse> mapped = pageResult.map(u -> {
+            Object[] s = stats.get(u.getUserId());
+            return AdminUserItemResponse.builder()
+                    .userId(u.getUserId())
+                    .fullName(u.getFullName())
+                    .email(u.getEmail())
+                    .phone(u.getPhone())
+                    .role(u.getRole())
+                    .status(u.getStatus())
+                    .lockReason(u.getLockReason())
+                    .createdAt(u.getCreatedAt())
+                    .totalOrders(s == null ? 0 : ((Number) s[1]).intValue())
+                    .totalSpent(s == null ? BigDecimal.ZERO : (BigDecimal) s[2])
+                    .build();
+        });
 
-        return AdminUserListResponse.builder()
-                .items(items)
-                .pagination(pagination)
-                .build();
+        return PageResponse.from(mapped, Function.identity());
     }
+
     /**
      * API 2.9: Xem hồ sơ toàn diện của một tài khoản (Profile, Addresses, ShoppingSummary, RecentOrders)
      */
     public AdminUserDetailResponse getUserDetail(Long userId) {
-        securityHelper.authenticateAdmin();
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIST));
 
@@ -176,22 +169,22 @@ public class AdminUsersService {
                         .build())
                 .toList();
 
-        List<Order> userOrders = orderRepository.findByUserIdOrderByCreatedAtDesc(userId);
-
-        long totalOrders = userOrders.size();
-        long completedOrders = userOrders.stream().filter(o -> "COMPLETED".equalsIgnoreCase(o.getStatus())).count();
-        long cancelledOrders = userOrders.stream().filter(o -> "CANCELLED".equalsIgnoreCase(o.getStatus())).count();
+        long totalOrders = orderRepository.countByUser_UserId(userId);
+        long completedOrders = orderRepository.countByUser_UserIdAndStatus(userId, "COMPLETED");
+        long cancelledOrders = orderRepository.countByUser_UserIdAndStatus(userId, "CANCELLED");
         BigDecimal lifetimeValue = orderRepository.sumLifetimeValueByUserId(userId);
 
         AdminUserDetailResponse.ShoppingSummary shoppingSummary = AdminUserDetailResponse.ShoppingSummary.builder()
                 .totalOrders((int) totalOrders)
                 .completedOrders((int) completedOrders)
                 .cancelledOrders((int) cancelledOrders)
-                .lifetimeValue(lifetimeValue)
+                .lifetimeValue(lifetimeValue != null ? lifetimeValue : BigDecimal.ZERO)
                 .build();
 
+        List<Order> userOrders = orderRepository.findByUserIdOrderByCreatedAtDesc(
+                userId, PageRequest.of(0, DETAIL_HISTORY_LIMIT));
+
         List<AdminUserDetailResponse.RecentOrderSummary> recentOrders = userOrders.stream()
-                .limit(DETAIL_HISTORY_LIMIT)
                 .map(o -> AdminUserDetailResponse.RecentOrderSummary.builder()
                         .orderId(o.getOrderId())
                         .orderCode(o.getOrderCode())
@@ -214,7 +207,6 @@ public class AdminUsersService {
                 .build();
 
         List<AdminUserDetailResponse.UserOrderSummary> orders = userOrders.stream()
-                .limit(DETAIL_HISTORY_LIMIT)
                 .map(o -> AdminUserDetailResponse.UserOrderSummary.builder()
                         .orderId(o.getOrderId())
                         .orderCode(o.getOrderCode())
@@ -225,8 +217,7 @@ public class AdminUsersService {
                 .toList();
 
         List<AdminUserDetailResponse.UserAuditLogSummary> auditLogs = auditLogRepository
-                .findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .limit(DETAIL_HISTORY_LIMIT)
+                .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, DETAIL_HISTORY_LIMIT)).stream()
                 .map(a -> AdminUserDetailResponse.UserAuditLogSummary.builder()
                         .logId(a.getLogId())
                         .action(a.getAction())
@@ -261,11 +252,10 @@ public class AdminUsersService {
      */
     @Transactional
     public CreateInternalUserResponse createInternalUser(CreateInternalUserRequest request) {
-        User adminUser = securityHelper.authenticateAdmin();
-
+        User adminUser = securityHelper.getCurrentUser();
         String email = request.getEmail().trim().toLowerCase();
         String phone = request.getPhone().trim();
-        String rawPassword = request.getEffectivePassword();
+        String rawPassword = request.getPassword();
 
         if (rawPassword == null || rawPassword.isBlank()) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Mật khẩu không được để trống");
@@ -292,28 +282,18 @@ public class AdminUsersService {
                 .entityName("User")
                 .entityId(savedUser.getUserId())
                 .newValue(savedUser.getRole().name())
-                .createdAt(LocalDateTime.now())
                 .build());
-
-        return CreateInternalUserResponse.builder()
-                .userId(savedUser.getUserId())
-                .fullName(savedUser.getFullName())
-                .email(savedUser.getEmail())
-                .phone(savedUser.getPhone())
-                .role(savedUser.getRole().name())
-                .status(savedUser.getStatus().name())
-                .mustChangePassword(true)
-                .createdAt(savedUser.getCreatedAt())
-                .build();
+        CreateInternalUserResponse response= usersMapper.toCreateInternalUserResponse(savedUser);
+        response.setMustChangePassword(true);
+        return response;
     }
 
     /**
      * API 2.11: Khóa / Mở khóa tài khoản người dùng
      */
     @Transactional
-    public UpdateUserStatusResponse updateUserStatus( Long userId, UpdateUserStatusRequest request) {
+    public UpdateUserStatusResponse updateUserStatus(Long userId, UpdateUserStatusRequest request) {
         User adminUser = securityHelper.authenticateAdmin();
-
         if (adminUser.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Quản trị viên không thể tự khóa tài khoản của chính mình.");
         }
@@ -356,7 +336,6 @@ public class AdminUsersService {
                 .entityId(targetUser.getUserId())
                 .oldValue(oldStatus != null ? oldStatus.name() : null)
                 .newValue(request.getStatus().name())
-                .createdAt(LocalDateTime.now())
                 .build());
 
         String operatorEmail = adminUser.getEmail() != null ? adminUser.getEmail() : adminUser.getFullName();
@@ -367,7 +346,6 @@ public class AdminUsersService {
                 .status(targetUser.getStatus().name())
                 .lockReason(targetUser.getLockReason())
                 .updatedBy(operatorEmail)
-                .updatedAt(targetUser.getUpdatedAt())
                 .build();
     }
 
@@ -377,7 +355,6 @@ public class AdminUsersService {
     @Transactional
     public UpdateUserRoleResponse updateUserRole(Long userId, UpdateUserRoleRequest request) {
         User adminUser = securityHelper.authenticateAdmin();
-
         if (adminUser.getUserId().equals(userId) && request.getRole() != Role.ADMIN) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Quản trị viên không thể tự hạ quyền của chính mình.");
         }
@@ -396,7 +373,6 @@ public class AdminUsersService {
         }
 
         targetUser.setRole(request.getRole());
-        targetUser.setUpdatedAt(LocalDateTime.now());
         userRepository.save(targetUser);
 
         // Thu hồi toàn bộ session đăng nhập cũ khi thay đổi vai trò để quyền mới có hiệu lực ngay

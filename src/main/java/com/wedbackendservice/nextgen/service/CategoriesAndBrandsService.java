@@ -305,7 +305,7 @@ public class CategoriesAndBrandsService {
     /**
      * API 3.7: Chi tiết thương hiệu và logo (Public, chặn ẩn với khách vãng lai)
      */
-    public BrandResponse getBrandById(String authHeader, Long id) {
+    public BrandResponse getBrandById(Long id) {
         Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
 
@@ -316,11 +316,6 @@ public class CategoriesAndBrandsService {
         int totalProducts = (int) productRepository.countByBrand_BrandId(id);
         return toBrandResponse(brand, totalProducts);
     }
-
-    public BrandResponse getBrandById(Long id) {
-        return getBrandById(null, id);
-    }
-
     /**
      * API 3.8: Thêm mới thương hiệu đối tác (STAFF / ADMIN)
      */

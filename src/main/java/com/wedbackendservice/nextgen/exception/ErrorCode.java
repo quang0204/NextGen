@@ -46,6 +46,8 @@ public enum ErrorCode {
     SHIPMENT_NOT_FOUND(1028, "Vận đơn không tồn tại.", HttpStatus.NOT_FOUND),
     ORDER_NOT_FOUND(1029, "Đơn hàng không tồn tại.", HttpStatus.NOT_FOUND),
     STATUS_INVALID(1034, "Trạng thái người dùng không hợp lệ.", HttpStatus.BAD_REQUEST),
+    INVALID_PAGE_NUMBER(1035, "Số trang phải lớn hơn hoặc bằng 1.", HttpStatus.BAD_REQUEST),
+    INVALID_PAGE_SIZE(1036, "Kích thước trang không hợp lệ.", HttpStatus.BAD_REQUEST),
     ADDRESS_LIMIT_EXCEEDED(1035, "Số lượng địa chỉ đã đạt giới hạn tối đa (tối đa 10 địa chỉ).", HttpStatus.BAD_REQUEST),
     CANNOT_UNSET_DEFAULT_ADDRESS(1036, "Không thể hủy mặc định. Vui lòng chọn một địa chỉ khác làm mặc định thay thế.", HttpStatus.BAD_REQUEST),
     CANNOT_DEMOTE_LAST_ADMIN(1037, "Không thể hạ quyền Admin duy nhất còn hoạt động trong hệ thống.", HttpStatus.BAD_REQUEST),

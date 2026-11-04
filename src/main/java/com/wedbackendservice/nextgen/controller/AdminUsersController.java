@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.controller;
 
 import com.wedbackendservice.nextgen.dto.response.ApiResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.admin.*;
 import com.wedbackendservice.nextgen.dto.request.admin.CreateInternalUserRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserRoleRequest;
@@ -22,7 +23,7 @@ public class AdminUsersController {
      * API 2.8: Quản lý danh sách người dùng trong hệ thống (lọc RBAC, trạng thái, tìm kiếm, phân trang)
      */
     @GetMapping
-    public ApiResponse<AdminUserListResponse> getUsersList(
+    public ApiResponse<PageResponse<AdminUserItemResponse>> getUsersList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(name = "limit", required = false) Integer limit,
             @RequestParam(name = "size", required = false) Integer size,
@@ -30,22 +31,16 @@ public class AdminUsersController {
             @RequestParam(name = "keyword", required = false) String keyword,
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false) String sortDir) {
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
 
-        int effectiveLimit = limit != null ? limit : (size != null ? size : 10);
+        int effectiveLimit = limit != null ? limit : (size != null ? size : 15);
         String effectiveSearch = search != null ? search : keyword;
 
-        AdminUserListResponse data;
-        if (sortBy != null || sortDir != null) {
-            data = adminUsersService.getUsersList(page, effectiveLimit, effectiveSearch, role, status,
-                    sortBy != null ? sortBy : "createdAt",
-                    sortDir != null ? sortDir : "desc");
-        } else {
-            data = adminUsersService.getUsersList(page, effectiveLimit, effectiveSearch, role, status,sortBy,sortDir);
-        }
+        PageResponse<AdminUserItemResponse> data = adminUsersService.getUsersList(
+                page, effectiveLimit, effectiveSearch, role, status, sortBy, sortDir);
 
-        return ApiResponse.<AdminUserListResponse>builder()
+        return ApiResponse.<PageResponse<AdminUserItemResponse>>builder()
                 .success(true)
                 .statusCode(200)
                 .message("Lấy danh sách người dùng thành công!")

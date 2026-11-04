@@ -1,7 +1,8 @@
 package com.wedbackendservice.nextgen.controller;
 
 import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.shipment.AdminShipmentListResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
+import com.wedbackendservice.nextgen.dto.response.shipment.AdminShipmentItemResponse;
 import com.wedbackendservice.nextgen.dto.response.shipment.ShipmentFailDeliveryResponse;
 import com.wedbackendservice.nextgen.dto.response.shipment.ShipmentStatusSyncResponse;
 import com.wedbackendservice.nextgen.dto.request.shipment.ShipmentFailDeliveryRequest;
@@ -23,13 +24,13 @@ public class AdminShipmentsController {
      * API 9.2: Quản trị danh sách vận đơn (Admin Portal) (STAFF / ADMIN)
      */
     @GetMapping
-    public ApiResponse<AdminShipmentListResponse> getAdminShipments(
+    public ApiResponse<PageResponse<AdminShipmentItemResponse>> getAdminShipments(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String carrier,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String search) {
-        return ApiResponse.<AdminShipmentListResponse>builder()
+        return ApiResponse.<PageResponse<AdminShipmentItemResponse>>builder()
                 .success(true)
                 .statusCode(200)
                 .data(shipmentsService.getAdminShipments(page, size, carrier, status, search))

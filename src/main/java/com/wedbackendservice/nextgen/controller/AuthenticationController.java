@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.service.AuthenticationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.text.ParseException;
@@ -26,6 +27,7 @@ public class AuthenticationController {
     /**
      * API 1: Khởi tạo đăng nhập (Bước 1 Đăng nhập)
      */
+
     @PostMapping("/login-initiate")
     public ApiResponse<LoginInitiateResponse> loginInitiate(
             @Valid @RequestBody LoginInitiateRequest request) {
@@ -167,7 +169,7 @@ public class AuthenticationController {
      * API 11: Đăng xuất
      */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout() throws ParseException, JOSEException {
+    public ApiResponse<Void> logout() throws ParseException{
         authenticationService.logout();
         return ApiResponse.<Void>builder()
                 .success(true)
@@ -191,7 +193,6 @@ public class AuthenticationController {
     /**
      * API 13: Đổi mật khẩu
      */
-
     @PostMapping("/change-password")
     public ApiResponse<Void> changePassword(
             @Valid @RequestBody ChangePasswordRequest request)  {

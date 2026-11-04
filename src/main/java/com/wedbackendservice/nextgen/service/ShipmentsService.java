@@ -2,7 +2,7 @@ package com.wedbackendservice.nextgen.service;
 
 import com.wedbackendservice.nextgen.dto.request.shipment.ShipmentFailDeliveryRequest;
 import com.wedbackendservice.nextgen.dto.request.shipment.ShipmentStatusUpdateRequest;
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.shipment.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
@@ -10,11 +10,13 @@ import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
+import com.wedbackendservice.nextgen.util.PaginationUtil;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -96,11 +98,12 @@ public class ShipmentsService {
     /**
      * API 9.2: Quản trị danh sách vận đơn (Admin Portal) (STAFF / ADMIN)
      */
-    public AdminShipmentListResponse getAdminShipments(int page, int size, String carrier, String status, String search) {
+    public PageResponse<AdminShipmentItemResponse> getAdminShipments(int page, int size, String carrier, String status, String search) {
         securityHelper.authenticateStaffOrAdmin();
 
-        int pageIndex = Math.max(0, page - 1);
-        int pageSize = size > 0 ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        log.debug("Get admin shipments: page={}, size={}, carrier={}, status={}, search={}", page, size, carrier, status, search);
+
+        Pageable pageable = PaginationUtil.createPageable(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Specification<Shipment> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -128,24 +131,30 @@ public class ShipmentsService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Page<Shipment> shipmentPage = shipmentRepository.findAll(
-                spec, PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+        Page<Shipment> shipmentPage = shipmentRepository.findAll(spec, pageable);
 
-        List<AdminShipmentItemResponse> items = shipmentPage.getContent().stream()
-                .map(this::mapToAdminShipmentItem)
+        if (shipmentPage.isEmpty()) {
+            return PageResponse.from(shipmentPage, s -> null);
+        }
+
+        List<Long> orderIds = shipmentPage.getContent().stream()
+                .map(Shipment::getOrder)
+                .filter(Objects::nonNull)
+                .map(Order::getOrderId)
+                .distinct()
                 .toList();
 
-        PaginationResponse pagination = PaginationResponse.builder()
-                .page(page)
-                .size(pageSize)
-                .totalItems((int) shipmentPage.getTotalElements())
-                .totalPages(shipmentPage.getTotalPages())
-                .build();
+        Map<Long, String> paymentMethodMap = new HashMap<>();
+        if (!orderIds.isEmpty()) {
+            List<Payment> payments = paymentRepository.findByOrderIdsOrderByCreatedAtDesc(orderIds);
+            for (Payment p : payments) {
+                if (p.getOrder() != null && p.getOrder().getOrderId() != null) {
+                    paymentMethodMap.putIfAbsent(p.getOrder().getOrderId(), p.getPaymentMethod());
+                }
+            }
+        }
 
-        return AdminShipmentListResponse.builder()
-                .items(items)
-                .pagination(pagination)
-                .build();
+        return PageResponse.from(shipmentPage, s -> mapToAdminShipmentItem(s, paymentMethodMap));
     }
 
     /**
@@ -359,12 +368,11 @@ public class ShipmentsService {
     // PRIVATE HELPERS
     // =========================================================================
 
-    private AdminShipmentItemResponse mapToAdminShipmentItem(Shipment shipment) {
+    private AdminShipmentItemResponse mapToAdminShipmentItem(Shipment shipment, Map<Long, String> paymentMethodMap) {
         Order order = shipment.getOrder();
         String paymentMethod = "COD";
-        if (order != null) {
-            Optional<Payment> payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
-            paymentMethod = payment.map(Payment::getPaymentMethod).orElse("COD");
+        if (order != null && paymentMethodMap != null) {
+            paymentMethod = paymentMethodMap.getOrDefault(order.getOrderId(), "COD");
         }
 
         String updatedByName = shipment.getUpdatedBy() != null
@@ -384,6 +392,8 @@ public class ShipmentsService {
                 .shippingAddress(order != null ? order.getShippingAddress() : null)
                 .orderTotalAmount(order != null ? order.getFinalAmount() : null)
                 .paymentMethod(paymentMethod)
+                .updatedBy(updatedByName)
+                .updatedAt(shipment.getUpdatedAt())
                 .build();
     }
 

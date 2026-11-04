@@ -1,9 +1,7 @@
 package com.wedbackendservice.nextgen.service;
 
 import com.wedbackendservice.nextgen.dto.response.user.AddressResponse;
-
 import com.wedbackendservice.nextgen.dto.response.user.UserMeResponse;
-
 import com.wedbackendservice.nextgen.dto.request.auth.RefreshTokenRequest;
 
 import com.nimbusds.jose.*;
@@ -35,7 +33,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -87,7 +84,7 @@ public class AuthenticationService {
     private final OtpNotificationService otpNotificationService;
     private final PasswordEncoder passwordEncoder;
     private final UsersMapper usersMapper;
-    private  final SecurityHelper securityHelper;
+    private final SecurityHelper securityHelper;
 
     // =====================================================================
     // LOGIN
@@ -104,7 +101,6 @@ public class AuthenticationService {
 
         User user = userRepository.findByIdentity(identity)
                 .orElseThrow(() -> failedLogin(identity));
-
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw failedLogin(identity);
@@ -191,9 +187,13 @@ public class AuthenticationService {
         assertCooldownPassed(sessionData.getCreatedAt(), sessionToken);
 
         String newOtp = generateOtp();
-        sessionData.setOtpCode(newOtp);
-        sessionData.setCreatedAt(LocalDateTime.now());
-        tokenRedisService.saveOtpSession(sessionToken, sessionData, OTP_EXPIRE_SECONDS);
+        tokenRedisService.saveOtpSession(sessionToken, OtpSessionData.builder()
+                .userId(sessionData.getUserId())
+                .channel(sessionData.getChannel())
+                .target(sessionData.getTarget())
+                .otpCode(newOtp)
+                .createdAt(LocalDateTime.now())
+                .build(), OTP_EXPIRE_SECONDS);
         recordOtpSendAttempt(clientIp, sessionData.getTarget());
 
         otpNotificationService.sendOtp(sessionData.getChannel(), sessionData.getTarget(), newOtp);
@@ -267,7 +267,6 @@ public class AuthenticationService {
                     "Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
         }
 
-        // Kiểm tra lại: trong 5 phút chờ OTP có thể đã có người khác đăng ký trùng
         assertUserNotExists(sessionData.getEmail(), sessionData.getPhone());
         tokenRedisService.clearFailedOtpAttempts(registrationToken);
         tokenRedisService.deleteRegisterSession(registrationToken);
@@ -310,9 +309,14 @@ public class AuthenticationService {
         assertCooldownPassed(sessionData.getCreatedAt(), registrationToken);
 
         String newOtp = generateOtp();
-        sessionData.setOtpCode(newOtp);
-        sessionData.setCreatedAt(LocalDateTime.now());
-        tokenRedisService.saveRegisterSession(registrationToken, sessionData, REGISTRATION_EXPIRE_SECONDS);
+        tokenRedisService.saveRegisterSession(registrationToken, RegisterSessionData.builder()
+                .fullName(sessionData.getFullName())
+                .phone(sessionData.getPhone())
+                .email(sessionData.getEmail())
+                .passwordHash(sessionData.getPasswordHash())
+                .otpCode(newOtp)
+                .createdAt(LocalDateTime.now())
+                .build(), REGISTRATION_EXPIRE_SECONDS);
         recordOtpSendAttempt(clientIp, sessionData.getEmail());
 
         otpNotificationService.sendOtp(OtpChannel.EMAIL, sessionData.getEmail(), newOtp);
@@ -395,7 +399,6 @@ public class AuthenticationService {
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        // Đổi mật khẩu -> vô hiệu hóa phiên đăng nhập hiện có
         tokenRedisService.deleteToken(user.getUserId());
 
         auditLogRepository.save(AuditLog.builder()
@@ -424,9 +427,14 @@ public class AuthenticationService {
         assertCooldownPassed(sessionData.getCreatedAt(), resetToken);
 
         String newOtp = generateOtp();
-        sessionData.setOtpCode(newOtp);
-        sessionData.setCreatedAt(LocalDateTime.now());
-        tokenRedisService.saveResetPasswordSession(resetToken, sessionData, REGISTRATION_EXPIRE_SECONDS);
+        tokenRedisService.saveResetPasswordSession(resetToken, ResetPasswordSessionData.builder()
+                .userId(sessionData.getUserId())
+                .identity(sessionData.getIdentity())
+                .channel(sessionData.getChannel())
+                .target(sessionData.getTarget())
+                .otpCode(newOtp)
+                .createdAt(LocalDateTime.now())
+                .build(), REGISTRATION_EXPIRE_SECONDS);
         recordOtpSendAttempt(clientIp, sessionData.getTarget());
 
         otpNotificationService.sendOtp(sessionData.getChannel(), sessionData.getTarget(), newOtp);
@@ -440,10 +448,7 @@ public class AuthenticationService {
     // TOKEN / SESSION
     // =====================================================================
 
-    /**
-     * API 10: Cấp lại Access Token.
-     * Giữ nguyên refresh token hiện tại (không xoay vòng) để client không bị mất refresh token hợp lệ.
-     */
+    /** API 10: Cấp lại Access Token (Refresh Token Rotation). */
     public RefreshTokenResponse refreshAccessToken(RefreshTokenRequest request) throws ParseException, JOSEException {
         SignedJWT signedJWT = verifyToken(request.getRefreshToken(), TYPE_REFRESH);
         Long userId = Long.valueOf(signedJWT.getJWTClaimsSet().getSubject());
@@ -455,7 +460,6 @@ public class AuthenticationService {
         User user = findUser(userId);
         assertNotLocked(user);
 
-        // Refresh Token Rotation: thu hồi Refresh Token cũ và phát hành cặp token mới
         Date oldRefreshExp = signedJWT.getJWTClaimsSet().getExpirationTime();
         tokenRedisService.blacklistToken(userId, tokenPair, oldRefreshExp);
 
@@ -493,37 +497,29 @@ public class AuthenticationService {
         return response;
     }
 
-    /**
-     * API 13: Đổi mật khẩu (Change Password).
-     */
+    /** API 13: Đổi mật khẩu (Change Password). */
     @Transactional
-    public void changePassword(ChangePasswordRequest request)  {
-
+    public void changePassword(ChangePasswordRequest request) {
         Long userId = Long.valueOf(securityHelper.getAuthentication().getName());
         User user = findUser(userId);
         assertNotLocked(user);
 
-        // 3. Kiểm tra mật khẩu xác nhận
         if (!request.getNewPassword().equals(request.getConfirmNewPassword())) {
             throw new AppException(ErrorCode.PASSWORD_CONFIRM_NOT_MATCH);
         }
 
-        // 4. Kiểm tra mật khẩu cũ
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
             throw new AppException(ErrorCode.CURRENT_PASSWORD_INCORRECT);
         }
 
-        // 5. Kiểm tra trùng mật khẩu cũ
         if (request.getCurrentPassword().equals(request.getNewPassword())
                 || passwordEncoder.matches(request.getNewPassword(), user.getPasswordHash())) {
             throw new AppException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT);
         }
 
-        // 6. Mã hóa mật khẩu mới và cập nhật User
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        // 7. Ghi vết vào bảng 26 Audit_Logs
         AuditLog auditLog = AuditLog.builder()
                 .user(user)
                 .action("CHANGE_PASSWORD")
@@ -534,7 +530,6 @@ public class AuthenticationService {
                 .build();
         auditLogRepository.save(auditLog);
 
-        // 8. Tạo thông báo vào bảng 27 Notification
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         Notification notification = Notification.builder()
                 .user(user)
@@ -544,7 +539,6 @@ public class AuthenticationService {
                 .build();
         notificationRepository.save(notification);
 
-        // 9. Đưa Refresh Token hiện tại vào Blacklist và xóa session
         TokenPair tokenPair = tokenRedisService.getTokenPair(user.getUserId());
         if (tokenPair != null && tokenPair.getRefreshToken() != null) {
             try {
@@ -556,6 +550,7 @@ public class AuthenticationService {
         }
         tokenRedisService.deleteToken(user.getUserId());
     }
+
     // =====================================================================
     // HELPERS - OTP / SESSION
     // =====================================================================
@@ -564,7 +559,6 @@ public class AuthenticationService {
         return String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
     }
 
-    /** So sánh OTP theo thời gian hằng số, tránh timing attack. */
     private static boolean otpMatches(String expected, String actual) {
         if (expected == null || actual == null) {
             return false;
@@ -587,12 +581,12 @@ public class AuthenticationService {
 
     private void assertOtpSendingAllowed(String clientIp, String target) {
         if (tokenRedisService.isOtpSendingBlockedForIp(clientIp)) {
-            log.warn("IP [{}] bị chặn gửi OTP do vượt quá {} lần trong 15 phút", clientIp, TokenRedisService.MAX_OTP_SEND_PER_IP);
+            log.warn("IP [{}] bị chặn gửi OTP do vượt quá giới hạn", clientIp);
             throw new AppException(ErrorCode.OTP_SEND_LIMIT_EXCEEDED,
                     "Địa chỉ IP của bạn đã gửi yêu cầu OTP quá số lần cho phép. Vui lòng thử lại sau 15 phút.");
         }
         if (tokenRedisService.isOtpSendingBlockedForTarget(target)) {
-            log.warn("Target [{}] bị chặn gửi OTP do vượt quá {} lần trong 15 phút", target, TokenRedisService.MAX_OTP_SEND_PER_TARGET);
+            log.warn("Target [{}] bị chặn gửi OTP do vượt quá giới hạn", target);
             throw new AppException(ErrorCode.OTP_SEND_LIMIT_EXCEEDED,
                     "Số điện thoại hoặc Email này đã yêu cầu gửi mã OTP quá số lần cho phép. Vui lòng thử lại sau 15 phút.");
         }
@@ -635,7 +629,6 @@ public class AuthenticationService {
         }
     }
 
-    /** Ghi nhận 1 lần đăng nhập sai và trả về exception phù hợp. */
     private AppException failedLogin(String identity) {
         long fails = tokenRedisService.recordFailedLoginAttempt(identity);
         return new AppException(fails >= MAX_FAILED_LOGIN
@@ -719,7 +712,6 @@ public class AuthenticationService {
         return user.getRole() != null ? "ROLE_" + user.getRole() : "";
     }
 
-    /** Xác thực chữ ký, hạn dùng, loại token (access/refresh) và blacklist. */
     private SignedJWT verifyToken(String token, String expectedType) throws JOSEException, ParseException {
         SignedJWT signedJWT;
         try {
@@ -742,5 +734,4 @@ public class AuthenticationService {
         }
         return signedJWT;
     }
-
 }
