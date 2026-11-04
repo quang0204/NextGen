@@ -40,4 +40,36 @@ public class Voucher {
     LocalDateTime createdAt;
     @LastModifiedDate
     LocalDateTime updatedAt;
+
+    public String getCode() {
+        return voucherCode;
+    }
+
+    public void setCode(String code) {
+        this.voucherCode = code;
+    }
+
+    public BigDecimal getMaxDiscount() {
+        return maxDiscountAmount;
+    }
+
+    public void setMaxDiscount(BigDecimal maxDiscount) {
+        this.maxDiscountAmount = maxDiscount;
+    }
+
+    public LocalDateTime getStartAt() {
+        return startDate;
+    }
+
+    public void setStartAt(LocalDateTime startAt) {
+        this.startDate = startAt;
+    }
+
+    public LocalDateTime getExpiredAt() {
+        return endDate;
+    }
+
+    public void setExpiredAt(LocalDateTime expiredAt) {
+        this.endDate = expiredAt;
+    }
 }

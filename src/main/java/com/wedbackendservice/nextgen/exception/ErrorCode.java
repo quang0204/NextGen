@@ -66,7 +66,17 @@ public enum ErrorCode {
     ERR_STOCK_ADJUST_INVALID(1050, "Số lượng kiểm kê thực tế không được nhỏ hơn số lượng đang giữ chỗ.", HttpStatus.BAD_REQUEST),
     ERR_INVALID_DATE_FORMAT(1051, "Định dạng ngày lọc không hợp lệ.", HttpStatus.BAD_REQUEST),
     ERR_VARIANT_NOT_FOUND(1052, "Không tìm thấy dữ liệu tồn kho cho biến thể.", HttpStatus.NOT_FOUND),
-    ERR_FORBIDDEN_ACCESS(1053, "Bạn không có quyền truy cập vào danh mục kho vận này!", HttpStatus.FORBIDDEN);
+    ERR_FORBIDDEN_ACCESS(1053, "Bạn không có quyền truy cập vào danh mục kho vận này!", HttpStatus.FORBIDDEN),
+
+    // Nhóm 6: Khuyến mãi & Voucher
+    ERR_PROMO_PRICE_INVALID(1060, "Giá khuyến mãi phải nhỏ hơn giá niêm yết của biến thể", HttpStatus.BAD_REQUEST),
+    ERR_PROMOTION_NOT_FOUND(1061, "Không tìm thấy chiến dịch khuyến mãi", HttpStatus.NOT_FOUND),
+    ERR_VOUCHER_NOT_FOUND(1062, "Không tìm thấy voucher", HttpStatus.NOT_FOUND),
+    ERR_VOUCHER_DUPLICATE_CODE(1063, "Mã voucher đã tồn tại trên hệ thống!", HttpStatus.CONFLICT),
+    ERR_VOUCHER_EXPIRED(1064, "Mã giảm giá đã hết hạn sử dụng", HttpStatus.BAD_REQUEST),
+    ERR_VOUCHER_LIMIT_REACHED(1065, "Mã giảm giá đã hết lượt sử dụng trong toàn hệ thống", HttpStatus.BAD_REQUEST),
+    ERR_VOUCHER_MIN_ORDER(1066, "Giá trị đơn hàng chưa đạt mức tối thiểu để áp dụng mã", HttpStatus.BAD_REQUEST),
+    ERR_FORBIDDEN(1067, "Tài khoản của bạn không có quyền quản trị phân hệ khuyến mãi!", HttpStatus.FORBIDDEN);
 
     int code;
     String message;
