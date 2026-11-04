@@ -76,7 +76,14 @@ public enum ErrorCode {
     ERR_VOUCHER_EXPIRED(1064, "Mã giảm giá đã hết hạn sử dụng", HttpStatus.BAD_REQUEST),
     ERR_VOUCHER_LIMIT_REACHED(1065, "Mã giảm giá đã hết lượt sử dụng trong toàn hệ thống", HttpStatus.BAD_REQUEST),
     ERR_VOUCHER_MIN_ORDER(1066, "Giá trị đơn hàng chưa đạt mức tối thiểu để áp dụng mã", HttpStatus.BAD_REQUEST),
-    ERR_FORBIDDEN(1067, "Tài khoản của bạn không có quyền quản trị phân hệ khuyến mãi!", HttpStatus.FORBIDDEN);
+    ERR_FORBIDDEN(1067, "Tài khoản của bạn không có quyền quản trị phân hệ khuyến mãi!", HttpStatus.FORBIDDEN),
+
+    // Nhóm 8: Đơn hàng & Tiến trình xử lý
+    ERR_STOCK_INSUFFICIENT(1070, "Số lượng tồn kho khả dụng không đủ để đáp ứng đơn hàng.", HttpStatus.CONFLICT),
+    ERR_ORDER_CANNOT_CANCEL(1071, "Không thể hủy đơn hàng do đơn đã được xác nhận hoặc đang trong quá trình giao hàng!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_INVALID_STATE(1072, "Thao tác không hợp lệ đối với trạng thái hiện tại của đơn hàng!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_NOT_CONFIRMED(1073, "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho!", HttpStatus.BAD_REQUEST),
+    ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND);
 
     int code;
     String message;

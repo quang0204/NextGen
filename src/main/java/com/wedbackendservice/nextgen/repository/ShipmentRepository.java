@@ -21,6 +21,10 @@ public interface ShipmentRepository extends JpaRepository<Shipment, Long>, JpaSp
 
     List<Shipment> findAllByOrder_OrderCode(String orderCode);
 
+    Optional<Shipment> findFirstByOrder_OrderId(Long orderId);
+
+    Optional<Shipment> findFirstByOrder_OrderCode(String orderCode);
+
     @Query("SELECT s FROM Shipment s LEFT JOIN s.order o WHERE s.trackingNumber = :code OR o.orderCode = :code")
     List<Shipment> findListByTrackingCodeOrOrderCode(@Param("code") String code);
 
