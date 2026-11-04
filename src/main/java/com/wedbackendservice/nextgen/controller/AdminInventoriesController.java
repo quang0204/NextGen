@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.service.InventoriesService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -21,6 +22,7 @@ public class AdminInventoriesController {
     /**
      * API 5.1: [GET] /api/v1/admin/inventories — Bảng theo dõi tồn kho biến thể SKU (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<AdminInventoryListResponse> getInventories(
             @RequestParam(defaultValue = "1") int page,

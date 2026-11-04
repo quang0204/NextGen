@@ -27,7 +27,6 @@ public class GlobalExceptionHandler {
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(errorCode.getMessage())
                         .error(errorCode.name())
-                        .errorCode(errorCode.name())
                         .timestamp(Instant.now().toString())
                         .build());
     }
@@ -44,7 +43,6 @@ public class GlobalExceptionHandler {
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(message)
                         .error(errorCode.name())
-                        .errorCode(errorCode.name())
                         .timestamp(Instant.now().toString())
                         .build());
     }
@@ -58,28 +56,6 @@ public class GlobalExceptionHandler {
                         .statusCode(errorCode.getHttpStatus().value())
                         .message(errorCode.getMessage())
                         .error(errorCode.name())
-                        .errorCode(errorCode.name())
-                        .timestamp(Instant.now().toString())
-                        .build());
-    }
-
-    @ExceptionHandler(value = MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException exception) {
-        java.util.List<ApiResponse.ValidationErrorDetail> errorDetails = exception.getBindingResult().getFieldErrors().stream()
-                .map(err -> ApiResponse.ValidationErrorDetail.builder()
-                        .field(err.getField())
-                        .message(err.getDefaultMessage())
-                        .build())
-                .toList();
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .statusCode(HttpStatus.BAD_REQUEST.value())
-                        .message("Dữ liệu đầu vào không hợp lệ!")
-                        .error("ERR_INVALID_PARAM")
-                        .errorCode("ERR_INVALID_PARAM")
-                        .errors(errorDetails)
                         .timestamp(Instant.now().toString())
                         .build());
     }
@@ -92,7 +68,6 @@ public class GlobalExceptionHandler {
                         .statusCode(HttpStatus.BAD_REQUEST.value())
                         .message("Dữ liệu yêu cầu không hợp lệ.")
                         .error("INVALID_REQUEST")
-                        .errorCode("INVALID_REQUEST")
                         .timestamp(Instant.now().toString())
                         .build());
     }
