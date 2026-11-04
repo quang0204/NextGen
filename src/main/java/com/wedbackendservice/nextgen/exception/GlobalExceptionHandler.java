@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.support.DefaultMessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -94,5 +95,12 @@ public class GlobalExceptionHandler {
                         .errorCode("INVALID_REQUEST")
                         .timestamp(Instant.now().toString())
                         .build());
+    }
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAuth(AuthenticationException e) {
+        ErrorCode c = ErrorCode.SESSION_EXPIRED;
+        return ResponseEntity.status(c.getHttpStatus()).body(
+                ApiResponse.<Void>builder().success(false).statusCode(c.getHttpStatus().value())
+                        .message(c.getMessage()).build());
     }
 }

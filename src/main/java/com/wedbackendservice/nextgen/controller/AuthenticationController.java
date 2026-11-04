@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.service.AuthenticationService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.text.ParseException;
@@ -25,6 +26,7 @@ public class AuthenticationController {
     /**
      * API 1: Khởi tạo đăng nhập (Bước 1 Đăng nhập)
      */
+
     @PostMapping("/login-initiate")
     public ApiResponse<LoginInitiateResponse> loginInitiate(
             @Valid @RequestBody LoginInitiateRequest request) {
@@ -166,9 +168,8 @@ public class AuthenticationController {
      * API 11: Đăng xuất
      */
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(
-            @RequestBody(required = false) LogoutRequest request) throws ParseException, JOSEException {
-        authenticationService.logout(request);
+    public ApiResponse<Void> logout() throws ParseException{
+        authenticationService.logout();
         return ApiResponse.<Void>builder()
                 .success(true)
                 .statusCode(200)
@@ -180,8 +181,7 @@ public class AuthenticationController {
      * API 12: Lấy thông tin người dùng hiện tại
      */
     @GetMapping("/me")
-    public ApiResponse<UserMeResponse> getCurrentUser(
-            @RequestHeader(value = "Authorization", required = false) String authHeader) throws ParseException, JOSEException {
+    public ApiResponse<UserMeResponse> getCurrentUser(){
         return ApiResponse.<UserMeResponse>builder()
                 .success(true)
                 .statusCode(200)
@@ -192,12 +192,10 @@ public class AuthenticationController {
     /**
      * API 13: Đổi mật khẩu
      */
-
     @PostMapping("/change-password")
     public ApiResponse<Void> changePassword(
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @Valid @RequestBody ChangePasswordRequest request) throws ParseException, JOSEException {
-        authenticationService.changePassword(authHeader, request);
+            @Valid @RequestBody ChangePasswordRequest request)  {
+        authenticationService.changePassword(request);
         return ApiResponse.<Void>builder()
                 .success(true)
                 .statusCode(200)

@@ -1,10 +1,9 @@
 package com.wedbackendservice.nextgen.dto.response.shipment;
 
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -12,7 +11,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AdminShipmentListResponse {
-    List<AdminShipmentItemResponse> items;
-    PaginationResponse pagination;
+public class ShipmentTimelineItem {
+    LocalDateTime time;
+    String status;
+    String description;
 }

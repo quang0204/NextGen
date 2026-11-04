@@ -23,6 +23,16 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     List<Order> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
 
     Page<Order> findByUser_UserId(Long userId, Pageable pageable);
+    @Query("SELECT o FROM Order o WHERE o.user.userId = :userId ORDER BY o.createdAt DESC")
+    List<Order> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, org.springframework.data.domain.Pageable pageable);
+
+    @Query("""
+        SELECT o.user.userId, COUNT(o), COALESCE(SUM(o.finalAmount), 0)
+        FROM Order o
+        WHERE o.user.userId IN :ids
+        GROUP BY o.user.userId
+        """)
+    List<Object[]> statsByUserIds(@Param("ids") java.util.Collection<Long> ids);
 
     long countByUser_UserId(Long userId);
 

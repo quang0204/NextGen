@@ -27,28 +27,4 @@ public class ShipmentTrackResponse {
     LocalDateTime estimatedDeliveryDate;
     List<ShipmentTrackItem> items;
     List<ShipmentTimelineItem> timeline;
-
-    @Getter
-    @Setter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @FieldDefaults(level = AccessLevel.PRIVATE)
-    public static class ShipmentTrackItem {
-        String productName;
-        String color;
-        Integer quantity;
-    }
-
-    @Getter
-    @Setter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @FieldDefaults(level = AccessLevel.PRIVATE)
-    public static class ShipmentTimelineItem {
-        LocalDateTime time;
-        String status;
-        String description;
-    }
 }

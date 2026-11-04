@@ -31,14 +31,4 @@ public class CreateInternalUserRequest {
 
     @NotNull(message = "Vai trò không được để trống")
     Role role;
-
-    public String getEffectivePassword() {
-        if (temporaryPassword != null && !temporaryPassword.isBlank()) {
-            return temporaryPassword.trim();
-        }
-        if (password != null && !password.isBlank()) {
-            return password.trim();
-        }
-        return "";
-    }
 }

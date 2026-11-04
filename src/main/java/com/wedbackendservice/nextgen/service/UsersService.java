@@ -1,12 +1,8 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.response.user.CreateAddressResponse;
-import com.wedbackendservice.nextgen.dto.response.user.DeleteAddressResponse;
-import com.wedbackendservice.nextgen.dto.response.user.SetDefaultAddressResponse;
-import com.wedbackendservice.nextgen.dto.response.user.UserAddressItemResponse;
-import com.wedbackendservice.nextgen.dto.response.user.UserProfileResponse;
 import com.wedbackendservice.nextgen.dto.request.user.UpdateUserProfileRequest;
 import com.wedbackendservice.nextgen.dto.request.user.UserAddressRequest;
+import com.wedbackendservice.nextgen.dto.response.user.*;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.entity.UserAddress;
@@ -24,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -47,11 +42,12 @@ public class UsersService {
     /**
      * API 2.1: Lấy thông tin hồ sơ cá nhân
      */
+    @Transactional(readOnly = true)
     public UserProfileResponse getUserProfile() {
         User user = securityHelper.getCurrentUser();
         return usersMapper.toUserProfileResponse(user);
     }
-//
+    //
 //    /**
 //     * API gửi OTP xác nhận cập nhật Email/Phone
 //     */
@@ -76,7 +72,7 @@ public class UsersService {
      * API 2.2: Cập nhật thông tin cá nhân (họ tên, email, số điện thoại)
      */
     @Transactional
-    public UserProfileResponse updateUserProfile( UpdateUserProfileRequest request) {
+    public UserProfileResponse updateUserProfile(UpdateUserProfileRequest request) {
         User user = securityHelper.getCurrentUser();
 
         String newFullName = request.getFullName().trim();
@@ -87,25 +83,31 @@ public class UsersService {
         boolean phoneChanged = !newPhone.equals(user.getPhone());
         boolean emailChanged = !newEmail.equalsIgnoreCase(user.getEmail());
 
-        // 1. Kiểm tra trùng lặp Số điện thoại với tài khoản khác (user_id != current_user_id)
+        // 1. Kiểm tra trùng lặp Số điện thoại với tài khoản khác
         if (phoneChanged && userRepository.countByPhoneExcludingUser(newPhone, user.getUserId()) > 0) {
             log.warn("SĐT [{}] đã tồn tại ở tài khoản khác", newPhone);
             throw new AppException(ErrorCode.PHONE_ALREADY_EXISTS, "Số điện thoại '" + newPhone + "' đã được đăng ký bởi tài khoản khác!");
         }
 
-        // 2. Kiểm tra trùng lặp Email với tài khoản khác (user_id != current_user_id)
+        // 2. Kiểm tra trùng lặp Email với tài khoản khác
         if (emailChanged && userRepository.countByEmailExcludingUser(newEmail, user.getUserId()) > 0) {
             log.warn("Email [{}] đã tồn tại ở tài khoản khác", newEmail);
             throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Địa chỉ Email '" + newEmail + "' đã được sử dụng bởi tài khoản khác!");
         }
 
-        // 3. Cập nhật hồ sơ nếu có trường thay đổi (Idempotent nếu truyền lại thông tin cũ)
+        // 3. Thực hiện cập nhật nếu có thay đổi (Đã sửa lỗi không lưu entity hiện tại)
         if (nameChanged || phoneChanged || emailChanged) {
             String oldJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
                     escapeJson(user.getFullName()), escapeJson(user.getPhone()), escapeJson(user.getEmail()));
+
+            // Cập nhật trực tiếp trên đối tượng quản lý bởi Persistence Context
+            user.setFullName(newFullName);
+            user.setPhone(newPhone);
+            user.setEmail(newEmail);
+            userRepository.save(user);
+
             String newJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
                     escapeJson(newFullName), escapeJson(newPhone), escapeJson(newEmail));
-            userRepository.save(User.builder().fullName(newFullName).phone(newPhone).email(newEmail).build());
 
             // 4. Ghi vết kiểm toán vào Audit_Logs
             auditLogRepository.save(AuditLog.builder()
@@ -124,21 +126,22 @@ public class UsersService {
     private String escapeJson(String input) {
         if (input == null) return "";
         return input.replace("\\", "\\\\")
-                    .replace("\"", "\\\"")
-                    .replace("\b", "\\b")
-                    .replace("\f", "\\f")
-                    .replace("\n", "\\n")
-                    .replace("\r", "\\r")
-                    .replace("\t", "\\t");
+                .replace("\"", "\\\"")
+                .replace("\b", "\\b")
+                .replace("\f", "\\f")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 
     /**
-     * API 2.3: Danh sách sổ địa chỉ nhận hàng (ưu tiên mặc định lên đầu)
+     * API 2.3: Danh sách sổ địa chỉ nhận hàng
      */
+    @Transactional(readOnly = true)
     public List<UserAddressItemResponse> getUserAddresses() {
-        Long userId =Long.valueOf(securityHelper.getAuthentication().getName());
+        User user = securityHelper.getCurrentUser();
         List<UserAddress> addresses = userAddressRepository
-                .findByUserIdOrderByIsDefaultDescAddressIdDesc(userId);
+                .findByUserIdOrderByIsDefaultDescAddressIdDesc(user.getUserId());
 
         return addresses.stream()
                 .map(usersMapper::toUserAddressItemResponse)
@@ -149,18 +152,20 @@ public class UsersService {
      * API 2.4: Thêm mới 1 địa chỉ giao hàng
      */
     @Transactional
-    public CreateAddressResponse createUserAddress( UserAddressRequest request) {
-        Long userId =Long.valueOf(securityHelper.getAuthentication().getName());
-        User user = userRepository.findById(userId).orElseThrow(()-> new AppException(ErrorCode.USER_NOT_EXIT));
-        long currentCount = userAddressRepository.countByUserId(userId);
+    public CreateAddressResponse createUserAddress(UserAddressRequest request) {
+        User user = securityHelper.getCurrentUser();
+        long currentCount = userAddressRepository.countByUserId(user.getUserId());
+
         if (currentCount >= MAX_ADDRESS_LIMIT) {
             throw new AppException(ErrorCode.ADDRESS_LIMIT_EXCEEDED);
         }
+
         boolean shouldBeDefault = currentCount == 0 || Boolean.TRUE.equals(request.getIsDefault());
 
         if (shouldBeDefault) {
-            userAddressRepository.resetDefaultAddressByUserId(userId);
+            userAddressRepository.resetDefaultAddressByUserId(user.getUserId());
         }
+
         UserAddress userAddress = userAddressRepository.save(UserAddress.builder()
                 .user(user)
                 .recipientName(request.getRecipientName().trim())
@@ -168,6 +173,7 @@ public class UsersService {
                 .addressLine(request.getAddressLine().trim())
                 .isDefault(shouldBeDefault)
                 .build());
+
         return usersMapper.toCreateAddressResponse(userAddress);
     }
 
@@ -176,23 +182,24 @@ public class UsersService {
      */
     @Transactional
     public UserAddressItemResponse updateUserAddress(Long addressId, UserAddressRequest request) {
-        Long userId =Long.valueOf(securityHelper.getAuthentication().getName());
+        User user = securityHelper.getCurrentUser();
 
-        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, userId)
+        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, user.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
         if (Boolean.TRUE.equals(request.getIsDefault()) && !Boolean.TRUE.equals(address.getIsDefault())) {
-            userAddressRepository.resetDefaultAddressByUserId(userId);
+            userAddressRepository.resetDefaultAddressByUserId(user.getUserId());
             address.setIsDefault(true);
         } else if (Boolean.FALSE.equals(request.getIsDefault()) && Boolean.TRUE.equals(address.getIsDefault())) {
-            // Không cho phép hủy mặc định trực tiếp để tránh user không còn địa chỉ mặc định nào
             throw new AppException(ErrorCode.CANNOT_UNSET_DEFAULT_ADDRESS);
         }
 
-        UserAddress saved = userAddressRepository.save(UserAddress.builder()
-                .recipientName(request.getRecipientName().trim())
-                .phone(request.getPhone().trim())
-                .addressLine(request.getAddressLine().trim()).build());
+        // Đã sửa lỗi: Cập nhật trực tiếp lên entity address đã query thay vì tạo mới entity rác
+        address.setRecipientName(request.getRecipientName().trim());
+        address.setPhone(request.getPhone().trim());
+        address.setAddressLine(request.getAddressLine().trim());
+
+        UserAddress saved = userAddressRepository.save(address);
         return usersMapper.toUserAddressItemResponse(saved);
     }
 
@@ -201,12 +208,12 @@ public class UsersService {
      */
     @Transactional
     public SetDefaultAddressResponse setDefaultAddress(Long addressId) {
-        Long userId =Long.valueOf(securityHelper.getAuthentication().getName());
+        User user = securityHelper.getCurrentUser();
 
-        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, userId)
+        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, user.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        userAddressRepository.resetDefaultAddressByUserId(userId);
+        userAddressRepository.resetDefaultAddressByUserId(user.getUserId());
         address.setIsDefault(true);
 
         UserAddress userAddress = userAddressRepository.save(address);
@@ -219,12 +226,12 @@ public class UsersService {
      */
     @Transactional
     public DeleteAddressResponse deleteUserAddress(Long addressId) {
-        Long userId =Long.valueOf(securityHelper.getAuthentication().getName());
+        User user = securityHelper.getCurrentUser();
 
-        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, userId)
+        UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, user.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        long count = userAddressRepository.countByUserId(userId);
+        long count = userAddressRepository.countByUserId(user.getUserId());
         if (Boolean.TRUE.equals(address.getIsDefault()) && count > 1) {
             throw new AppException(ErrorCode.CANNOT_DELETE_DEFAULT_ADDRESS);
         }

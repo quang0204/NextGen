@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.mapper;
 
 import com.wedbackendservice.nextgen.dto.response.UsersResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.CreateInternalUserResponse;
 import com.wedbackendservice.nextgen.dto.response.auth.UserRegisterResponse;
 import com.wedbackendservice.nextgen.dto.response.user.*;
 import com.wedbackendservice.nextgen.entity.User;
@@ -20,4 +21,6 @@ public interface UsersMapper {
     UserAddressItemResponse toUserAddressItemResponse(UserAddress address);
     CreateAddressResponse toCreateAddressResponse(UserAddress address);
     SetDefaultAddressResponse toSetDefaultAddressResponse(UserAddress address);
+    @Mapping(target = "mustChangePassword", ignore = true)
+    CreateInternalUserResponse toCreateInternalUserResponse(User users);
 }

@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PostAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,6 +22,7 @@ public class AdminBrandsController {
     /**
      * API 3.8: Thêm mới thương hiệu (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<BrandResponse> createBrand(
@@ -35,6 +38,7 @@ public class AdminBrandsController {
     /**
      * API 3.9: Cập nhật thương hiệu (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PutMapping("/{id}")
     public ApiResponse<BrandResponse> updateBrand(
             @PathVariable Long id,
@@ -50,6 +54,7 @@ public class AdminBrandsController {
     /**
      * API 3.10: Xóa thương hiệu (ADMIN)
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteBrand(
             @PathVariable Long id) {

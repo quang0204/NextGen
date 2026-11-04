@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.dto.response.admin;
+package com.wedbackendservice.nextgen.dto.response.shipment;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -9,9 +9,8 @@ import lombok.experimental.FieldDefaults;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class PaginationResponse {
-    int page;
-    int size;
-    long totalItems;
-    int totalPages;
+public  class ShipmentTrackItem {
+    String productName;
+    String color;
+    Integer quantity;
 }
