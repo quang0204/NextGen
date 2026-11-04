@@ -30,9 +30,6 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ShipmentsService {
 
-    private static final int MAX_PAGE_SIZE = 100;
-    private static final int DEFAULT_PAGE_SIZE = 10;
-
     private final SecurityHelper securityHelper;
     private final ShipmentRepository shipmentRepository;
     private final OrderRepository orderRepository;
@@ -58,7 +55,7 @@ public class ShipmentsService {
 
         Order order = shipment.getOrder();
 
-        List<ShipmentTrackResponse.ShipmentTrackItem> items = new ArrayList<>();
+        List<ShipmentTrackItem> items = new ArrayList<>();
         if (order != null) {
             List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
             for (OrderItem oi : orderItems) {
@@ -68,7 +65,7 @@ public class ShipmentsService {
                         : "Sản phẩm";
                 String color = variant != null ? variant.getColor() : null;
 
-                items.add(ShipmentTrackResponse.ShipmentTrackItem.builder()
+                items.add(ShipmentTrackItem.builder()
                         .productName(productName)
                         .color(color)
                         .quantity(oi.getQuantity())
@@ -76,8 +73,8 @@ public class ShipmentsService {
             }
         }
 
-        List<ShipmentTrackResponse.ShipmentTimelineItem> timeline = buildTimeline(shipment, order);
-        timeline.sort(Comparator.comparing(ShipmentTrackResponse.ShipmentTimelineItem::getTime));
+        List<ShipmentTimelineItem> timeline = buildTimeline(shipment, order);
+        timeline.sort(Comparator.comparing(ShipmentTimelineItem::getTime));
 
         return ShipmentTrackResponse.builder()
                 .shipmentId(shipment.getShipmentId())
@@ -397,11 +394,11 @@ public class ShipmentsService {
                 .build();
     }
 
-    private List<ShipmentTrackResponse.ShipmentTimelineItem> buildTimeline(Shipment shipment, Order order) {
-        List<ShipmentTrackResponse.ShipmentTimelineItem> list = new ArrayList<>();
+    private List<ShipmentTimelineItem> buildTimeline(Shipment shipment, Order order) {
+        List<ShipmentTimelineItem> list = new ArrayList<>();
 
         if (order != null && order.getCreatedAt() != null) {
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(order.getCreatedAt())
                     .status("ORDER_PLACED")
                     .description("Đơn hàng đã được tạo thành công.")
@@ -409,7 +406,7 @@ public class ShipmentsService {
         }
 
         if (shipment.getCreatedAt() != null) {
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(shipment.getCreatedAt())
                     .status("READY_TO_PICK")
                     .description("Đơn hàng đã được xác nhận. Đang chuẩn bị đóng gói và chờ đối tác lấy hàng.")
@@ -417,7 +414,7 @@ public class ShipmentsService {
         }
 
         if (shipment.getShippedAt() != null) {
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(shipment.getShippedAt())
                     .status("PICKED")
                     .description("Kiện hàng đã xuất kho. Đơn vị vận chuyển " +
@@ -427,7 +424,7 @@ public class ShipmentsService {
 
         if ("IN_TRANSIT".equalsIgnoreCase(shipment.getShippingStatus()) || "DELIVERED".equalsIgnoreCase(shipment.getShippingStatus())) {
             LocalDateTime transitTime = shipment.getShippedAt() != null ? shipment.getShippedAt() : shipment.getCreatedAt();
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(transitTime)
                     .status("IN_TRANSIT")
                     .description("Kiện hàng đang trong quá trình luân chuyển tới địa chỉ nhận.")
@@ -435,7 +432,7 @@ public class ShipmentsService {
         }
 
         if (shipment.getDeliveredAt() != null) {
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(shipment.getDeliveredAt())
                     .status("DELIVERED")
                     .description("Kiện hàng đã được giao thành công tới người nhận.")
@@ -443,7 +440,7 @@ public class ShipmentsService {
         }
 
         if (shipment.getFailReason() != null) {
-            list.add(ShipmentTrackResponse.ShipmentTimelineItem.builder()
+            list.add(ShipmentTimelineItem.builder()
                     .time(shipment.getUpdatedAt())
                     .status("FAILED_DELIVERY")
                     .description("Giao hàng không thành công: " + shipment.getFailReason())

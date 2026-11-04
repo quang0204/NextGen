@@ -17,10 +17,6 @@ import java.util.Optional;
 @Repository
 public interface ShipmentRepository extends JpaRepository<Shipment, Long>, JpaSpecificationExecutor<Shipment> {
 
-    Optional<Shipment> findByTrackingNumber(String trackingNumber);
-
-    List<Shipment> findAllByOrder_OrderCode(String orderCode);
-
     @Query("SELECT s FROM Shipment s LEFT JOIN s.order o WHERE s.trackingNumber = :code OR o.orderCode = :code")
     List<Shipment> findListByTrackingCodeOrOrderCode(@Param("code") String code);
 

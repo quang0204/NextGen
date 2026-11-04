@@ -10,6 +10,7 @@ import com.wedbackendservice.nextgen.service.AdminUsersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -65,6 +66,7 @@ public class AdminUsersController {
     /**
      * API 2.10: Admin tạo tài khoản nội bộ trực tiếp cho nhân viên (STAFF) hoặc ADMIN
      */
+    @PostAuthorize("hasRole('ADMIN')")
     @PostMapping("/internal")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CreateInternalUserResponse> createInternalUser(
@@ -81,6 +83,7 @@ public class AdminUsersController {
     /**
      * API 2.11: Khóa / Mở khóa tài khoản (kèm lý do lockReason, thu hồi JWT Session)
      */
+    @PostAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{userId}/status")
     public ApiResponse<UpdateUserStatusResponse> updateUserStatus(
             @PathVariable Long userId,
@@ -97,6 +100,7 @@ public class AdminUsersController {
     /**
      * API 2.12: Thay đổi phân quyền RBAC của tài khoản người dùng
      */
+    @PostAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{userId}/role")
     public ApiResponse<UpdateUserRoleResponse> updateUserRole(
             @PathVariable Long userId,

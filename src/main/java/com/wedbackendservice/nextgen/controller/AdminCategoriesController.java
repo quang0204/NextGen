@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.controller;
 
+import com.wedbackendservice.nextgen.dto.request.auth.ChangePasswordRequest;
 import com.wedbackendservice.nextgen.dto.response.ApiResponse;
 import com.wedbackendservice.nextgen.dto.response.category.CategoryResponse;
 import com.wedbackendservice.nextgen.dto.request.category.CategoryRequest;
@@ -8,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,6 +22,7 @@ public class AdminCategoriesController {
     /**
      * API 3.3: Tạo mới danh mục sản phẩm (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CategoryResponse> createCategory(
@@ -35,6 +38,7 @@ public class AdminCategoriesController {
     /**
      * API 3.4: Cập nhật danh mục (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PutMapping("/{id}")
     public ApiResponse<CategoryResponse> updateCategory(
             @PathVariable Long id,
@@ -50,6 +54,7 @@ public class AdminCategoriesController {
     /**
      * API 3.5: Xóa danh mục (ADMIN)
      */
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public ApiResponse<Void> deleteCategory(
             @PathVariable Long id) {

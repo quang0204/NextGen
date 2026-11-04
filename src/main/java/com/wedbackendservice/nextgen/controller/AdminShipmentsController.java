@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.service.ShipmentsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,6 +24,7 @@ public class AdminShipmentsController {
     /**
      * API 9.2: Quản trị danh sách vận đơn (Admin Portal) (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<PageResponse<AdminShipmentItemResponse>> getAdminShipments(
             @RequestParam(defaultValue = "1") int page,
@@ -40,6 +42,7 @@ public class AdminShipmentsController {
     /**
      * API 9.3: Cập nhật trạng thái vận đơn & Tự động đồng bộ 2 chiều (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PutMapping("/{id}/status")
     public ApiResponse<ShipmentStatusSyncResponse> updateShipmentStatus(
             @PathVariable Long id,
@@ -55,6 +58,7 @@ public class AdminShipmentsController {
     /**
      * API 9.4: Xử lý giao hàng thất bại, tự động hủy đơn và hoàn kho (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping("/{id}/fail-delivery")
     public ApiResponse<ShipmentFailDeliveryResponse> failDelivery(
             @PathVariable Long id,
