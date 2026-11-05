@@ -18,11 +18,6 @@ public class ShipmentsController {
      */
     @GetMapping("/track/{trackingCode}")
     public ApiResponse<ShipmentTrackResponse> trackShipment(@PathVariable String trackingCode) {
-        return ApiResponse.<ShipmentTrackResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Tra cứu thông tin vận đơn thành công")
-                .data(shipmentsService.trackShipment(trackingCode))
-                .build();
+        return ApiResponse.ok("Tra cứu thông tin vận đơn thành công", shipmentsService.trackShipment(trackingCode));
     }
 }

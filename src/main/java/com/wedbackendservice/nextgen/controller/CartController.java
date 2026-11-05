@@ -1,14 +1,13 @@
 package com.wedbackendservice.nextgen.controller;
 
-import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.cart.*;
 import com.wedbackendservice.nextgen.dto.request.cart.CartItemAddRequest;
 import com.wedbackendservice.nextgen.dto.request.cart.CartItemUpdateRequest;
 import com.wedbackendservice.nextgen.dto.request.cart.CartSyncRequest;
+import com.wedbackendservice.nextgen.dto.response.ApiResponse;
+import com.wedbackendservice.nextgen.dto.response.cart.*;
 import com.wedbackendservice.nextgen.service.CartService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,12 +23,7 @@ public class CartController {
      */
     @GetMapping
     public ApiResponse<CartResponse> getCart() {
-        return ApiResponse.<CartResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy thông tin giỏ hàng thành công")
-                .data(cartService.getCart())
-                .build();
+        return ApiResponse.ok("Lấy thông tin giỏ hàng thành công", cartService.getCart());
     }
 
     /**
@@ -37,14 +31,8 @@ public class CartController {
      */
     @PostMapping("/items")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CartItemAddResponse> addItemToCart(
-            @Valid @RequestBody CartItemAddRequest request) {
-        return ApiResponse.<CartItemAddResponse>builder()
-                .success(true)
-                .statusCode(201)
-                .message("Đã thêm sản phẩm vào giỏ hàng thành công!")
-                .data(cartService.addItemToCart(request))
-                .build();
+    public ApiResponse<CartItemAddResponse> addItemToCart(@Valid @RequestBody CartItemAddRequest request) {
+        return ApiResponse.created("Đã thêm sản phẩm vào giỏ hàng thành công!", cartService.addItemToCart(request));
     }
 
     /**
@@ -54,26 +42,15 @@ public class CartController {
     public ApiResponse<CartItemUpdateResponse> updateItemQuantity(
             @PathVariable Long itemId,
             @Valid @RequestBody CartItemUpdateRequest request) {
-        return ApiResponse.<CartItemUpdateResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Cập nhật số lượng thành công!")
-                .data(cartService.updateItemQuantity(itemId, request))
-                .build();
+        return ApiResponse.ok("Cập nhật số lượng thành công!", cartService.updateItemQuantity(itemId, request));
     }
 
     /**
      * API 7.4: Xóa 1 biến thể SKU khỏi giỏ hàng (Authenticated)
      */
     @DeleteMapping("/items/{itemId}")
-    public ApiResponse<CartItemDeleteResponse> removeItemFromCart(
-            @PathVariable Long itemId) {
-        return ApiResponse.<CartItemDeleteResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã xóa sản phẩm khỏi giỏ hàng!")
-                .data(cartService.removeItemFromCart(itemId))
-                .build();
+    public ApiResponse<CartItemDeleteResponse> removeItemFromCart(@PathVariable Long itemId) {
+        return ApiResponse.ok("Đã xóa sản phẩm khỏi giỏ hàng!", cartService.removeItemFromCart(itemId));
     }
 
     /**
@@ -82,24 +59,14 @@ public class CartController {
     @DeleteMapping("/clear")
     public ApiResponse<Void> clearCart() {
         cartService.clearCart();
-        return ApiResponse.<Void>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã làm trống giỏ hàng thành công!")
-                .build();
+        return ApiResponse.ok("Đã làm trống giỏ hàng thành công!", null);
     }
 
     /**
      * API 7.6: Đồng bộ giỏ hàng vãng lai (Guest) vào tài khoản khi Đăng nhập (Authenticated)
      */
     @PostMapping("/sync")
-    public ApiResponse<CartSyncResponse> syncCart(
-            @Valid @RequestBody CartSyncRequest request) {
-        return ApiResponse.<CartSyncResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đồng bộ giỏ hàng thành công!")
-                .data(cartService.syncCart(request))
-                .build();
+    public ApiResponse<CartSyncResponse> syncCart(@Valid @RequestBody CartSyncRequest request) {
+        return ApiResponse.ok("Đồng bộ giỏ hàng thành công!", cartService.syncCart(request));
     }
 }

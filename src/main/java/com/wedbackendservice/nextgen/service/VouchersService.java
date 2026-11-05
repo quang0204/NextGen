@@ -1,8 +1,10 @@
 package com.wedbackendservice.nextgen.service;
 
+import com.wedbackendservice.nextgen.util.DateTimeUtil;
+
 import com.wedbackendservice.nextgen.dto.request.voucher.ApplyVoucherRequest;
 import com.wedbackendservice.nextgen.dto.request.voucher.CreateVoucherRequest;
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.voucher.*;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.entity.User;
@@ -43,16 +45,7 @@ public class VouchersService {
     private final SecurityHelper securityHelper;
     private final VoucherRepository voucherRepository;
     private final AuditLogRepository auditLogRepository;
-
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
-
-    private String formatIsoInstant(LocalDateTime ldt) {
-        if (ldt == null) {
-            return null;
-        }
-        return ISO_FORMATTER.format(ldt.atZone(ZoneId.systemDefault()).toInstant());
-    }
 
     private LocalDateTime parseIsoDateTime(String text, String fieldName) {
         if (!StringUtils.hasText(text)) {
@@ -72,6 +65,7 @@ public class VouchersService {
     /**
      * API 6.5: [GET] /api/v1/vouchers/valid — Danh sách mã giảm giá còn hiệu lực (Public / Auth)
      */
+    @Transactional(readOnly = true)
     public List<ValidVoucherResponse> getValidVouchers(BigDecimal minOrderValue) {
         LocalDateTime now = LocalDateTime.now();
         List<Voucher> vouchers = voucherRepository.findValidVouchers(now);
@@ -97,7 +91,7 @@ public class VouchersService {
                     .usageLimit(v.getUsageLimit())
                     .usedCount(used)
                     .remainingCount(remaining)
-                    .expiredAt(formatIsoInstant(v.getEndDate()))
+                    .expiredAt(DateTimeUtil.formatIsoInstant(v.getEndDate()))
                     .build());
         }
 
@@ -173,7 +167,8 @@ public class VouchersService {
     /**
      * API 6.7: [GET] /api/v1/admin/vouchers — Quản trị danh sách mã giảm giá (STAFF / ADMIN)
      */
-    public AdminVoucherListResponse getAdminVouchers(int page, int size, String keyword, String status) {
+    @Transactional(readOnly = true)
+    public PageResponse<AdminVoucherItemResponse> getAdminVouchers(int page, int size, String keyword, String status) {
         securityHelper.authenticateStaffOrAdmin();
 
         int safePage = Math.max(page, 1) - 1;
@@ -213,21 +208,18 @@ public class VouchersService {
                 .minOrderValue(v.getMinOrderValue())
                 .usageLimit(v.getUsageLimit())
                 .usedCount(v.getUsedCount() != null ? v.getUsedCount() : 0)
-                .startAt(formatIsoInstant(v.getStartDate()))
-                .expiredAt(formatIsoInstant(v.getEndDate()))
+                .startAt(DateTimeUtil.formatIsoInstant(v.getStartDate()))
+                .expiredAt(DateTimeUtil.formatIsoInstant(v.getEndDate()))
                 .isActive(v.getIsActive())
                 .build()).toList();
 
-        PaginationResponse pagination = PaginationResponse.builder()
+        return PageResponse.<AdminVoucherItemResponse>builder()
+                .content(items)
                 .page(pageResult.getNumber() + 1)
                 .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
+                .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
-                .build();
-
-        return AdminVoucherListResponse.builder()
-                .items(items)
-                .pagination(pagination)
+                .hasNext(pageResult.hasNext())
                 .build();
     }
 
@@ -273,13 +265,8 @@ public class VouchersService {
         Voucher savedVoucher = voucherRepository.save(voucher);
 
         // Ghi Audit Log (D18)
-        auditLogRepository.save(AuditLog.builder()
-                .user(currentUser)
-                .action("CREATE_VOUCHER")
-                .entityName("Vouchers")
-                .entityId(savedVoucher.getVoucherId())
-                .newValue("Khởi tạo mã voucher mới: " + savedVoucher.getCode())
-                .build());
+        auditLogRepository.log(currentUser, "CREATE_VOUCHER", "Vouchers", savedVoucher.getVoucherId(),
+                null, "Khởi tạo mã voucher mới: " + savedVoucher.getCode());
 
         return CreateVoucherResponse.builder()
                 .voucherId(savedVoucher.getVoucherId())
@@ -289,7 +276,7 @@ public class VouchersService {
                 .usageLimit(savedVoucher.getUsageLimit())
                 .usedCount(savedVoucher.getUsedCount())
                 .isActive(savedVoucher.getIsActive())
-                .createdAt(formatIsoInstant(savedVoucher.getCreatedAt() != null ? savedVoucher.getCreatedAt() : LocalDateTime.now()))
+                .createdAt(DateTimeUtil.formatIsoInstant(savedVoucher.getCreatedAt() != null ? savedVoucher.getCreatedAt() : LocalDateTime.now()))
                 .build();
     }
 
@@ -309,20 +296,14 @@ public class VouchersService {
         voucherRepository.save(voucher);
 
         // Ghi Audit Log (D18)
-        auditLogRepository.save(AuditLog.builder()
-                .user(currentUser)
-                .action("TOGGLE_VOUCHER")
-                .entityName("Vouchers")
-                .entityId(voucher.getVoucherId())
-                .oldValue("isActive: " + !newActive)
-                .newValue("isActive: " + newActive)
-                .build());
+        auditLogRepository.log(currentUser, "TOGGLE_VOUCHER", "Vouchers", voucher.getVoucherId(),
+                "isActive: " + !newActive, "isActive: " + newActive);
 
         return ToggleVoucherResponse.builder()
                 .voucherId(voucher.getVoucherId())
                 .code(voucher.getCode())
                 .isActive(voucher.getIsActive())
-                .updatedAt(formatIsoInstant(voucher.getUpdatedAt()))
+                .updatedAt(DateTimeUtil.formatIsoInstant(voucher.getUpdatedAt()))
                 .build();
     }
 }

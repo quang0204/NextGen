@@ -99,30 +99,8 @@ public class AdminUsersService {
             statusFilter = null;
         }
 
-        Specification<User> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-
-            if (search != null && !search.isBlank()) {
-                String escaped = escapeLike(search.trim().toLowerCase());
-                String searchPattern = "%" + escaped + "%";
-                Predicate namePredicate = cb.like(cb.lower(root.get("fullName")), searchPattern, '\\');
-                Predicate emailPredicate = cb.like(cb.lower(root.get("email")), searchPattern, '\\');
-                Predicate phonePredicate = cb.like(root.get("phone"), searchPattern, '\\');
-                predicates.add(cb.or(namePredicate, emailPredicate, phonePredicate));
-            }
-
-            if (roleFilter != null) {
-                predicates.add(cb.equal(root.get("role"), roleFilter));
-            }
-
-            if (statusFilter != null) {
-                predicates.add(cb.equal(root.get("status"), statusFilter));
-            }
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-
-        Page<User> pageResult = userRepository.findAll(spec, pageable);
+        String kw = (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
+        Page<User> pageResult = userRepository.searchUsers(roleFilter, statusFilter, kw, pageable);
         List<User> users = pageResult.getContent();
         if (users.isEmpty()) {
             return PageResponse.from(pageResult, u -> null);
@@ -276,13 +254,7 @@ public class AdminUsersService {
 
         User savedUser = userRepository.save(newUser);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(adminUser)
-                .action("CREATE_INTERNAL_USER")
-                .entityName("User")
-                .entityId(savedUser.getUserId())
-                .newValue(savedUser.getRole().name())
-                .build());
+        auditLogRepository.log(adminUser, "CREATE_INTERNAL_USER", "User", savedUser.getUserId(), null, savedUser.getRole().name());
         CreateInternalUserResponse response= usersMapper.toCreateInternalUserResponse(savedUser);
         response.setMustChangePassword(true);
         return response;
@@ -329,14 +301,8 @@ public class AdminUsersService {
         userRepository.save(targetUser);
 
         // Ghi log vết kiểm toán vào Audit_Logs
-        auditLogRepository.save(AuditLog.builder()
-                .user(adminUser)
-                .action(request.getStatus() == UserStatus.LOCKED ? "LOCK_USER" : "UNLOCK_USER")
-                .entityName("User")
-                .entityId(targetUser.getUserId())
-                .oldValue(oldStatus != null ? oldStatus.name() : null)
-                .newValue(request.getStatus().name())
-                .build());
+        auditLogRepository.log(adminUser, request.getStatus() == UserStatus.LOCKED ? "LOCK_USER" : "UNLOCK_USER",
+                "User", targetUser.getUserId(), oldStatus != null ? oldStatus.name() : null, request.getStatus().name());
 
         String operatorEmail = adminUser.getEmail() != null ? adminUser.getEmail() : adminUser.getFullName();
 
@@ -379,14 +345,8 @@ public class AdminUsersService {
         revokeUserTokens(targetUser.getUserId());
 
         // Ghi nhận Audit_Logs với old_value và new_value
-        auditLogRepository.save(AuditLog.builder()
-                .user(adminUser)
-                .action("UPDATE_ROLE")
-                .entityName("User")
-                .entityId(targetUser.getUserId())
-                .oldValue(oldRole != null ? oldRole.name() : null)
-                .newValue(request.getRole().name())
-                .build());
+        auditLogRepository.log(adminUser, "UPDATE_ROLE", "User", targetUser.getUserId(),
+                oldRole != null ? oldRole.name() : null, request.getRole().name());
 
         String operatorEmail = adminUser.getEmail() != null ? adminUser.getEmail() : adminUser.getFullName();
 

@@ -1,8 +1,8 @@
 package com.wedbackendservice.nextgen.service.notification;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
@@ -10,18 +10,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.springframework.web.servlet.function.RequestPredicates.contentType;
-
 /**
  * Gửi SMS OTP qua eSMS.
- * Logic gọi API giống hệt project smstest (đã chạy được).
  */
 @Service
 @Slf4j
@@ -30,7 +25,6 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
 
     private static final String SUCCESS_CODE = "100";
 
-    private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
     @Value("${app.sms.esms.api-url}")
@@ -50,15 +44,19 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
 
     @Value("${app.sms.esms.type:2}")
     private String smsType;
+
     @Value("${app.sms.esms.otp-template}")
     private String otpTemplate;
 
+    public record EsmsResponse(
+            @JsonProperty("CodeResult") String codeResult,
+            @JsonProperty("ErrorMessage") String errorMessage,
+            @JsonProperty("SMSID") String smsId
+    ) {}
+
     public EsmsGatewayServiceImpl(
-            ObjectMapper objectMapper,
             @Value("${app.sms.esms.connect-timeout-ms:5000}") int connectTimeoutMs,
             @Value("${app.sms.esms.read-timeout-ms:10000}") int readTimeoutMs) {
-        this.objectMapper = objectMapper;
-
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(java.time.Duration.ofMillis(connectTimeoutMs));
         factory.setReadTimeout(java.time.Duration.ofMillis(readTimeoutMs));
@@ -92,43 +90,28 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
         log.info("eSMS request: phone={}, type='{}', brandname='{}', sandbox='{}'",
                 maskPhone(normalizedPhone), smsType, brandname, sandbox);
 
-        String raw;
+        EsmsResponse response;
         try {
-            raw = restClient.post()
+            response = restClient.post()
                     .uri(apiUrl)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
-                    .body(String.class);
+                    .body(EsmsResponse.class);
         } catch (Exception e) {
             log.error("Không gọi được eSMS: {}", e.getMessage());
             throw new AppException(ErrorCode.SMS_SEND_FAILED);
         }
 
-        if (raw == null || raw.isBlank()) {
-            log.error("eSMS trả về phản hồi rỗng");
-            throw new AppException(ErrorCode.SMS_SEND_FAILED);
-        }
-
-        // Phản hồi của eSMS không chứa OTP nên log nguyên văn để dễ debug
-        log.info("Phản hồi thô từ eSMS: {}", raw);
-
-        JsonNode json;
-        try {
-            json = objectMapper.readTree(raw);
-        } catch (Exception e) {
-            log.error("Không đọc được phản hồi eSMS: {}", raw);
-            throw new AppException(ErrorCode.SMS_SEND_FAILED);
-        }
-
-        String code = json.path("CodeResult").asText();
-        if (!SUCCESS_CODE.equals(code)) {
-            log.error("eSMS lỗi {}: {} ({})", code, describeError(code), json.path("ErrorMessage").asText(""));
+        if (response == null || !SUCCESS_CODE.equals(response.codeResult())) {
+            String code = response != null ? response.codeResult() : "EMPTY";
+            String err = response != null ? response.errorMessage() : "Phản hồi rỗng";
+            log.error("eSMS lỗi {}: {} ({})", code, describeError(code), err);
             throw new AppException(ErrorCode.SMS_SEND_FAILED);
         }
 
         log.info("eSMS đã nhận yêu cầu gửi tới {} (SMSID={}, sandbox={})",
-                maskPhone(normalizedPhone), json.path("SMSID").asText(""), sandboxOn);
+                maskPhone(normalizedPhone), response.smsId(), sandboxOn);
     }
 
     private String normalizePhone(String phone) {

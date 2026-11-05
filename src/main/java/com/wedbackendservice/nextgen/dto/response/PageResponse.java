@@ -2,13 +2,14 @@ package com.wedbackendservice.nextgen.dto.response;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.experimental.SuperBuilder;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
 import java.util.function.Function;
 
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
@@ -29,5 +30,9 @@ public class PageResponse<T> {
                 .totalElements(p.getTotalElements())
                 .hasNext(p.hasNext())
                 .build();
+    }
+
+    public static <T> PageResponse<T> from(Page<T> p) {
+        return from(p, Function.identity());
     }
 }

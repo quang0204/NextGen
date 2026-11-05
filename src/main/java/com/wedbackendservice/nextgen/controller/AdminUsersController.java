@@ -1,16 +1,20 @@
 package com.wedbackendservice.nextgen.controller;
 
-import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.PageResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.*;
 import com.wedbackendservice.nextgen.dto.request.admin.CreateInternalUserRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserRoleRequest;
 import com.wedbackendservice.nextgen.dto.request.admin.UpdateUserStatusRequest;
+import com.wedbackendservice.nextgen.dto.response.ApiResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.AdminUserDetailResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.AdminUserItemResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.CreateInternalUserResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.UpdateUserRoleResponse;
+import com.wedbackendservice.nextgen.dto.response.admin.UpdateUserStatusResponse;
 import com.wedbackendservice.nextgen.service.AdminUsersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.prepost.PostAuthorize;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -38,79 +42,47 @@ public class AdminUsersController {
         int effectiveLimit = limit != null ? limit : (size != null ? size : 15);
         String effectiveSearch = search != null ? search : keyword;
 
-        PageResponse<AdminUserItemResponse> data = adminUsersService.getUsersList(
-                page, effectiveLimit, effectiveSearch, role, status, sortBy, sortDir);
-
-        return ApiResponse.<PageResponse<AdminUserItemResponse>>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy danh sách người dùng thành công!")
-                .data(data)
-                .build();
+        return ApiResponse.ok("Lấy danh sách người dùng thành công!",
+                adminUsersService.getUsersList(page, effectiveLimit, effectiveSearch, role, status, sortBy, sortDir));
     }
 
     /**
      * API 2.9: Xem hồ sơ toàn diện của một tài khoản (Profile, Addresses, ShoppingSummary, RecentOrders)
      */
     @GetMapping("/{userId}")
-    public ApiResponse<AdminUserDetailResponse> getUserDetail(
-            @PathVariable Long userId) {
-        return ApiResponse.<AdminUserDetailResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy chi tiết tài khoản thành công!")
-                .data(adminUsersService.getUserDetail(userId))
-                .build();
+    public ApiResponse<AdminUserDetailResponse> getUserDetail(@PathVariable Long userId) {
+        return ApiResponse.ok("Lấy chi tiết tài khoản thành công!", adminUsersService.getUserDetail(userId));
     }
 
     /**
      * API 2.10: Admin tạo tài khoản nội bộ trực tiếp cho nhân viên (STAFF) hoặc ADMIN
      */
-    @PostAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/internal")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CreateInternalUserResponse> createInternalUser(
-            @Valid @RequestBody CreateInternalUserRequest request) {
-        CreateInternalUserResponse response = adminUsersService.createInternalUser(request);
-        return ApiResponse.<CreateInternalUserResponse>builder()
-                .success(true)
-                .statusCode(201)
-                .message("Cấp tài khoản nhân viên nội bộ thành công!")
-                .data(response)
-                .build();
+    public ApiResponse<CreateInternalUserResponse> createInternalUser(@Valid @RequestBody CreateInternalUserRequest request) {
+        return ApiResponse.created("Cấp tài khoản nhân viên nội bộ thành công!", adminUsersService.createInternalUser(request));
     }
 
     /**
      * API 2.11: Khóa / Mở khóa tài khoản (kèm lý do lockReason, thu hồi JWT Session)
      */
-    @PostAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{userId}/status")
     public ApiResponse<UpdateUserStatusResponse> updateUserStatus(
             @PathVariable Long userId,
             @Valid @RequestBody UpdateUserStatusRequest request) {
-        UpdateUserStatusResponse response = adminUsersService.updateUserStatus(userId, request);
-        return ApiResponse.<UpdateUserStatusResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Cập nhật trạng thái tài khoản thành công!")
-                .data(response)
-                .build();
+        return ApiResponse.ok("Cập nhật trạng thái tài khoản thành công!", adminUsersService.updateUserStatus(userId, request));
     }
 
     /**
      * API 2.12: Thay đổi phân quyền RBAC của tài khoản người dùng
      */
-    @PostAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     @PatchMapping("/{userId}/role")
     public ApiResponse<UpdateUserRoleResponse> updateUserRole(
             @PathVariable Long userId,
             @Valid @RequestBody UpdateUserRoleRequest request) {
-        UpdateUserRoleResponse response = adminUsersService.updateUserRole(userId, request);
-        return ApiResponse.<UpdateUserRoleResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Thay đổi quyền hạn tài khoản thành công!")
-                .data(response)
-                .build();
+        return ApiResponse.ok("Thay đổi quyền hạn tài khoản thành công!", adminUsersService.updateUserRole(userId, request));
     }
 }

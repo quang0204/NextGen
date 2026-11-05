@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -23,17 +22,10 @@ public class PromotionsController {
      */
     @GetMapping("/active")
     public ApiResponse<List<ActivePromotionResponse>> getActivePromotions() {
-        List<ActivePromotionResponse> responseData = promotionsService.getActivePromotions();
-        String message = responseData.isEmpty()
+        List<ActivePromotionResponse> data = promotionsService.getActivePromotions();
+        String message = data.isEmpty()
                 ? "Hiện tại không có chiến dịch Flash Sale nào đang hoạt động"
                 : "Lấy danh sách khuyến mãi đang diễn ra thành công";
-
-        return ApiResponse.<List<ActivePromotionResponse>>builder()
-                .success(true)
-                .statusCode(200)
-                .message(message)
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok(message, data);
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -95,6 +96,7 @@ public class ShipmentsService {
     /**
      * API 9.2: Quản trị danh sách vận đơn (Admin Portal) (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     public PageResponse<AdminShipmentItemResponse> getAdminShipments(int page, int size, String carrier, String status, String search) {
         securityHelper.authenticateStaffOrAdmin();
 

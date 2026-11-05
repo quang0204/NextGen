@@ -10,7 +10,7 @@ import java.util.Set;
 
 public final class PaginationUtil {
 
-    public static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(10, 15, 20, 50, 100);
+    public static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(5, 10, 15, 20, 50, 100);
     public static final int DEFAULT_PAGE = 1;
     public static final int DEFAULT_SIZE = 15;
 

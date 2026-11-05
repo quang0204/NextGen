@@ -1,7 +1,9 @@
 package com.wedbackendservice.nextgen.service;
 
+import com.wedbackendservice.nextgen.util.DateTimeUtil;
+
 import com.wedbackendservice.nextgen.dto.request.inventory.InventoryAdjustmentRequest;
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.inventory.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.exception.AppException;
@@ -42,15 +44,6 @@ public class InventoriesService {
     private final ProductVariantRepository productVariantRepository;
     private final AuditLogRepository auditLogRepository;
 
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
-
-    private String formatIsoInstant(LocalDateTime ldt) {
-        if (ldt == null) {
-            return null;
-        }
-        return ISO_FORMATTER.format(ldt.atZone(ZoneId.systemDefault()).toInstant());
-    }
-
     private String determineStatus(int availableQty, int minThreshold) {
         if (availableQty <= 0) {
             return "OUT_OF_STOCK";
@@ -64,6 +57,7 @@ public class InventoriesService {
     /**
      * API 5.1: [GET] /api/v1/admin/inventories — Bảng theo dõi tồn kho biến thể SKU (STAFF / ADMIN)
      */
+    @Transactional(readOnly = true)
     public AdminInventoryListResponse getAdminInventories(int page, int size, String keyword, String status, Boolean lowStockOnly) {
         securityHelper.authenticateStaffOrAdmin();
 
@@ -134,7 +128,7 @@ public class InventoriesService {
                     .availableQty(available)
                     .minThreshold(threshold)
                     .status(itemStatus)
-                    .updatedAt(formatIsoInstant(inv.getUpdatedAt()))
+                    .updatedAt(DateTimeUtil.formatIsoInstant(inv.getUpdatedAt()))
                     .build();
         }).toList();
 
@@ -160,16 +154,13 @@ public class InventoriesService {
                 .lowStockCount(lowStockCount)
                 .build();
 
-        PaginationResponse pagination = PaginationResponse.builder()
+        return AdminInventoryListResponse.builder()
+                .content(items)
                 .page(pageResult.getNumber() + 1)
                 .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
+                .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
-                .build();
-
-        return AdminInventoryListResponse.builder()
-                .items(items)
-                .pagination(pagination)
+                .hasNext(pageResult.hasNext())
                 .summary(summary)
                 .build();
     }
@@ -177,6 +168,7 @@ public class InventoriesService {
     /**
      * API 5.2: [GET] /api/v1/admin/inventories/{varId} — Chi tiết tồn kho biến thể SKU (STAFF / ADMIN)
      */
+    @Transactional(readOnly = true)
     public AdminInventoryDetailResponse getInventoryDetail(Long varId) {
         securityHelper.authenticateStaffOrAdmin();
 
@@ -223,7 +215,7 @@ public class InventoriesService {
                     .orderId(txn.getOrder() != null ? txn.getOrder().getOrderId() : null)
                     .reason(txn.getReason())
                     .performedBy(performedBy)
-                    .performedAt(formatIsoInstant(txn.getCreatedAt()))
+                    .performedAt(DateTimeUtil.formatIsoInstant(txn.getCreatedAt()))
                     .build();
         }).toList();
 
@@ -244,7 +236,7 @@ public class InventoriesService {
                 .minThreshold(threshold)
                 .status(itemStatus)
                 .recentTransactions(recentTxns)
-                .updatedAt(formatIsoInstant(inventory.getUpdatedAt()))
+                .updatedAt(DateTimeUtil.formatIsoInstant(inventory.getUpdatedAt()))
                 .build();
     }
 
@@ -302,14 +294,8 @@ public class InventoriesService {
         txn = inventoryTransactionRepository.save(txn);
 
         // Ghi Audit Log (D18)
-        auditLogRepository.save(AuditLog.builder()
-                .user(currentUser)
-                .action("INVENTORY_ADJUSTMENT")
-                .entityName("Inventories")
-                .entityId(inventory.getInventoryId())
-                .oldValue("on_hand_qty: " + qtyBefore)
-                .newValue("on_hand_qty: " + qtyActual + ", reason: " + request.getReason())
-                .build());
+        auditLogRepository.log(currentUser, "INVENTORY_ADJUSTMENT", "Inventories", inventory.getInventoryId(),
+                "on_hand_qty: " + qtyBefore, "on_hand_qty: " + qtyActual + ", reason: " + request.getReason());
 
         String performedByName = currentUser.getFullName() != null
                 ? currentUser.getFullName() + " (" + (currentUser.getRole() != null ? currentUser.getRole().name() : "Thủ kho") + ")"
@@ -331,14 +317,15 @@ public class InventoriesService {
                 .availableQty(availableQty)
                 .reason(request.getReason())
                 .performedBy(performedByName)
-                .performedAt(formatIsoInstant(txn.getCreatedAt()))
+                .performedAt(DateTimeUtil.formatIsoInstant(txn.getCreatedAt()))
                 .build();
     }
 
     /**
      * API 5.4: [GET] /api/v1/admin/inventories/transactions — Sổ cái biến động kho bất biến (STAFF / ADMIN)
      */
-    public AdminInventoryTransactionListResponse getInventoryTransactions(
+    @Transactional(readOnly = true)
+    public PageResponse<InventoryTransactionItemResponse> getInventoryTransactions(
             int page, int size, String formCode, String txnType, String startDate, String endDate) {
         securityHelper.authenticateStaffOrAdmin();
 
@@ -414,27 +401,25 @@ public class InventoriesService {
                     .orderId(txn.getOrder() != null ? txn.getOrder().getOrderId() : null)
                     .reason(txn.getReason())
                     .performedBy(performedBy)
-                    .performedAt(formatIsoInstant(txn.getCreatedAt()))
+                    .performedAt(DateTimeUtil.formatIsoInstant(txn.getCreatedAt()))
                     .build();
         }).toList();
 
-        PaginationResponse pagination = PaginationResponse.builder()
+        return PageResponse.<InventoryTransactionItemResponse>builder()
+                .content(items)
                 .page(pageResult.getNumber() + 1)
                 .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
+                .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
-                .build();
-
-        return AdminInventoryTransactionListResponse.builder()
-                .items(items)
-                .pagination(pagination)
+                .hasNext(pageResult.hasNext())
                 .build();
     }
 
     /**
      * API 5.5: [GET] /api/v1/admin/inventories/low-stock — Cảnh báo biến thể chạm ngưỡng an toàn (STAFF / ADMIN)
      */
-    public LowStockAlertResponse getLowStockAlerts(int page, int size) {
+    @Transactional(readOnly = true)
+    public PageResponse<LowStockItemResponse> getLowStockAlerts(int page, int size) {
         securityHelper.authenticateStaffOrAdmin();
 
         int safePage = Math.max(page, 1) - 1;
@@ -480,9 +465,13 @@ public class InventoriesService {
                     .build();
         }).toList();
 
-        return LowStockAlertResponse.builder()
-                .totalAlerts((int) pageResult.getTotalElements())
-                .items(items)
+        return PageResponse.<LowStockItemResponse>builder()
+                .content(items)
+                .page(pageResult.getNumber() + 1)
+                .size(pageResult.getSize())
+                .totalElements(pageResult.getTotalElements())
+                .totalPages(pageResult.getTotalPages())
+                .hasNext(pageResult.hasNext())
                 .build();
     }
 }

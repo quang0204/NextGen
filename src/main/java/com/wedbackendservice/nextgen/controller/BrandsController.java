@@ -19,26 +19,15 @@ public class BrandsController {
      * API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho Staff)
      */
     @GetMapping
-    public ApiResponse<List<BrandResponse>> getBrands(
-            @RequestParam(defaultValue = "false") boolean includeHidden) {
-        return ApiResponse.<List<BrandResponse>>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy danh sách thương hiệu thành công")
-                .data(categoriesAndBrandsService.getBrands(includeHidden))
-                .build();
+    public ApiResponse<List<BrandResponse>> getBrands(@RequestParam(defaultValue = "false") boolean includeHidden) {
+        return ApiResponse.ok("Lấy danh sách thương hiệu thành công", categoriesAndBrandsService.getBrands(includeHidden));
     }
 
     /**
      * API 3.7: Chi tiết thương hiệu (Public)
      */
     @GetMapping("/{id}")
-    public ApiResponse<BrandResponse> getBrandById(
-            @PathVariable Long id) {
-        return ApiResponse.<BrandResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .data(categoriesAndBrandsService.getBrandById(id))
-                .build();
+    public ApiResponse<BrandResponse> getBrandById(@PathVariable Long id) {
+        return ApiResponse.ok(categoriesAndBrandsService.getBrandById(id));
     }
 }

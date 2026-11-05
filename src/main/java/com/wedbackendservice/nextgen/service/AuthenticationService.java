@@ -401,12 +401,7 @@ public class AuthenticationService {
 
         tokenRedisService.deleteToken(user.getUserId());
 
-        auditLogRepository.save(AuditLog.builder()
-                .action("PASSWORD_RESET")
-                .entityName("User")
-                .entityId(user.getUserId())
-                .user(user)
-                .build());
+        auditLogRepository.log(user, "PASSWORD_RESET", "User", user.getUserId(), null, null);
 
         notificationRepository.save(buildNotification(user,
                 "Mật khẩu đã thay đổi",
@@ -520,15 +515,7 @@ public class AuthenticationService {
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
 
-        AuditLog auditLog = AuditLog.builder()
-                .user(user)
-                .action("CHANGE_PASSWORD")
-                .entityName("User")
-                .entityId(user.getUserId())
-                .oldValue("HASH_PROTECTED")
-                .newValue("HASH_UPDATED")
-                .build();
-        auditLogRepository.save(auditLog);
+        auditLogRepository.log(user, "CHANGE_PASSWORD", "User", user.getUserId(), "HASH_PROTECTED", "HASH_UPDATED");
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         Notification notification = Notification.builder()

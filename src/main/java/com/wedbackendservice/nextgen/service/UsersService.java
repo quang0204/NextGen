@@ -110,14 +110,7 @@ public class UsersService {
                     escapeJson(newFullName), escapeJson(newPhone), escapeJson(newEmail));
 
             // 4. Ghi vết kiểm toán vào Audit_Logs
-            auditLogRepository.save(AuditLog.builder()
-                    .user(user)
-                    .action("UPDATE_PROFILE")
-                    .entityName("Users")
-                    .entityId(user.getUserId())
-                    .oldValue(oldJson)
-                    .newValue(newJson)
-                    .build());
+            auditLogRepository.log(user, "UPDATE_PROFILE", "Users", user.getUserId(), oldJson, newJson);
         }
 
         return usersMapper.toUserProfileResponse(user);

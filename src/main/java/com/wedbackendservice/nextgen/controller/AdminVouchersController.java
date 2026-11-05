@@ -2,7 +2,8 @@ package com.wedbackendservice.nextgen.controller;
 
 import com.wedbackendservice.nextgen.dto.request.voucher.CreateVoucherRequest;
 import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.voucher.AdminVoucherListResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
+import com.wedbackendservice.nextgen.dto.response.voucher.AdminVoucherItemResponse;
 import com.wedbackendservice.nextgen.dto.response.voucher.CreateVoucherResponse;
 import com.wedbackendservice.nextgen.dto.response.voucher.ToggleVoucherResponse;
 import com.wedbackendservice.nextgen.service.VouchersService;
@@ -10,8 +11,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.Instant;
 
 @RestController
 @RequestMapping("/api/v1/admin/vouchers")
@@ -24,21 +23,13 @@ public class AdminVouchersController {
      * API 6.7: [GET] /api/v1/admin/vouchers — Quản trị danh sách mã giảm giá (Portal) (STAFF / ADMIN)
      */
     @GetMapping
-    public ApiResponse<AdminVoucherListResponse> getAdminVouchers(
+    public ApiResponse<PageResponse<AdminVoucherItemResponse>> getAdminVouchers(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "ALL") String status) {
-
-        AdminVoucherListResponse responseData = vouchersService.getAdminVouchers(page, size, keyword, status);
-
-        return ApiResponse.<AdminVoucherListResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy danh sách mã giảm giá quản trị thành công")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok("Lấy danh sách mã giảm giá quản trị thành công",
+                vouchersService.getAdminVouchers(page, size, keyword, status));
     }
 
     /**
@@ -46,18 +37,8 @@ public class AdminVouchersController {
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CreateVoucherResponse> createVoucher(
-            @Valid @RequestBody CreateVoucherRequest request) {
-
-        CreateVoucherResponse responseData = vouchersService.createVoucher(request);
-
-        return ApiResponse.<CreateVoucherResponse>builder()
-                .success(true)
-                .statusCode(201)
-                .message("Khởi tạo mã Voucher thành công!")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+    public ApiResponse<CreateVoucherResponse> createVoucher(@Valid @RequestBody CreateVoucherRequest request) {
+        return ApiResponse.created("Khởi tạo mã Voucher thành công!", vouchersService.createVoucher(request));
     }
 
     /**
@@ -65,14 +46,6 @@ public class AdminVouchersController {
      */
     @PatchMapping("/{id:[0-9]+}/toggle")
     public ApiResponse<ToggleVoucherResponse> toggleVoucher(@PathVariable Long id) {
-        ToggleVoucherResponse responseData = vouchersService.toggleVoucher(id);
-
-        return ApiResponse.<ToggleVoucherResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Thay đổi trạng thái kích hoạt Voucher thành công!")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok("Thay đổi trạng thái kích hoạt Voucher thành công!", vouchersService.toggleVoucher(id));
     }
 }

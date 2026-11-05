@@ -1,19 +1,17 @@
 package com.wedbackendservice.nextgen.dto.response.order;
 
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
+import lombok.experimental.SuperBuilder;
 
 @Getter
 @Setter
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AdminOrderListResponse {
-    List<AdminOrderItemResponse> items;
+public class AdminOrderListResponse extends PageResponse<AdminOrderItemResponse> {
     PipelineSummaryResponse pipelineSummary;
-    PaginationResponse pagination;
 }

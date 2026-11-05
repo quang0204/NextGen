@@ -1,19 +1,17 @@
 package com.wedbackendservice.nextgen.dto.response.inventory;
 
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
+import lombok.experimental.SuperBuilder;
 
 @Getter
 @Setter
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public class AdminInventoryListResponse {
-    List<InventoryItemResponse> items;
-    PaginationResponse pagination;
+public class AdminInventoryListResponse extends PageResponse<InventoryItemResponse> {
     InventorySummaryResponse summary;
 }

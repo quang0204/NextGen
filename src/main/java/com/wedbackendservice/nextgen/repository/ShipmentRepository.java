@@ -11,21 +11,23 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface ShipmentRepository extends JpaRepository<Shipment, Long>, JpaSpecificationExecutor<Shipment> {
 
-    Optional<Shipment> findByTrackingNumber(String trackingNumber);
-
-    List<Shipment> findAllByOrder_OrderCode(String orderCode);
-
     Optional<Shipment> findFirstByOrder_OrderId(Long orderId);
 
-    Optional<Shipment> findFirstByOrder_OrderCode(String orderCode);
+    List<Shipment> findByOrder_OrderIdIn(Collection<Long> orderIds);
 
-    @Query("SELECT s FROM Shipment s LEFT JOIN s.order o WHERE s.trackingNumber = :code OR o.orderCode = :code")
+    @Query("""
+    SELECT s FROM Shipment s
+    LEFT JOIN s.order o
+    WHERE s.trackingNumber = :code
+       OR o.orderCode = :code
+    ORDER BY s.createdAt DESC""")
     List<Shipment> findListByTrackingCodeOrOrderCode(@Param("code") String code);
 
     default Optional<Shipment> findByTrackingCodeOrOrderCode(String code) {

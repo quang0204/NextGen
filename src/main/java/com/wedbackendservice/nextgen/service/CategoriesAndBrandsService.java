@@ -48,6 +48,7 @@ public class CategoriesAndBrandsService {
     /**
      * API 3.1: Lấy cây danh mục phân cấp cha/con (Public, bảo vệ includeHidden)
      */
+    @Transactional(readOnly = true)
     public List<CategoryResponse> getCategoriesTree(boolean includeHidden) {
         boolean canSeeHidden = includeHidden && isStaffOrAdmin();
 
@@ -99,6 +100,7 @@ public class CategoriesAndBrandsService {
     /**
      * API 3.2: Chi tiết danh mục sản phẩm (Public, chặn ẩn với khách vãng lai)
      */
+    @Transactional(readOnly = true)
     public CategoryResponse getCategoryById(Long id) {
         Category cat = categoryRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
@@ -159,13 +161,7 @@ public class CategoriesAndBrandsService {
 
         Category saved = categoryRepository.save(category);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("CREATE_CATEGORY")
-                .entityName("Category")
-                .entityId(saved.getCategoryId())
-                .newValue(saved.getCategoryName())
-                .build());
+        auditLogRepository.log(operator, "CREATE_CATEGORY", "Category", saved.getCategoryId(), null, saved.getCategoryName());
         CategoryResponse resp = categoryMapper.tocategoryResponse(saved);
         resp.setProductCount(0);
         return resp;
@@ -233,14 +229,7 @@ public class CategoriesAndBrandsService {
 
         Category updated = categoryRepository.save(category);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("UPDATE_CATEGORY")
-                .entityName("Category")
-                .entityId(id)
-                .oldValue(oldValue)
-                .newValue(updated.getCategoryName())
-                .build());
+        auditLogRepository.log(operator, "UPDATE_CATEGORY", "Category", id, oldValue, updated.getCategoryName());
 
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
         CategoryResponse resp = categoryMapper.tocategoryResponse(updated);
@@ -272,14 +261,7 @@ public class CategoriesAndBrandsService {
 
         categoryRepository.delete(category);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("DELETE_CATEGORY")
-                .entityName("Category")
-                .entityId(id)
-                .oldValue(category.getCategoryName())
-                .createdAt(LocalDateTime.now())
-                .build());
+        auditLogRepository.log(operator, "DELETE_CATEGORY", "Category", id, category.getCategoryName(), null);
     }
 
     // =========================================================================
@@ -289,6 +271,7 @@ public class CategoriesAndBrandsService {
     /**
      * API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho staff)
      */
+    @Transactional(readOnly = true)
     public List<BrandResponse> getBrands(boolean includeHidden) {
         boolean canSeeHidden = includeHidden && isStaffOrAdmin();
 
@@ -305,6 +288,7 @@ public class CategoriesAndBrandsService {
     /**
      * API 3.7: Chi tiết thương hiệu và logo (Public, chặn ẩn với khách vãng lai)
      */
+    @Transactional(readOnly = true)
     public BrandResponse getBrandById(Long id) {
         Brand brand = brandRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
@@ -354,14 +338,7 @@ public class CategoriesAndBrandsService {
 
         Brand saved = brandRepository.save(brand);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("CREATE_BRAND")
-                .entityName("Brand")
-                .entityId(saved.getBrandId())
-                .newValue(saved.getBrandName())
-                .createdAt(LocalDateTime.now())
-                .build());
+        auditLogRepository.log(operator, "CREATE_BRAND", "Brand", saved.getBrandId(), null, saved.getBrandName());
 
         return toBrandResponse(saved, 0);
     }
@@ -405,15 +382,7 @@ public class CategoriesAndBrandsService {
 
         Brand updated = brandRepository.save(brand);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("UPDATE_BRAND")
-                .entityName("Brand")
-                .entityId(id)
-                .oldValue(oldValue)
-                .newValue(updated.getBrandName())
-                .createdAt(LocalDateTime.now())
-                .build());
+        auditLogRepository.log(operator, "UPDATE_BRAND", "Brand", id, oldValue, updated.getBrandName());
 
         int totalProducts = (int) productRepository.countByBrand_BrandId(id);
         return toBrandResponse(updated, totalProducts);
@@ -437,13 +406,7 @@ public class CategoriesAndBrandsService {
 
         brandRepository.delete(brand);
 
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("DELETE_BRAND")
-                .entityName("Brand")
-                .entityId(id)
-                .oldValue(brand.getBrandName())
-                .build());
+        auditLogRepository.log(operator, "DELETE_BRAND", "Brand", id, brand.getBrandName(), null);
     }
 
     // =========================================================================

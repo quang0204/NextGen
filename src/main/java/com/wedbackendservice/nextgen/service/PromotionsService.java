@@ -1,9 +1,11 @@
 package com.wedbackendservice.nextgen.service;
 
+import com.wedbackendservice.nextgen.util.DateTimeUtil;
+
 import com.wedbackendservice.nextgen.dto.request.promotion.CreatePromotionRequest;
 import com.wedbackendservice.nextgen.dto.request.promotion.PromotionVariantItemRequest;
 import com.wedbackendservice.nextgen.dto.request.promotion.UpdatePromotionStatusRequest;
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
 import com.wedbackendservice.nextgen.dto.response.promotion.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.exception.AppException;
@@ -31,6 +33,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -43,15 +47,6 @@ public class PromotionsService {
     private final ProductVariantRepository productVariantRepository;
     private final InventoryRepository inventoryRepository;
     private final AuditLogRepository auditLogRepository;
-
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
-
-    private String formatIsoInstant(LocalDateTime ldt) {
-        if (ldt == null) {
-            return null;
-        }
-        return ISO_FORMATTER.format(ldt.atZone(ZoneId.systemDefault()).toInstant());
-    }
 
     private LocalDateTime parseIsoDateTime(String text, String fieldName) {
         if (!StringUtils.hasText(text)) {
@@ -71,6 +66,7 @@ public class PromotionsService {
     /**
      * API 6.1: [GET] /api/v1/promotions/active — Danh sách Flash Sale đang diễn ra (Public)
      */
+    @Transactional(readOnly = true)
     public List<ActivePromotionResponse> getActivePromotions() {
         LocalDateTime now = LocalDateTime.now();
         List<Promotion> promotions = promotionRepository.findActivePromotions(now);
@@ -119,8 +115,8 @@ public class PromotionsService {
                     .promotionId(p.getPromotionId())
                     .name(p.getName())
                     .description(p.getDescription())
-                    .startAt(formatIsoInstant(p.getStartDate()))
-                    .endAt(formatIsoInstant(p.getEndDate()))
+                    .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
+                    .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
                     .status(p.resolveStatus(now))
                     .variants(variantResponses)
                     .build());
@@ -132,7 +128,8 @@ public class PromotionsService {
     /**
      * API 6.2: [GET] /api/v1/admin/promotions — Quản lý chiến dịch khuyến mãi (STAFF / ADMIN)
      */
-    public AdminPromotionListResponse getAdminPromotions(int page, int size, String status) {
+    @Transactional(readOnly = true)
+    public PageResponse<AdminPromotionItemResponse> getAdminPromotions(int page, int size, String status) {
         securityHelper.authenticateStaffOrAdmin();
 
         int safePage = Math.max(page, 1) - 1;
@@ -148,10 +145,17 @@ public class PromotionsService {
         };
 
         Page<Promotion> pageResult = promotionRepository.findAll(spec, pageable);
+        List<Promotion> promotions = pageResult.getContent();
+        List<Long> promoIds = promotions.stream().map(Promotion::getPromotionId).toList();
+        Map<Long, Integer> variantsCountMap = promoIds.isEmpty() ? Map.of() :
+                promotionVariantRepository.countByPromotionIds(promoIds).stream()
+                        .filter(r -> r != null && r[0] != null && r[1] != null)
+                        .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
+
         LocalDateTime now = LocalDateTime.now();
 
-        List<AdminPromotionItemResponse> items = pageResult.getContent().stream().map(p -> {
-            int appliedVariantsCount = (int) promotionVariantRepository.countByPromotion_PromotionId(p.getPromotionId());
+        List<AdminPromotionItemResponse> items = promotions.stream().map(p -> {
+            int appliedVariantsCount = variantsCountMap.getOrDefault(p.getPromotionId(), 0);
             String createdByName = "Admin";
             if (p.getCreatedBy() != null) {
                 createdByName = p.getCreatedBy().getFullName() != null
@@ -163,25 +167,22 @@ public class PromotionsService {
                     .promotionId(p.getPromotionId())
                     .name(p.getName())
                     .description(p.getDescription())
-                    .startAt(formatIsoInstant(p.getStartDate()))
-                    .endAt(formatIsoInstant(p.getEndDate()))
+                    .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
+                    .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
                     .status(p.resolveStatus(now))
                     .appliedVariantsCount(appliedVariantsCount)
                     .createdBy(createdByName)
-                    .createdAt(formatIsoInstant(p.getCreatedAt()))
+                    .createdAt(DateTimeUtil.formatIsoInstant(p.getCreatedAt()))
                     .build();
         }).toList();
 
-        PaginationResponse pagination = PaginationResponse.builder()
+        return PageResponse.<AdminPromotionItemResponse>builder()
+                .content(items)
                 .page(pageResult.getNumber() + 1)
                 .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
+                .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
-                .build();
-
-        return AdminPromotionListResponse.builder()
-                .items(items)
-                .pagination(pagination)
+                .hasNext(pageResult.hasNext())
                 .build();
     }
 
@@ -242,22 +243,17 @@ public class PromotionsService {
         }
 
         // Ghi Audit Log (D18)
-        auditLogRepository.save(AuditLog.builder()
-                .user(currentUser)
-                .action("CREATE_PROMOTION")
-                .entityName("Promotions")
-                .entityId(savedPromotion.getPromotionId())
-                .newValue("Tạo mới chiến dịch: " + savedPromotion.getName() + " kèm " + variants.size() + " biến thể")
-                .build());
+        auditLogRepository.log(currentUser, "CREATE_PROMOTION", "Promotions", savedPromotion.getPromotionId(),
+                null, "Tạo mới chiến dịch: " + savedPromotion.getName() + " kèm " + variants.size() + " biến thể");
 
         return CreatePromotionResponse.builder()
                 .promotionId(savedPromotion.getPromotionId())
                 .name(savedPromotion.getName())
                 .appliedVariantsCount(variants.size())
                 .status(savedPromotion.getStatus())
-                .startAt(formatIsoInstant(savedPromotion.getStartDate()))
-                .endAt(formatIsoInstant(savedPromotion.getEndDate()))
-                .createdAt(formatIsoInstant(savedPromotion.getCreatedAt() != null ? savedPromotion.getCreatedAt() : LocalDateTime.now()))
+                .startAt(DateTimeUtil.formatIsoInstant(savedPromotion.getStartDate()))
+                .endAt(DateTimeUtil.formatIsoInstant(savedPromotion.getEndDate()))
+                .createdAt(DateTimeUtil.formatIsoInstant(savedPromotion.getCreatedAt() != null ? savedPromotion.getCreatedAt() : LocalDateTime.now()))
                 .build();
     }
 
@@ -284,19 +280,13 @@ public class PromotionsService {
         promotionRepository.save(promotion);
 
         // Ghi Audit Log (D18)
-        auditLogRepository.save(AuditLog.builder()
-                .user(currentUser)
-                .action("UPDATE_PROMOTION_STATUS")
-                .entityName("Promotions")
-                .entityId(promotion.getPromotionId())
-                .oldValue(oldStatus)
-                .newValue(newStatus + (StringUtils.hasText(request.getReason()) ? " | Lý do: " + request.getReason() : ""))
-                .build());
+        auditLogRepository.log(currentUser, "UPDATE_PROMOTION_STATUS", "Promotions", promotion.getPromotionId(),
+                oldStatus, newStatus + (StringUtils.hasText(request.getReason()) ? " | Lý do: " + request.getReason() : ""));
 
         return UpdatePromotionStatusResponse.builder()
                 .promotionId(promotion.getPromotionId())
                 .status(promotion.getStatus())
-                .updatedAt(formatIsoInstant(promotion.getUpdatedAt()))
+                .updatedAt(DateTimeUtil.formatIsoInstant(promotion.getUpdatedAt()))
                 .build();
     }
 }

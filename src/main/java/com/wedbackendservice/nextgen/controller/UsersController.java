@@ -1,9 +1,9 @@
 package com.wedbackendservice.nextgen.controller;
 
-import com.wedbackendservice.nextgen.dto.response.ApiResponse;
-import com.wedbackendservice.nextgen.dto.response.user.*;
 import com.wedbackendservice.nextgen.dto.request.user.UpdateUserProfileRequest;
 import com.wedbackendservice.nextgen.dto.request.user.UserAddressRequest;
+import com.wedbackendservice.nextgen.dto.response.ApiResponse;
+import com.wedbackendservice.nextgen.dto.response.user.*;
 import com.wedbackendservice.nextgen.service.UsersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,40 +24,15 @@ public class UsersController {
      */
     @GetMapping("/profile")
     public ApiResponse<UserProfileResponse> getUserProfile() {
-        return ApiResponse.<UserProfileResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy thông tin tài khoản thành công!")
-                .data(usersService.getUserProfile())
-                .build();
+        return ApiResponse.ok("Lấy thông tin tài khoản thành công!", usersService.getUserProfile());
     }
-
-//    /**
-//     * API gửi mã OTP xác nhận cập nhật thông tin email/sđt
-//     */
-//    @PostMapping("/profile/otp")
-//    public ApiResponse<Void> sendProfileUpdateOtp(
-//            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-//        usersService.sendProfileUpdateOtp();
-//        return ApiResponse.<Void>builder()
-//                .success(true)
-//                .statusCode(200)
-//                .message("Mã OTP xác thực đã được gửi về email của bạn.")
-//                .build();
-//    }
 
     /**
      * API 2.2: Cập nhật thông tin cá nhân
      */
     @PutMapping("/profile")
-    public ApiResponse<UserProfileResponse> updateUserProfile(
-            @Valid @RequestBody UpdateUserProfileRequest request) {
-        return ApiResponse.<UserProfileResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Cập nhật hồ sơ cá nhân thành công!")
-                .data(usersService.updateUserProfile( request))
-                .build();
+    public ApiResponse<UserProfileResponse> updateUserProfile(@Valid @RequestBody UpdateUserProfileRequest request) {
+        return ApiResponse.ok("Cập nhật hồ sơ cá nhân thành công!", usersService.updateUserProfile(request));
     }
 
     /**
@@ -65,12 +40,7 @@ public class UsersController {
      */
     @GetMapping("/addresses")
     public ApiResponse<List<UserAddressItemResponse>> getUserAddresses() {
-        return ApiResponse.<List<UserAddressItemResponse>>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy sổ địa chỉ thành công!")
-                .data(usersService.getUserAddresses())
-                .build();
+        return ApiResponse.ok("Lấy sổ địa chỉ thành công!", usersService.getUserAddresses());
     }
 
     /**
@@ -78,14 +48,8 @@ public class UsersController {
      */
     @PostMapping("/addresses")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<CreateAddressResponse> createUserAddress(
-            @Valid @RequestBody UserAddressRequest request) {
-        return ApiResponse.<CreateAddressResponse>builder()
-                .success(true)
-                .statusCode(201)
-                .message("Thêm địa chỉ giao hàng mới thành công!")
-                .data(usersService.createUserAddress(request))
-                .build();
+    public ApiResponse<CreateAddressResponse> createUserAddress(@Valid @RequestBody UserAddressRequest request) {
+        return ApiResponse.created("Thêm địa chỉ giao hàng mới thành công!", usersService.createUserAddress(request));
     }
 
     /**
@@ -95,39 +59,22 @@ public class UsersController {
     public ApiResponse<UserAddressItemResponse> updateUserAddress(
             @PathVariable Long addressId,
             @Valid @RequestBody UserAddressRequest request) {
-        return ApiResponse.<UserAddressItemResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Cập nhật địa chỉ nhận hàng thành công!")
-                .data(usersService.updateUserAddress(addressId, request))
-                .build();
+        return ApiResponse.ok("Cập nhật địa chỉ nhận hàng thành công!", usersService.updateUserAddress(addressId, request));
     }
 
     /**
      * API 2.6: Đặt địa chỉ làm mặc định
      */
     @PatchMapping("/addresses/{addressId}/default")
-    public ApiResponse<SetDefaultAddressResponse> setDefaultAddress(
-            @PathVariable Long addressId) {
-        return ApiResponse.<SetDefaultAddressResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã đặt địa chỉ ID " + addressId + " làm mặc định thành công!")
-                .data(usersService.setDefaultAddress(addressId))
-                .build();
+    public ApiResponse<SetDefaultAddressResponse> setDefaultAddress(@PathVariable Long addressId) {
+        return ApiResponse.ok("Đã đặt địa chỉ ID " + addressId + " làm mặc định thành công!", usersService.setDefaultAddress(addressId));
     }
 
     /**
      * API 2.7: Xóa địa chỉ khỏi sổ địa chỉ
      */
     @DeleteMapping("/addresses/{addressId}")
-    public ApiResponse<DeleteAddressResponse> deleteUserAddress(
-            @PathVariable Long addressId) {
-        return ApiResponse.<DeleteAddressResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã xóa địa chỉ nhận hàng thành công!")
-                .data(usersService.deleteUserAddress(addressId))
-                .build();
+    public ApiResponse<DeleteAddressResponse> deleteUserAddress(@PathVariable Long addressId) {
+        return ApiResponse.ok("Đã xóa địa chỉ nhận hàng thành công!", usersService.deleteUserAddress(addressId));
     }
 }

@@ -1,7 +1,10 @@
 package com.wedbackendservice.nextgen.service;
 
+import com.wedbackendservice.nextgen.util.DateTimeUtil;
+
 import com.wedbackendservice.nextgen.dto.request.order.*;
-import com.wedbackendservice.nextgen.dto.response.admin.PaginationResponse;
+import com.wedbackendservice.nextgen.dto.response.PageResponse;
+import com.wedbackendservice.nextgen.util.PaginationUtil;
 import com.wedbackendservice.nextgen.dto.response.order.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.Role;
@@ -30,6 +33,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -49,16 +53,7 @@ public class OrdersService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final AuditLogRepository auditLogRepository;
-
-    private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_INSTANT;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
-
-    private String formatIsoInstant(LocalDateTime ldt) {
-        if (ldt == null) {
-            return null;
-        }
-        return ISO_FORMATTER.format(ldt.atZone(ZoneId.systemDefault()).toInstant());
-    }
 
     /**
      * API 8.1: [POST] /api/v1/orders — Đặt hàng Checkout (Khởi tạo MB01 & Giữ chỗ tồn kho) (Authenticated)
@@ -168,9 +163,11 @@ public class OrdersService {
                 voucherDiscount = fixedVal.min(subtotal);
             }
 
-            // Tăng số lượt dùng voucher
-            appliedVoucher.setUsedCount(used + 1);
-            voucherRepository.save(appliedVoucher);
+            // Tăng số lượt dùng voucher nguyên tử (chống race condition vượt usage_limit)
+            int voucherUpdated = voucherRepository.incrementUsedCountAtomic(appliedVoucher.getVoucherId());
+            if (voucherUpdated == 0) {
+                throw new AppException(ErrorCode.ERR_VOUCHER_LIMIT_REACHED, "Mã giảm giá '" + vCode + "' vừa hết lượt sử dụng!");
+            }
         }
 
         BigDecimal shippingFee = BigDecimal.ZERO;
@@ -179,10 +176,13 @@ public class OrdersService {
             totalAmount = BigDecimal.ZERO;
         }
 
-        // 4. Sinh mã đơn hàng (#DH-YYYYMMDD-XXXX - Phiếu MB01)
+        // 4. Sinh mã đơn hàng an toàn chống trùng lặp (#DH-YYYYMMDD-XXXXXX - Phiếu MB01)
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String randomSuffix = String.format("%04d", (int) (Math.random() * 9000) + 1000);
-        String orderCode = "DH-" + dateStr + "-" + randomSuffix;
+        String orderCode;
+        do {
+            String randomSuffix = String.format("%06d", (int) (Math.random() * 900000) + 100000);
+            orderCode = "DH-" + dateStr + "-" + randomSuffix;
+        } while (orderRepository.existsByOrderCode(orderCode));
 
         String payMethod = StringUtils.hasText(request.getPaymentMethod()) ? request.getPaymentMethod().trim().toUpperCase() : "COD";
         String payStatus = "UNPAID";
@@ -207,18 +207,19 @@ public class OrdersService {
 
         Order savedOrder = orderRepository.save(order);
 
-        // 5. Lưu Order Items & TỰ ĐỘNG GIỮ CHỖ KHO (reserved_qty += quantity)
+        // 5. Lưu Order Items & TỰ ĐỘNG GIỮ CHỖ KHO NGUYÊN TỬ (Chống bán khống / overselling)
         for (OrderItem oi : orderItemsToSave) {
             oi.setOrder(savedOrder);
             orderItemRepository.save(oi);
 
             ProductVariant v = oi.getVariant();
-            Inventory inv = inventoryRepository.findByVariant_VariantId(v.getVariantId())
-                    .orElseGet(() -> Inventory.builder().variant(v).quantity(0).reservedQuantity(0).minThreshold(5).build());
-
-            inv.setReservedQuantity(inv.getReservedQty() + oi.getQuantity());
-            inv.setUpdatedAt(now);
-            inventoryRepository.save(inv);
+            int reserved = inventoryRepository.reserveStockAtomic(v.getVariantId(), oi.getQuantity(), now);
+            if (reserved == 0) {
+                Product prod = v.getProduct();
+                String prodName = prod != null ? prod.getProductName() : v.getVariantName();
+                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                        String.format("Sản phẩm %s (SKU: %s) vừa hết hàng khả dụng trong kho!", prodName, v.getSku()));
+            }
         }
 
         // 6. Ghi Order Status History
@@ -253,14 +254,15 @@ public class OrdersService {
                 .paymentMethod(savedOrder.getPaymentMethod())
                 .paymentStatus(savedOrder.getPaymentStatus())
                 .itemsCount(orderItemsToSave.size())
-                .createdAt(formatIsoInstant(savedOrder.getCreatedAt() != null ? savedOrder.getCreatedAt() : now))
+                .createdAt(DateTimeUtil.formatIsoInstant(savedOrder.getCreatedAt() != null ? savedOrder.getCreatedAt() : now))
                 .build();
     }
 
     /**
      * API 8.2: [GET] /api/v1/orders/my-orders — Khách hàng tra cứu lịch sử mua hàng (Authenticated)
      */
-    public MyOrdersListResponse getMyOrders(int page, int size, String status) {
+    @Transactional(readOnly = true)
+    public PageResponse<MyOrderItemResponse> getMyOrders(int page, int size, String status) {
         User currentUser = securityHelper.getCurrentUser();
 
         int safePage = Math.max(page, 1) - 1;
@@ -279,39 +281,40 @@ public class OrdersService {
         };
 
         Page<Order> pageResult = orderRepository.findAll(spec, pageable);
+        List<Order> orders = pageResult.getContent();
+        List<Long> orderIds = orders.stream().map(Order::getOrderId).toList();
+        Map<Long, List<OrderItemResponse>> itemsByOrderId = orderIds.isEmpty() ? Map.of() :
+                orderItemRepository.findByOrderIdIn(orderIds).stream()
+                        .collect(Collectors.groupingBy(
+                                oi -> oi.getOrder().getOrderId(),
+                                Collectors.mapping(this::mapOrderItemResponse, Collectors.toList())
+                        ));
 
-        List<MyOrderItemResponse> items = pageResult.getContent().stream().map(order -> {
-            List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
-            List<OrderItemResponse> itemResponses = orderItems.stream().map(this::mapOrderItemResponse).toList();
+        List<MyOrderItemResponse> items = orders.stream().map(order -> MyOrderItemResponse.builder()
+                .orderId(order.getOrderId())
+                .orderCode(order.getOrderCode())
+                .status(order.getStatus())
+                .totalAmount(order.getFinalTotal())
+                .paymentMethod(order.getPaymentMethod())
+                .paymentStatus(order.getPaymentStatus())
+                .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
+                .items(itemsByOrderId.getOrDefault(order.getOrderId(), List.of()))
+                .build()).toList();
 
-            return MyOrderItemResponse.builder()
-                    .orderId(order.getOrderId())
-                    .orderCode(order.getOrderCode())
-                    .status(order.getStatus())
-                    .totalAmount(order.getFinalTotal())
-                    .paymentMethod(order.getPaymentMethod())
-                    .paymentStatus(order.getPaymentStatus())
-                    .createdAt(formatIsoInstant(order.getCreatedAt()))
-                    .items(itemResponses)
-                    .build();
-        }).toList();
-
-        PaginationResponse pagination = PaginationResponse.builder()
+        return PageResponse.<MyOrderItemResponse>builder()
+                .content(items)
                 .page(pageResult.getNumber() + 1)
                 .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
+                .totalElements(pageResult.getTotalElements())
                 .totalPages(pageResult.getTotalPages())
-                .build();
-
-        return MyOrdersListResponse.builder()
-                .items(items)
-                .pagination(pagination)
+                .hasNext(pageResult.hasNext())
                 .build();
     }
 
     /**
      * API 8.3: [GET] /api/v1/orders/{orderCode} — Chi tiết đơn hàng theo mã #DH-XXXX (Authenticated)
      */
+    @Transactional(readOnly = true)
     public OrderDetailResponse getOrderDetail(String orderCode) {
         User currentUser = securityHelper.getCurrentUser();
 
@@ -340,7 +343,7 @@ public class OrdersService {
                     .status(h.getToStatus())
                     .changedBy(changedByName)
                     .note(h.getReason())
-                    .changedAt(formatIsoInstant(h.getCreatedAt()))
+                    .changedAt(DateTimeUtil.formatIsoInstant(h.getCreatedAt()))
                     .build();
         }).toList();
 
@@ -364,9 +367,9 @@ public class OrdersService {
                 .carrier(carrier)
                 .trackingCode(trackingCode)
                 .cancelReason(order.getCancelReason())
-                .createdAt(formatIsoInstant(order.getCreatedAt()))
-                .updatedAt(formatIsoInstant(order.getUpdatedAt()))
-                .completedAt(formatIsoInstant(order.getCompletedAt()))
+                .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
+                .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
+                .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
                 .items(itemResponses)
                 .statusHistory(historyResponses)
                 .build();
@@ -436,13 +439,14 @@ public class OrdersService {
                 .status("CANCELLED")
                 .cancelReason(request.getReason().trim())
                 .releasedHoldStock(true)
-                .cancelledAt(formatIsoInstant(now))
+                .cancelledAt(DateTimeUtil.formatIsoInstant(now))
                 .build();
     }
 
     /**
      * API 8.5: [GET] /api/v1/admin/orders — Quản trị toàn bộ danh sách đơn hàng (STAFF / ADMIN)
      */
+    @Transactional(readOnly = true)
     public AdminOrderListResponse getAdminOrders(int page, int size, String status, String paymentStatus) {
         securityHelper.authenticateStaffOrAdmin();
 
@@ -465,14 +469,21 @@ public class OrdersService {
         };
 
         Page<Order> pageResult = orderRepository.findAll(spec, pageable);
+        List<Order> orders = pageResult.getContent();
+        List<Long> orderIds = orders.stream().map(Order::getOrderId).toList();
 
-        List<AdminOrderItemResponse> items = pageResult.getContent().stream().map(order -> {
-            List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
+        Map<Long, List<OrderItem>> orderItemsMap = orderIds.isEmpty() ? Map.of() :
+                orderItemRepository.findByOrderIdIn(orderIds).stream()
+                        .collect(Collectors.groupingBy(oi -> oi.getOrder().getOrderId()));
+
+        Map<Long, Shipment> shipmentMap = orderIds.isEmpty() ? Map.of() :
+                shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
+                        .collect(Collectors.toMap(s -> s.getOrder().getOrderId(), s -> s, (s1, s2) -> s1));
+
+        List<AdminOrderItemResponse> items = orders.stream().map(order -> {
+            List<OrderItem> orderItems = orderItemsMap.getOrDefault(order.getOrderId(), List.of());
             String itemsSummary = buildItemsSummary(orderItems);
-
-            Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
-            String carrier = shipmentOpt.map(Shipment::getCarrier).orElse(null);
-            String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
+            Shipment shipment = shipmentMap.get(order.getOrderId());
 
             return AdminOrderItemResponse.builder()
                     .orderId(order.getOrderId())
@@ -484,34 +495,35 @@ public class OrdersService {
                     .paymentStatus(order.getPaymentStatus())
                     .totalAmount(order.getFinalTotal())
                     .status(order.getStatus())
-                    .carrier(carrier)
-                    .trackingCode(trackingCode)
+                    .carrier(shipment != null ? shipment.getCarrier() : null)
+                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
                     .itemsSummary(itemsSummary)
-                    .createdAt(formatIsoInstant(order.getCreatedAt()))
+                    .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
                     .build();
         }).toList();
 
-        PipelineSummaryResponse pipeline = PipelineSummaryResponse.builder()
-                .pendingPayment(orderRepository.countByStatus("PENDING_PAYMENT"))
-                .waitingConfirmation(orderRepository.countByStatus("WAITING_CONFIRMATION"))
-                .confirmed(orderRepository.countByStatus("CONFIRMED"))
-                .preparing(orderRepository.countByStatus("PREPARING"))
-                .shipping(orderRepository.countByStatus("SHIPPING"))
-                .completed(orderRepository.countByStatus("COMPLETED"))
-                .cancelled(orderRepository.countByStatus("CANCELLED"))
-                .build();
+        Map<String, Long> statusCounts = orderRepository.countGroupByStatus().stream()
+                .filter(r -> r != null && r[0] != null && r[1] != null)
+                .collect(Collectors.toMap(r -> (String) r[0], r -> ((Number) r[1]).longValue(), (a, b) -> a));
 
-        PaginationResponse pagination = PaginationResponse.builder()
-                .page(pageResult.getNumber() + 1)
-                .size(pageResult.getSize())
-                .totalItems(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
+        PipelineSummaryResponse pipeline = PipelineSummaryResponse.builder()
+                .pendingPayment(statusCounts.getOrDefault("PENDING_PAYMENT", 0L))
+                .waitingConfirmation(statusCounts.getOrDefault("WAITING_CONFIRMATION", 0L))
+                .confirmed(statusCounts.getOrDefault("CONFIRMED", 0L))
+                .preparing(statusCounts.getOrDefault("PREPARING", 0L))
+                .shipping(statusCounts.getOrDefault("SHIPPING", 0L))
+                .completed(statusCounts.getOrDefault("COMPLETED", 0L))
+                .cancelled(statusCounts.getOrDefault("CANCELLED", 0L))
                 .build();
 
         return AdminOrderListResponse.builder()
-                .items(items)
+                .content(items)
+                .page(pageResult.getNumber() + 1)
+                .size(pageResult.getSize())
+                .totalElements(pageResult.getTotalElements())
+                .totalPages(pageResult.getTotalPages())
+                .hasNext(pageResult.hasNext())
                 .pipelineSummary(pipeline)
-                .pagination(pagination)
                 .build();
     }
 
@@ -567,14 +579,8 @@ public class OrdersService {
                 .build());
 
         // Ghi Audit Log
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("CONFIRM_ORDER")
-                .entityName("Orders")
-                .entityId(order.getOrderId())
-                .oldValue("status: " + currentStatus)
-                .newValue("status: CONFIRMED, tracking: " + trackingCode)
-                .build());
+        auditLogRepository.log(operator, "CONFIRM_ORDER", "Orders", order.getOrderId(),
+                "status: " + currentStatus, "status: CONFIRMED, tracking: " + trackingCode);
 
         String confirmedByName = operator.getFullName() != null
                 ? operator.getFullName() + " (" + (operator.getRole() != null ? operator.getRole().name() : "Nhân viên") + ")"
@@ -597,7 +603,7 @@ public class OrdersService {
                 .formCode("MB02")
                 .shipment(shipmentDetail)
                 .confirmedBy(confirmedByName)
-                .confirmedAt(formatIsoInstant(now))
+                .confirmedAt(DateTimeUtil.formatIsoInstant(now))
                 .build();
     }
 
@@ -683,14 +689,8 @@ public class OrdersService {
                 .build());
 
         // Ghi Audit Log
-        auditLogRepository.save(AuditLog.builder()
-                .user(operator)
-                .action("PACK_EXPORT_ORDER")
-                .entityName("Orders")
-                .entityId(order.getOrderId())
-                .oldValue("status: " + currentStatus)
-                .newValue("status: SHIPPING, form: MB03")
-                .build());
+        auditLogRepository.log(operator, "PACK_EXPORT_ORDER", "Orders", order.getOrderId(),
+                "status: " + currentStatus, "status: SHIPPING, form: MB03");
 
         String exportedByName = operator.getFullName() != null
                 ? operator.getFullName() + " (" + (operator.getRole() != null ? operator.getRole().name() : "Thủ kho") + ")"
@@ -715,7 +715,7 @@ public class OrdersService {
                 .exportedItems(exportedItems)
                 .shipment(shipmentDetail)
                 .exportedBy(exportedByName)
-                .exportedAt(formatIsoInstant(now))
+                .exportedAt(DateTimeUtil.formatIsoInstant(now))
                 .build();
     }
 

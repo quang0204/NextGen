@@ -11,8 +11,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-
 @RestController
 @RequestMapping("/api/v1/admin/orders")
 @RequiredArgsConstructor
@@ -29,16 +27,8 @@ public class AdminOrdersController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false, defaultValue = "ALL") String status,
             @RequestParam(required = false, defaultValue = "ALL") String paymentStatus) {
-
-        AdminOrderListResponse responseData = ordersService.getAdminOrders(page, size, status, paymentStatus);
-
-        return ApiResponse.<AdminOrderListResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Lấy danh sách đơn hàng quản trị thành công")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok("Lấy danh sách đơn hàng quản trị thành công",
+                ordersService.getAdminOrders(page, size, status, paymentStatus));
     }
 
     /**
@@ -48,16 +38,8 @@ public class AdminOrdersController {
     public ApiResponse<ConfirmOrderResponse> confirmOrder(
             @PathVariable Long id,
             @Valid @RequestBody ConfirmOrderRequest request) {
-
-        ConfirmOrderResponse responseData = ordersService.confirmOrder(id, request);
-
-        return ApiResponse.<ConfirmOrderResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã duyệt xác nhận đơn hàng MB02 và tự động tạo vận đơn giao hàng!")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok("Đã duyệt xác nhận đơn hàng MB02 và tự động tạo vận đơn giao hàng!",
+                ordersService.confirmOrder(id, request));
     }
 
     /**
@@ -67,15 +49,7 @@ public class AdminOrdersController {
     public ApiResponse<PackExportOrderResponse> packAndExportOrder(
             @PathVariable Long id,
             @Valid @RequestBody PackExportOrderRequest request) {
-
-        PackExportOrderResponse responseData = ordersService.packAndExportOrder(id, request);
-
-        return ApiResponse.<PackExportOrderResponse>builder()
-                .success(true)
-                .statusCode(200)
-                .message("Đã hoàn tất đóng gói, lập phiếu xuất kho MB03 và bàn giao đơn vị vận chuyển thành công!")
-                .data(responseData)
-                .timestamp(Instant.now().toString())
-                .build();
+        return ApiResponse.ok("Đã hoàn tất đóng gói, lập phiếu xuất kho MB03 và bàn giao đơn vị vận chuyển thành công!",
+                ordersService.packAndExportOrder(id, request));
     }
 }

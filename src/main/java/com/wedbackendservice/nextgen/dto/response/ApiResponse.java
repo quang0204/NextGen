@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.List;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -20,4 +20,33 @@ public class ApiResponse<T> {
     String error;
     T data;
     String timestamp;
+
+    public static <T> ApiResponse<T> ok(T data) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .statusCode(200)
+                .data(data)
+                .timestamp(Instant.now().toString())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> ok(String message, T data) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .statusCode(200)
+                .message(message)
+                .data(data)
+                .timestamp(Instant.now().toString())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> created(String message, T data) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .statusCode(201)
+                .message(message)
+                .data(data)
+                .timestamp(Instant.now().toString())
+                .build();
+    }
 }

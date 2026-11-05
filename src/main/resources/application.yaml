@@ -7,24 +7,24 @@ spring:
   application:
     name: NextGen
   datasource:
-    url: "jdbc:mysql://localhost:3306/NextGen?createDatabaseIfNotExist=true"
-    username: root
-    password: quang
+    url: ${DB_URL:jdbc:mysql://localhost:3306/NextGen?createDatabaseIfNotExist=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:quang}
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: false
   data:
     redis:
-      host: localhost
-      port: 6379
-      repositories:
-        enabled: false
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+    repositories:
+      enabled: false
   mail:
     host: smtp.gmail.com
     port: 587
-    username: trinhquang02042004@gmail.com
-    password: jhulqdodkwntctac
+    username: ${MAIL_USERNAME:trinhquang02042004@gmail.com}
+    password: ${MAIL_PASSWORD:jhulqdodkwntctac}
     properties:
       mail:
         smtp:
@@ -35,12 +35,12 @@ spring:
           timeout: 10000
           writetimeout: 5000
 jwt :
-  signed-key: "prH5KZ52uBeUkW8r83pntzBa7vaIqeXc0U7Lmsw59Kopq8wwcIVDk01eAew1XS97cwh3M8a3PHH6CVwVJkv9dA"
-  access-expiration: 1800
-  refresh-expiration: 1800
+  signed-key: ${JWT_SECRET_KEY:prH5KZ52uBeUkW8r83pntzBa7vaIqeXc0U7Lmsw59Kopq8wwcIVDk01eAew1XS97cwh3M8a3PHH6CVwVJkv9dA}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:1800}
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800}
 app:
   cors:
-    allowed-origins: "http://localhost:8080,http://localhost:3000"
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:"http://localhost:8080,http://localhost:3000"}
   sms:
     provider: esms
     esms:
