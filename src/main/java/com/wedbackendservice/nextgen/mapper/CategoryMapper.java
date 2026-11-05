@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.mapper;
 
-import com.wedbackendservice.nextgen.dto.response.category.CategoryResponse;
+import com.wedbackendservice.nextgen.dto.client.response.category.CategoryResponse;
 import com.wedbackendservice.nextgen.entity.Category;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;

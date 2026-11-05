@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.exception;
 
-import com.wedbackendservice.nextgen.dto.response.ApiResponse;
+import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

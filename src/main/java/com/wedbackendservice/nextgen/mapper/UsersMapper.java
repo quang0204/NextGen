@@ -1,9 +1,9 @@
 package com.wedbackendservice.nextgen.mapper;
 
-import com.wedbackendservice.nextgen.dto.response.UsersResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.CreateInternalUserResponse;
-import com.wedbackendservice.nextgen.dto.response.auth.UserRegisterResponse;
-import com.wedbackendservice.nextgen.dto.response.user.*;
+import com.wedbackendservice.nextgen.dto.client.response.UsersResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.CreateInternalUserResponse;
+import com.wedbackendservice.nextgen.dto.client.response.auth.UserRegisterResponse;
+import com.wedbackendservice.nextgen.dto.client.response.user.*;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.entity.UserAddress;
 import org.mapstruct.Mapper;
