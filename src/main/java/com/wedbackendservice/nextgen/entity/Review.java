@@ -31,11 +31,6 @@ public class Review {
     String comment;
     Boolean isVerifiedPurchase;
 
-    @Builder.Default
-    String status = "VISIBLE";
-    String reply;
-    LocalDateTime repliedAt;
-
     @CreatedDate
     LocalDateTime createdAt;
 
