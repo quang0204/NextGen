@@ -87,10 +87,14 @@ public enum     ErrorCode {
     ERR_ORDER_INVALID_STATE(1072, "Thao tác không hợp lệ đối với trạng thái hiện tại của đơn hàng!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_NOT_CONFIRMED(1073, "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND),
-    INVALID_OTP_CODE(1083, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!", HttpStatus.BAD_REQUEST),
-    OTP_EXPIRED(1084, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!", HttpStatus.BAD_REQUEST),
-    RESEND_COOLDOWN_ACTIVE(1086, "Vui lòng chờ trước khi bấm gửi lại mã!", HttpStatus.TOO_MANY_REQUESTS),
-    INVALID_PHONE_FORMAT(1087, "Số điện thoại không đúng định dạng 10 chữ số!", HttpStatus.BAD_REQUEST);
+
+    // Nhóm 12: Đánh giá & Hỗ trợ khách hàng
+    ERR_REVIEW_NOT_FOUND(1080, "Không tìm thấy đánh giá!", HttpStatus.NOT_FOUND),
+    ERR_REVIEW_ALREADY_EXISTS(1081, "Bạn đã đánh giá sản phẩm này cho đơn hàng hiện tại.", HttpStatus.CONFLICT),
+    ERR_REVIEW_NOT_ALLOWED(1082, "Chỉ có thể đánh giá sản phẩm sau khi đơn hàng đã hoàn thành.", HttpStatus.BAD_REQUEST),
+    ERR_TICKET_NOT_FOUND(1083, "Không tìm thấy ticket hỗ trợ!", HttpStatus.NOT_FOUND),
+    ERR_TICKET_INVALID_STATUS(1084, "Trạng thái ticket không hợp lệ.", HttpStatus.BAD_REQUEST),
+    ERR_FAQ_NOT_FOUND(1085, "Không tìm thấy câu hỏi thường gặp!", HttpStatus.NOT_FOUND);
 
     int code;
     String message;
