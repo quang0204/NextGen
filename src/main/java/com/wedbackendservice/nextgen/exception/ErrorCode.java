@@ -19,7 +19,7 @@ public enum     ErrorCode {
     USER_NOT_EXIT(1004, "Người dùng không tồn tại.", HttpStatus.NOT_FOUND), // alias for backwards compatibility
     TOO_MANY_REQUESTS(1005, "Đăng nhập sai quá 5 lần liên tiếp. Vui lòng thử lại sau.", HttpStatus.TOO_MANY_REQUESTS),
     OTP_INVALID_OR_EXPIRED(1006, "Mã OTP không chính xác hoặc đã hết hạn (quá 2 phút).", HttpStatus.BAD_REQUEST),
-    SESSION_NOT_FOUND(1007, "sessionToken không tồn tại hoặc đã bị hủy.", HttpStatus.NOT_FOUND),
+    SESSION_NOT_FOUND(1007, "Phiên xác thực không tồn tại hoặc đã được xử lý trước đó!", HttpStatus.NOT_FOUND),
     INVALID_REQUEST(1008, "Dữ liệu yêu cầu không hợp lệ.", HttpStatus.BAD_REQUEST),
     SMS_SEND_FAILED(1010, "Sent Otp Lỗi", HttpStatus.INTERNAL_SERVER_ERROR),
     USER_ALREADY_EXISTS(1011, "Số điện thoại hoặc Email này đã được đăng ký tài khoản trên hệ thống.", HttpStatus.CONFLICT),
@@ -86,7 +86,11 @@ public enum     ErrorCode {
     ERR_ORDER_CANNOT_CANCEL(1071, "Không thể hủy đơn hàng do đơn đã được xác nhận hoặc đang trong quá trình giao hàng!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_INVALID_STATE(1072, "Thao tác không hợp lệ đối với trạng thái hiện tại của đơn hàng!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_NOT_CONFIRMED(1073, "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho!", HttpStatus.BAD_REQUEST),
-    ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND);
+    ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND),
+    INVALID_OTP_CODE(1083, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!", HttpStatus.BAD_REQUEST),
+    OTP_EXPIRED(1084, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!", HttpStatus.BAD_REQUEST),
+    RESEND_COOLDOWN_ACTIVE(1086, "Vui lòng chờ trước khi bấm gửi lại mã!", HttpStatus.TOO_MANY_REQUESTS),
+    INVALID_PHONE_FORMAT(1087, "Số điện thoại không đúng định dạng 10 chữ số!", HttpStatus.BAD_REQUEST);
 
     int code;
     String message;
