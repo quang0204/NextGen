@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.service.shared;
 
 import com.wedbackendservice.nextgen.dto.session.OtpSessionData;
+import com.wedbackendservice.nextgen.dto.session.ProfileUpdateSessionData;
 import com.wedbackendservice.nextgen.dto.session.RegisterSessionData;
 import com.wedbackendservice.nextgen.dto.session.ResetPasswordSessionData;
 import com.wedbackendservice.nextgen.dto.session.TokenPair;
@@ -24,6 +25,7 @@ public class TokenRedisService {
     private static final String LOGIN_FAIL_PREFIX = "login:fail:";
     private static final String REG_PREFIX       = "reg_token_";
     private static final String RESET_PREFIX     = "reset_token_";
+    private static final String PROFILE_UPDATE_PREFIX = "profile_update_session:";
     private static final String OTP_RATE_IP_PREFIX     = "otp:rate:ip:";
     private static final String OTP_RATE_TARGET_PREFIX = "otp:rate:target:";
     private static final String OTP_FAIL_PREFIX        = "otp:fail:";
@@ -80,6 +82,12 @@ public class TokenRedisService {
     }
     public ResetPasswordSessionData getResetPasswordSession(String token) { return read(RESET_PREFIX + token, ResetPasswordSessionData.class); }
     public void deleteResetPasswordSession(String token)                  { delete(RESET_PREFIX + token); }
+
+    public void saveProfileUpdateSession(String token, ProfileUpdateSessionData data, long ttlSeconds) {
+        save(PROFILE_UPDATE_PREFIX + token, data, Duration.ofSeconds(ttlSeconds));
+    }
+    public ProfileUpdateSessionData getProfileUpdateSession(String token) { return read(PROFILE_UPDATE_PREFIX + token, ProfileUpdateSessionData.class); }
+    public void deleteProfileUpdateSession(String token)                  { delete(PROFILE_UPDATE_PREFIX + token); }
 
     // ===== RATE LIMIT LOGIN =====
 

@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
@@ -58,6 +59,22 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(value = MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentNotValid(MethodArgumentNotValidException exception) {
+        var fieldError = exception.getBindingResult().getFieldError();
+        String field = fieldError != null ? fieldError.getField() : "";
+        String message = fieldError != null ? fieldError.getDefaultMessage() : "Dữ liệu yêu cầu không hợp lệ.";
+        String error = "phone".equalsIgnoreCase(field) ? "INVALID_PHONE_FORMAT" : "INVALID_REQUEST";
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .statusCode(HttpStatus.BAD_REQUEST.value())
+                        .message(message)
+                        .error(error)
+                        .timestamp(Instant.now().toString())
+                        .build());
+    }
+
     @ExceptionHandler(value = org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<Void>> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException exception) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -72,9 +89,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuth(AuthenticationException e) {
-        ErrorCode c = ErrorCode.SESSION_EXPIRED;
+        ErrorCode c = ErrorCode.UNAUTHENTICATED;
         return ResponseEntity.status(c.getHttpStatus()).body(
                 ApiResponse.<Void>builder().success(false).statusCode(c.getHttpStatus().value())
-                        .message(c.getMessage()).build());
+                        .message(c.getMessage()).error(c.name()).timestamp(Instant.now().toString()).build());
     }
 }

@@ -1,7 +1,16 @@
 package com.wedbackendservice.nextgen.service.client;
 import com.wedbackendservice.nextgen.service.shared.TokenRedisService;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileResendOtpRequest;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileUpdateConfirmRequest;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileUpdateRequest;
+import com.wedbackendservice.nextgen.dto.client.response.user.ProfileUpdateOtpResponse;
+import com.wedbackendservice.nextgen.dto.session.ProfileUpdateSessionData;
+import com.wedbackendservice.nextgen.enums.OtpChannel;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
-import com.wedbackendservice.nextgen.dto.client.request.user.UpdateUserProfileRequest;
 import com.wedbackendservice.nextgen.dto.client.request.user.UserAddressRequest;
 import com.wedbackendservice.nextgen.dto.client.response.user.*;
 import com.wedbackendservice.nextgen.entity.User;
@@ -29,6 +38,8 @@ public class UsersService {
 
     private static final int MAX_ADDRESS_LIMIT = 10;
     private static final int OTP_EXPIRE_SECONDS = 120;
+    private static final int RESEND_COOLDOWN_SECONDS = 60;
+    private static final long PROFILE_UPDATE_TTL_SECONDS = 900;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SecurityHelper securityHelper;
@@ -47,75 +58,142 @@ public class UsersService {
         User user = securityHelper.getCurrentUser();
         return usersMapper.toUserProfileResponse(user);
     }
-    //
-//    /**
-//     * API gửi OTP xác nhận cập nhật Email/Phone
-//     */
-//    public void sendProfileUpdateOtp(String authHeader) {
-//        User user = securityHelper.authenticate(authHeader);
-//        String otpCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
-//        String sessionKey = "profile_otp:" + user.getUserId();
-//
-//        tokenRedisService.saveOtpSession(sessionKey, OtpSessionData.builder()
-//                .userId(user.getUserId())
-//                .channel(OtpChannel.EMAIL)
-//                .target(user.getEmail())
-//                .otpCode(otpCode)
-//                .createdAt(LocalDateTime.now())
-//                .build(), OTP_EXPIRE_SECONDS);
-//
-//        otpNotificationService.sendOtp(OtpChannel.EMAIL, user.getEmail(), otpCode);
-//        log.info("Sent profile update OTP to user {}", user.getUserId());
-//    }
-
     /**
-     * API 2.2: Cập nhật thông tin cá nhân (họ tên, email, số điện thoại)
+     * 1. POST /api/v1/users/profile/update-request
+     * Gửi thông tin cá nhân mới cần cập nhật, kiểm tra trùng lặp Email/SĐT, sinh OTP & gửi email
      */
-    @Transactional
-    public UserProfileResponse updateUserProfile(UpdateUserProfileRequest request) {
+    public ProfileUpdateOtpResponse requestProfileUpdate(ProfileUpdateRequest request) {
         User user = securityHelper.getCurrentUser();
 
         String newFullName = request.getFullName().trim();
         String newPhone = request.getPhone().trim();
         String newEmail = request.getEmail().trim().toLowerCase();
 
-        boolean nameChanged = !newFullName.equals(user.getFullName());
-        boolean phoneChanged = !newPhone.equals(user.getPhone());
-        boolean emailChanged = !newEmail.equalsIgnoreCase(user.getEmail());
+        String currentFullName = user.getFullName() != null ? user.getFullName().trim() : "";
+        String currentPhone = user.getPhone() != null ? user.getPhone().trim() : "";
+        String currentEmail = user.getEmail() != null ? user.getEmail().trim().toLowerCase() : "";
 
-        // 1. Kiểm tra trùng lặp Số điện thoại với tài khoản khác
+        boolean nameChanged = !newFullName.equals(currentFullName);
+        boolean phoneChanged = !newPhone.equals(currentPhone);
+        boolean emailChanged = !newEmail.equalsIgnoreCase(currentEmail);
+
+        // Bắt buộc phải có ít nhất 1 trong 3 thông tin thay đổi
+        if (!nameChanged && !phoneChanged && !emailChanged) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Thông tin cá nhân mới không có sự thay đổi so với hiện tại!");
+        }
+
+        // Kiểm tra trùng lặp SĐT với tài khoản khác
         if (phoneChanged && userRepository.countByPhoneExcludingUser(newPhone, user.getUserId()) > 0) {
-            log.warn("SĐT [{}] đã tồn tại ở tài khoản khác", newPhone);
-            throw new AppException(ErrorCode.PHONE_ALREADY_EXISTS, "Số điện thoại '" + newPhone + "' đã được đăng ký bởi tài khoản khác!");
+            throw new AppException(ErrorCode.DUPLICATE_PHONE, "Số điện thoại '" + newPhone + "' đã được đăng ký bởi một tài khoản khác!");
         }
 
-        // 2. Kiểm tra trùng lặp Email với tài khoản khác
+        // Kiểm tra trùng lặp Email với tài khoản khác
         if (emailChanged && userRepository.countByEmailExcludingUser(newEmail, user.getUserId()) > 0) {
-            log.warn("Email [{}] đã tồn tại ở tài khoản khác", newEmail);
-            throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS, "Địa chỉ Email '" + newEmail + "' đã được sử dụng bởi tài khoản khác!");
+            throw new AppException(ErrorCode.DUPLICATE_EMAIL, "Email '" + newEmail + "' đã được sử dụng bởi một tài khoản khác!");
         }
 
-        // 3. Thực hiện cập nhật nếu có thay đổi (Đã sửa lỗi không lưu entity hiện tại)
-        if (nameChanged || phoneChanged || emailChanged) {
-            String oldJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
-                    escapeJson(user.getFullName()), escapeJson(user.getPhone()), escapeJson(user.getEmail()));
+        String otpCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        String otpSessionToken = "otp_profile_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        Instant now = Instant.now();
 
-            // Cập nhật trực tiếp trên đối tượng quản lý bởi Persistence Context
-            user.setFullName(newFullName);
-            user.setPhone(newPhone);
-            user.setEmail(newEmail);
-            userRepository.save(user);
+        ProfileUpdateSessionData sessionData = ProfileUpdateSessionData.builder()
+                .userId(user.getUserId())
+                .fullName(newFullName)
+                .phone(newPhone)
+                .email(newEmail)
+                .otpCode(otpCode)
+                .createdAt(now)
+                .lastSentAt(now)
+                .otpExpiresAt(now.plusSeconds(OTP_EXPIRE_SECONDS))
+                .build();
 
-            String newJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
-                    escapeJson(newFullName), escapeJson(newPhone), escapeJson(newEmail));
+        tokenRedisService.saveProfileUpdateSession(otpSessionToken, sessionData, PROFILE_UPDATE_TTL_SECONDS);
+        otpNotificationService.sendOtp(OtpChannel.EMAIL, newEmail, otpCode);
+        log.info("Sent profile update OTP to email {} of user {}", newEmail, user.getUserId());
 
-            // 4. Ghi vết kiểm toán vào Audit_Logs
-            auditLogRepository.log(user, "UPDATE_PROFILE", "Users", user.getUserId(), oldJson, newJson);
-        }
-
-        return usersMapper.toUserProfileResponse(user);
+        return ProfileUpdateOtpResponse.builder()
+                .otpSessionToken(otpSessionToken)
+                .targetEmailMasked(maskEmail(newEmail))
+                .expiresInSeconds(OTP_EXPIRE_SECONDS)
+                .resendCooldownSeconds(RESEND_COOLDOWN_SECONDS)
+                .build();
     }
 
+    /**
+     * 2. POST /api/v1/users/profile/update-confirm
+     * Nhập mã OTP 6 số, đối chiếu khớp mã, lưu vào Users, ghi AuditLog & trả về profile mới nhất
+     */
+    @Transactional
+    public UserProfileResponse confirmProfileUpdate(ProfileUpdateConfirmRequest request) {
+        User user = securityHelper.getCurrentUser();
+
+        ProfileUpdateSessionData session = tokenRedisService.getProfileUpdateSession(request.getOtpSessionToken());
+        if (session == null || !session.getUserId().equals(user.getUserId())) {
+            throw new AppException(ErrorCode.SESSION_NOT_FOUND, "Phiên xác thực không tồn tại hoặc đã được xử lý trước đó!");
+        }
+
+        if (Instant.now().isAfter(session.getOtpExpiresAt())) {
+            throw new AppException(ErrorCode.OTP_EXPIRED, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!");
+        }
+
+        if (!session.getOtpCode().equals(request.getOtpCode())) {
+            throw new AppException(ErrorCode.INVALID_OTP_CODE, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!");
+        }
+
+        String oldJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
+                escapeJson(user.getFullName()), escapeJson(user.getPhone()), escapeJson(user.getEmail()));
+
+        user.setFullName(session.getFullName());
+        user.setPhone(session.getPhone());
+        user.setEmail(session.getEmail());
+        User savedUser = userRepository.save(user);
+
+        String newJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
+                escapeJson(session.getFullName()), escapeJson(session.getPhone()), escapeJson(session.getEmail()));
+
+        auditLogRepository.log(savedUser, "UPDATE_PROFILE", "Users", savedUser.getUserId(), oldJson, newJson);
+        tokenRedisService.deleteProfileUpdateSession(request.getOtpSessionToken());
+        log.info("User {} successfully confirmed profile update", savedUser.getUserId());
+
+        return usersMapper.toUserProfileResponse(savedUser);
+    }
+
+    /**
+     * 3. POST /api/v1/users/profile/resend-otp
+     * Gửi lại mã OTP mới sau cooldown 60s
+     */
+    public ProfileUpdateOtpResponse resendProfileUpdateOtp(ProfileResendOtpRequest request) {
+        User user = securityHelper.getCurrentUser();
+
+        ProfileUpdateSessionData session = tokenRedisService.getProfileUpdateSession(request.getOtpSessionToken());
+        if (session == null || !session.getUserId().equals(user.getUserId())) {
+            throw new AppException(ErrorCode.SESSION_NOT_FOUND, "Phiên xác thực không tồn tại hoặc đã được xử lý trước đó!");
+        }
+
+        Instant now = Instant.now();
+        long secondsElapsed = Duration.between(session.getLastSentAt(), now).getSeconds();
+        if (secondsElapsed < RESEND_COOLDOWN_SECONDS) {
+            long remainingSeconds = RESEND_COOLDOWN_SECONDS - secondsElapsed;
+            throw new AppException(ErrorCode.RESEND_COOLDOWN_ACTIVE,
+                    "Vui lòng chờ " + remainingSeconds + " giây nữa trước khi bấm gửi lại mã!");
+        }
+
+        String newOtpCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        session.setOtpCode(newOtpCode);
+        session.setLastSentAt(now);
+        session.setOtpExpiresAt(now.plusSeconds(OTP_EXPIRE_SECONDS));
+
+        tokenRedisService.saveProfileUpdateSession(request.getOtpSessionToken(), session, PROFILE_UPDATE_TTL_SECONDS);
+        otpNotificationService.sendOtp(OtpChannel.EMAIL, session.getEmail(), newOtpCode);
+        log.info("Resent profile update OTP to email of user {}", user.getUserId());
+
+        return ProfileUpdateOtpResponse.builder()
+                .otpSessionToken(request.getOtpSessionToken())
+                .targetEmailMasked(maskEmail(session.getEmail()))
+                .expiresInSeconds(OTP_EXPIRE_SECONDS)
+                .resendCooldownSeconds(RESEND_COOLDOWN_SECONDS)
+                .build();
+    }
     private String escapeJson(String input) {
         if (input == null) return "";
         return input.replace("\\", "\\\\")
@@ -234,5 +312,15 @@ public class UsersService {
         return DeleteAddressResponse.builder()
                 .deletedAddressId(addressId)
                 .build();
+    }
+    private String maskEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            return "";
+        }
+        String[] parts = email.split("@", 2);
+        String local = parts[0];
+        String domain = parts[1];
+        int visibleLen = local.length() <= 4 ? Math.min(2, local.length()) : 4;
+        return local.substring(0, visibleLen) + "****@" + domain;
     }
 }

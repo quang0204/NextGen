@@ -1,9 +1,11 @@
 package com.wedbackendservice.nextgen.controller.client;
 
-import com.wedbackendservice.nextgen.dto.client.request.user.UpdateUserProfileRequest;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileResendOtpRequest;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileUpdateConfirmRequest;
+import com.wedbackendservice.nextgen.dto.client.request.user.ProfileUpdateRequest;
 import com.wedbackendservice.nextgen.dto.client.request.user.UserAddressRequest;
-import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.response.user.*;
+import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.service.client.UsersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -26,13 +28,34 @@ public class UsersController {
     public ApiResponse<UserProfileResponse> getUserProfile() {
         return ApiResponse.ok("Lấy thông tin tài khoản thành công!", usersService.getUserProfile());
     }
+    /**
+     * 1. POST /api/v1/users/profile/update-request
+     * Bước 1 – Gửi thông tin cá nhân mới cần cập nhật, kiểm tra hợp lệ, phát sinh OTP & cấp sessionToken
+     */
+    @PostMapping("/profile/update-request")
+    public ApiResponse<ProfileUpdateOtpResponse> requestProfileUpdate(@Valid @RequestBody ProfileUpdateRequest request) {
+        return ApiResponse.ok("Thông tin hợp lệ. Mã xác thực OTP đã được gửi đến email của bạn để xác nhận cập nhật!",
+                usersService.requestProfileUpdate(request));
+    }
 
     /**
-     * API 2.2: Cập nhật thông tin cá nhân
+     * 2. POST /api/v1/users/profile/update-confirm
+     * Bước 2 – Nhập mã OTP 6 số, đối chiếu khớp mã, lưu vào Users, ghi AuditLog & trả về profile mới
      */
-    @PutMapping("/profile")
-    public ApiResponse<UserProfileResponse> updateUserProfile(@Valid @RequestBody UpdateUserProfileRequest request) {
-        return ApiResponse.ok("Cập nhật hồ sơ cá nhân thành công!", usersService.updateUserProfile(request));
+    @PostMapping("/profile/update-confirm")
+    public ApiResponse<UserProfileResponse> confirmProfileUpdate(@Valid @RequestBody ProfileUpdateConfirmRequest request) {
+        return ApiResponse.ok("Xác thực OTP thành công. Thông tin cá nhân đã được cập nhật!",
+                usersService.confirmProfileUpdate(request));
+    }
+
+    /**
+     * 3. POST /api/v1/users/profile/resend-otp
+     * Dành cho nút "Gửi lại mã OTP" khi đợi quá 60s
+     */
+    @PostMapping("/profile/resend-otp")
+    public ApiResponse<ProfileUpdateOtpResponse> resendProfileUpdateOtp(@Valid @RequestBody ProfileResendOtpRequest request) {
+        return ApiResponse.ok("Mã xác thực OTP mới đã được gửi lại vào email của bạn!",
+                usersService.resendProfileUpdateOtp(request));
     }
 
     /**
