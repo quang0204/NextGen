@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.configuration;
 
-import com.wedbackendservice.nextgen.service.TokenRedisService;
+import com.wedbackendservice.nextgen.service.shared.TokenRedisService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;

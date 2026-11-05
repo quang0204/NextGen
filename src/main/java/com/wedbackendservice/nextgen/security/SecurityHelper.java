@@ -8,6 +8,7 @@ import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -17,12 +18,15 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class SecurityHelper {
     private final UserRepository userRepository;
+
     public User getCurrentUser() {
-        var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
+        Authentication authentication = getAuthentication();
+        final Long userId;
+        try {
+            userId = Long.valueOf(authentication.getName());
+        } catch (NumberFormatException e) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        Long userId = Long.valueOf(authentication.getName());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
@@ -36,7 +40,7 @@ public class SecurityHelper {
 
     public Authentication getAuthentication() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
+        if (authentication == null || !authentication.isAuthenticated() || authentication instanceof AnonymousAuthenticationToken) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
         return authentication;

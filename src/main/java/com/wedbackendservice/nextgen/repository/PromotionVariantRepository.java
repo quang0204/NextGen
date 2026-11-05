@@ -18,6 +18,9 @@ public interface PromotionVariantRepository extends JpaRepository<PromotionVaria
 
     long countByPromotion_PromotionId(Long promotionId);
 
+    @Query("SELECT pv.promotion.promotionId, COUNT(pv) FROM PromotionVariant pv WHERE pv.promotion.promotionId IN :promotionIds GROUP BY pv.promotion.promotionId")
+    List<Object[]> countByPromotionIds(@Param("promotionIds") Collection<Long> promotionIds);
+
     void deleteByPromotion_PromotionId(Long promotionId);
 
     @Query("SELECT pv FROM PromotionVariant pv " +

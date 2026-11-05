@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,8 +24,9 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
     List<Order> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
 
     Page<Order> findByUser_UserId(Long userId, Pageable pageable);
+
     @Query("SELECT o FROM Order o WHERE o.user.userId = :userId ORDER BY o.createdAt DESC")
-    List<Order> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, org.springframework.data.domain.Pageable pageable);
+    List<Order> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, Pageable pageable);
 
     @Query("""
         SELECT o.user.userId, COUNT(o), COALESCE(SUM(o.finalAmount), 0)
@@ -32,11 +34,14 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
         WHERE o.user.userId IN :ids
         GROUP BY o.user.userId
         """)
-    List<Object[]> statsByUserIds(@Param("ids") java.util.Collection<Long> ids);
+    List<Object[]> statsByUserIds(@Param("ids") Collection<Long> ids);
 
     long countByUser_UserId(Long userId);
 
     long countByStatus(String status);
+
+    @Query("SELECT o.status, COUNT(o) FROM Order o GROUP BY o.status")
+    List<Object[]> countGroupByStatus();
 
     @Query("SELECT COUNT(o) FROM Order o WHERE o.user.userId = :userId AND o.status = :status")
     long countByUser_UserIdAndStatus(@Param("userId") Long userId, @Param("status") String status);
