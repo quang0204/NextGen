@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.service.shared.PromotionsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,6 +24,7 @@ public class AdminPromotionsController {
     /**
      * API 6.2: [GET] /api/v1/admin/promotions — Quản lý chiến dịch khuyến mãi (Portal) (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<PageResponse<AdminPromotionItemResponse>> getAdminPromotions(
             @RequestParam(defaultValue = "1") int page,
@@ -35,6 +37,7 @@ public class AdminPromotionsController {
     /**
      * API 6.3: [POST] /api/v1/admin/promotions — Tạo mới chiến dịch Flash Sale kèm SKU & giá (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CreatePromotionResponse> createPromotion(@Valid @RequestBody CreatePromotionRequest request) {
@@ -45,6 +48,7 @@ public class AdminPromotionsController {
     /**
      * API 6.4: [PUT] /api/v1/admin/promotions/{id}/status — Cập nhật trạng thái chiến dịch khuyến mãi (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PutMapping("/{id:[0-9]+}/status")
     public ApiResponse<UpdatePromotionStatusResponse> updatePromotionStatus(
             @PathVariable Long id,

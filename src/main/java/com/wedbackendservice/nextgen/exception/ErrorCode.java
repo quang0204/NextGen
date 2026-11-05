@@ -19,7 +19,7 @@ public enum     ErrorCode {
     USER_NOT_EXIT(1004, "Người dùng không tồn tại.", HttpStatus.NOT_FOUND), // alias for backwards compatibility
     TOO_MANY_REQUESTS(1005, "Đăng nhập sai quá 5 lần liên tiếp. Vui lòng thử lại sau.", HttpStatus.TOO_MANY_REQUESTS),
     OTP_INVALID_OR_EXPIRED(1006, "Mã OTP không chính xác hoặc đã hết hạn (quá 2 phút).", HttpStatus.BAD_REQUEST),
-    SESSION_NOT_FOUND(1007, "sessionToken không tồn tại hoặc đã bị hủy.", HttpStatus.NOT_FOUND),
+    SESSION_NOT_FOUND(1007, "Phiên xác thực không tồn tại hoặc đã được xử lý trước đó!", HttpStatus.NOT_FOUND),
     INVALID_REQUEST(1008, "Dữ liệu yêu cầu không hợp lệ.", HttpStatus.BAD_REQUEST),
     SMS_SEND_FAILED(1010, "Sent Otp Lỗi", HttpStatus.INTERNAL_SERVER_ERROR),
     USER_ALREADY_EXISTS(1011, "Số điện thoại hoặc Email này đã được đăng ký tài khoản trên hệ thống.", HttpStatus.CONFLICT),

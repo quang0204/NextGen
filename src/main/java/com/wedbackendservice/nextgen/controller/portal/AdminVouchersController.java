@@ -10,6 +10,7 @@ import com.wedbackendservice.nextgen.service.shared.VouchersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,6 +23,7 @@ public class AdminVouchersController {
     /**
      * API 6.7: [GET] /api/v1/admin/vouchers — Quản trị danh sách mã giảm giá (Portal) (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<PageResponse<AdminVoucherItemResponse>> getAdminVouchers(
             @RequestParam(defaultValue = "1") int page,
@@ -35,6 +37,7 @@ public class AdminVouchersController {
     /**
      * API 6.8: [POST] /api/v1/admin/vouchers — Khởi tạo mã voucher khuyến mãi mới (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CreateVoucherResponse> createVoucher(@Valid @RequestBody CreateVoucherRequest request) {
@@ -44,6 +47,7 @@ public class AdminVouchersController {
     /**
      * API 6.9: [PATCH] /api/v1/admin/vouchers/{id:[0-9]+}/toggle — Bật / Tắt kích hoạt nhanh voucher (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PatchMapping("/{id:[0-9]+}/toggle")
     public ApiResponse<ToggleVoucherResponse> toggleVoucher(@PathVariable Long id) {
         return ApiResponse.ok("Thay đổi trạng thái kích hoạt Voucher thành công!", vouchersService.toggleVoucher(id));
