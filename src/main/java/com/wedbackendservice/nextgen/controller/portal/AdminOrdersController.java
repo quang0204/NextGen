@@ -9,6 +9,7 @@ import com.wedbackendservice.nextgen.dto.portal.response.order.PackExportOrderRe
 import com.wedbackendservice.nextgen.service.shared.OrdersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,6 +22,7 @@ public class AdminOrdersController {
     /**
      * API 8.5: [GET] /api/v1/admin/orders — Quản trị toàn bộ danh sách đơn hàng (7 bước) (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<AdminOrderListResponse> getAdminOrders(
             @RequestParam(defaultValue = "1") int page,
@@ -34,6 +36,7 @@ public class AdminOrdersController {
     /**
      * API 8.6: [POST] /api/v1/admin/orders/{id}/confirm — Xác nhận đơn MB02 & Tự động tạo Vận đơn (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping("/{id:[0-9]+}/confirm")
     public ApiResponse<ConfirmOrderResponse> confirmOrder(
             @PathVariable Long id,
@@ -45,6 +48,7 @@ public class AdminOrdersController {
     /**
      * API 8.7: [POST] /api/v1/admin/orders/{id}/pack-export — Đóng gói & Xuất kho vật lý MB03 (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping("/{id:[0-9]+}/pack-export")
     public ApiResponse<PackExportOrderResponse> packAndExportOrder(
             @PathVariable Long id,

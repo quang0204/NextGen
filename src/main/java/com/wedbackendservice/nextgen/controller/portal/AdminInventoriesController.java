@@ -8,6 +8,7 @@ import com.wedbackendservice.nextgen.service.portal.InventoriesService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -20,6 +21,7 @@ public class AdminInventoriesController {
     /**
      * API 5.1: [GET] /api/v1/admin/inventories — Bảng theo dõi tồn kho biến thể SKU (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping
     public ApiResponse<AdminInventoryListResponse> getAdminInventories(
             @RequestParam(defaultValue = "1") int page,
@@ -34,6 +36,7 @@ public class AdminInventoriesController {
     /**
      * API 5.3: [POST] /api/v1/admin/inventories/adjustments — Lập phiếu kiểm kê điều chỉnh tồn kho MB05 (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PostMapping("/adjustments")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<InventoryAdjustmentResponse> adjustInventory(
@@ -45,6 +48,7 @@ public class AdminInventoriesController {
     /**
      * API 5.4: [GET] /api/v1/admin/inventories/transactions — Sổ cái biến động kho bất biến (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping("/transactions")
     public ApiResponse<PageResponse<InventoryTransactionItemResponse>> getInventoryTransactions(
             @RequestParam(defaultValue = "1") int page,
@@ -60,6 +64,7 @@ public class AdminInventoriesController {
     /**
      * API 5.5: [GET] /api/v1/admin/inventories/low-stock — Cảnh báo biến thể chạm ngưỡng an toàn (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping("/low-stock")
     public ApiResponse<PageResponse<LowStockItemResponse>> getLowStockAlerts(
             @RequestParam(defaultValue = "1") int page,
@@ -71,6 +76,7 @@ public class AdminInventoriesController {
     /**
      * API 5.2: [GET] /api/v1/admin/inventories/{varId} — Chi tiết tồn kho biến thể SKU cụ thể (STAFF / ADMIN)
      */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @GetMapping("/{varId:[0-9]+}")
     public ApiResponse<AdminInventoryDetailResponse> getInventoryDetail(@PathVariable Long varId) {
         return ApiResponse.ok("Lấy chi tiết tồn kho SKU thành công", inventoriesService.getInventoryDetail(varId));
