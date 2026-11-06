@@ -90,7 +90,15 @@ public enum     ErrorCode {
     INVALID_OTP_CODE(1083, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!", HttpStatus.BAD_REQUEST),
     OTP_EXPIRED(1084, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!", HttpStatus.BAD_REQUEST),
     RESEND_COOLDOWN_ACTIVE(1086, "Vui lòng chờ trước khi bấm gửi lại mã!", HttpStatus.TOO_MANY_REQUESTS),
-    INVALID_PHONE_FORMAT(1087, "Số điện thoại không đúng định dạng 10 chữ số!", HttpStatus.BAD_REQUEST);
+    INVALID_PHONE_FORMAT(1087, "Số điện thoại không đúng định dạng 10 chữ số!", HttpStatus.BAD_REQUEST),
+
+    // Nhóm 12: Đánh giá, hỗ trợ, FAQ
+    ERR_REVIEW_NOT_FOUND(1090, "Không tìm thấy đánh giá!", HttpStatus.NOT_FOUND),
+    ERR_REVIEW_ALREADY_EXISTS(1091, "Bạn đã đánh giá sản phẩm này cho đơn hàng hiện tại.", HttpStatus.CONFLICT),
+    ERR_REVIEW_NOT_ALLOWED(1092, "Chỉ có thể đánh giá sản phẩm sau khi đơn hàng đã hoàn thành.", HttpStatus.BAD_REQUEST),
+    ERR_TICKET_NOT_FOUND(1093, "Không tìm thấy phiếu hỗ trợ!", HttpStatus.NOT_FOUND),
+    ERR_TICKET_INVALID_STATUS(1094, "Trạng thái phiếu hỗ trợ không hợp lệ.", HttpStatus.BAD_REQUEST),
+    ERR_FAQ_NOT_FOUND(1095, "Không tìm thấy câu hỏi thường gặp!", HttpStatus.NOT_FOUND);
 
     int code;
     String message;

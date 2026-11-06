@@ -34,6 +34,8 @@ public class SupportTicket {
     String description;
     String priority;
     String status;
+    String resolutionNote;
+    LocalDateTime resolvedAt;
 
     @CreatedDate
     LocalDateTime createdAt;
