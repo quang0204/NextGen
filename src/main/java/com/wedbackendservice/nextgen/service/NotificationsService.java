@@ -1,9 +1,9 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.notification.NotificationListResponse;
-import com.wedbackendservice.nextgen.dto.response.notification.NotificationReadResponse;
-import com.wedbackendservice.nextgen.dto.response.notification.NotificationResponse;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationReadResponse;
+import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationResponse;
 import com.wedbackendservice.nextgen.entity.Notification;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.exception.AppException;

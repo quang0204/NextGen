@@ -22,6 +22,5 @@ public interface UsersMapper {
     CreateAddressResponse toCreateAddressResponse(UserAddress address);
     @Mapping(source = "addressId", target = "defaultAddressId")
     SetDefaultAddressResponse toSetDefaultAddressResponse(UserAddress address);
-    @Mapping(target = "mustChangePassword", ignore = true)
     CreateInternalUserResponse toCreateInternalUserResponse(User users);
 }

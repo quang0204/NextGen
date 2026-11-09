@@ -1,11 +1,11 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.request.review.ReviewCreateRequest;
-import com.wedbackendservice.nextgen.dto.request.review.ReviewReplyRequest;
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.review.AdminReviewListResponse;
-import com.wedbackendservice.nextgen.dto.response.review.ProductReviewListResponse;
-import com.wedbackendservice.nextgen.dto.response.review.ReviewResponse;
+import com.wedbackendservice.nextgen.dto.client.request.review.ReviewCreateRequest;
+import com.wedbackendservice.nextgen.dto.portal.request.review.ReviewReplyRequest;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.review.AdminReviewListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.review.ProductReviewListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.review.ReviewResponse;
 import com.wedbackendservice.nextgen.entity.Order;
 import com.wedbackendservice.nextgen.entity.OrderItem;
 import com.wedbackendservice.nextgen.entity.Review;

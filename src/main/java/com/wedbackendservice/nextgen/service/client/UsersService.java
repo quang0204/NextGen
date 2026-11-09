@@ -259,7 +259,7 @@ public class UsersService {
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
         if (Boolean.TRUE.equals(request.getIsDefault()) && !Boolean.TRUE.equals(address.getIsDefault())) {
-            userAddressRepository.resetDefaultAddressByUserId(user.getUserId());
+            userAddressRepository.setDefaultAddressAtomic(user.getUserId(), addressId);
             address.setIsDefault(true);
         } else if (Boolean.FALSE.equals(request.getIsDefault()) && Boolean.TRUE.equals(address.getIsDefault())) {
             throw new AppException(ErrorCode.CANNOT_UNSET_DEFAULT_ADDRESS);
@@ -284,12 +284,10 @@ public class UsersService {
         UserAddress address = userAddressRepository.findByAddressIdAndUserId(addressId, user.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
-        userAddressRepository.resetDefaultAddressByUserId(user.getUserId());
+        userAddressRepository.setDefaultAddressAtomic(user.getUserId(), addressId);
         address.setIsDefault(true);
 
-        UserAddress userAddress = userAddressRepository.save(address);
-
-        return usersMapper.toSetDefaultAddressResponse(userAddress);
+        return usersMapper.toSetDefaultAddressResponse(address);
     }
 
     /**

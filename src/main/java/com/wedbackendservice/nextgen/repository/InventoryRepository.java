@@ -32,6 +32,17 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long>, Jpa
             "WHERE i.variant.variantId = :variantId AND (i.quantity - i.reservedQuantity) >= :qty")
     int reserveStockAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Inventory i SET i.reservedQuantity = CASE WHEN i.reservedQuantity >= :qty THEN i.reservedQuantity - :qty ELSE 0 END, " +
+            "i.updatedAt = :now WHERE i.variant.variantId = :variantId")
+    int releaseStockAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Inventory i SET i.quantity = CASE WHEN i.quantity >= :qty THEN i.quantity - :qty ELSE 0 END, " +
+            "i.reservedQuantity = CASE WHEN i.reservedQuantity >= :qty THEN i.reservedQuantity - :qty ELSE 0 END, " +
+            "i.updatedAt = :now WHERE i.variant.variantId = :variantId")
+    int deductStockAndReservedAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
+
     @Query("SELECT COALESCE(SUM(i.quantity), 0), COALESCE(SUM(i.reservedQuantity), 0), " +
             "COALESCE(SUM(CASE WHEN (i.quantity - i.reservedQuantity) > 0 THEN (i.quantity - i.reservedQuantity) ELSE 0 END), 0), " +
             "COALESCE(SUM(CASE WHEN (i.quantity - i.reservedQuantity) <= COALESCE(i.minThreshold, 5) THEN 1 ELSE 0 END), 0) " +

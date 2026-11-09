@@ -29,4 +29,9 @@ public interface VoucherRepository extends JpaRepository<Voucher, Long>, JpaSpec
     @Query("UPDATE Voucher v SET v.usedCount = COALESCE(v.usedCount, 0) + 1 " +
             "WHERE v.voucherId = :voucherId AND (v.usageLimit IS NULL OR COALESCE(v.usedCount, 0) < v.usageLimit)")
     int incrementUsedCountAtomic(@Param("voucherId") Long voucherId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Voucher v SET v.usedCount = CASE WHEN COALESCE(v.usedCount, 0) > 0 THEN v.usedCount - 1 ELSE 0 END " +
+            "WHERE v.voucherId = :voucherId")
+    int decrementUsedCountAtomic(@Param("voucherId") Long voucherId);
 }

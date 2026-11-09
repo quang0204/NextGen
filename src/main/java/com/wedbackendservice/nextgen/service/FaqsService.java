@@ -1,8 +1,8 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.request.faq.FaqRequest;
-import com.wedbackendservice.nextgen.dto.response.faq.FaqGroupResponse;
-import com.wedbackendservice.nextgen.dto.response.faq.FaqResponse;
+import com.wedbackendservice.nextgen.dto.portal.request.faq.FaqRequest;
+import com.wedbackendservice.nextgen.dto.client.response.faq.FaqGroupResponse;
+import com.wedbackendservice.nextgen.dto.client.response.faq.FaqResponse;
 import com.wedbackendservice.nextgen.entity.FAQ;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;

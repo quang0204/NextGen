@@ -1,9 +1,9 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.AdminPaymentItemResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.AdminPaymentListResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.PaymentLedgerSummaryResponse;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.AdminPaymentItemResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.AdminPaymentListResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.PaymentLedgerSummaryResponse;
 import com.wedbackendservice.nextgen.entity.Order;
 import com.wedbackendservice.nextgen.entity.Payment;
 import com.wedbackendservice.nextgen.entity.User;
@@ -68,8 +68,9 @@ public class AdminPaymentsService {
     public PaymentLedgerSummaryResponse getLedgerSummary(LocalDate fromDate, LocalDate toDate) {
         securityHelper.authenticateStaffOrAdmin();
 
-        List<Payment> payments = paymentRepository.findAll(
-                buildSpecification(null, null, null, fromDate, toDate));
+        LocalDateTime fromTime = fromDate != null ? fromDate.atStartOfDay() : null;
+        LocalDateTime toTime = toDate != null ? toDate.atTime(LocalTime.MAX) : null;
+        List<Object[]> rows = paymentRepository.summarizePayments(fromTime, toTime);
 
         long total = 0;
         long success = 0;
@@ -81,24 +82,27 @@ public class AdminPaymentsService {
         BigDecimal totalRefunded = BigDecimal.ZERO;
         Map<String, BigDecimal> collectedByMethod = new TreeMap<>();
 
-        for (Payment payment : payments) {
-            total++;
-            BigDecimal amount = payment.getAmount() == null ? BigDecimal.ZERO : payment.getAmount();
-            PaymentStatus paymentStatus = PaymentStatus.from(payment.getStatus());
+        for (Object[] row : rows) {
+            String status = (String) row[0];
+            String method = row[1] != null ? (String) row[1] : "UNKNOWN";
+            long count = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+            BigDecimal amount = row[3] != null ? (BigDecimal) row[3] : BigDecimal.ZERO;
+
+            total += count;
+            PaymentStatus paymentStatus = PaymentStatus.from(status);
 
             if (paymentStatus == PaymentStatus.SUCCESS) {
-                success++;
+                success += count;
                 totalCollected = totalCollected.add(amount);
-                String method = payment.getPaymentMethod() == null ? "UNKNOWN" : payment.getPaymentMethod();
                 collectedByMethod.merge(method, amount, BigDecimal::add);
             } else if (paymentStatus == PaymentStatus.PENDING) {
-                pending++;
+                pending += count;
                 totalPending = totalPending.add(amount);
             } else if (paymentStatus == PaymentStatus.REFUNDED) {
-                refunded++;
+                refunded += count;
                 totalRefunded = totalRefunded.add(amount);
             } else {
-                failed++;
+                failed += count;
             }
         }
 

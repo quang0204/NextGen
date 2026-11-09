@@ -51,4 +51,11 @@ public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecific
 
     @Query("SELECT COALESCE(SUM(o.finalAmount), 0) FROM Order o WHERE o.user.userId = :userId AND o.status = 'COMPLETED'")
     java.math.BigDecimal sumLifetimeValueByUserId(@Param("userId") Long userId);
+
+    @Query("SELECT COUNT(o), " +
+            "COALESCE(SUM(CASE WHEN o.status = 'COMPLETED' THEN 1 ELSE 0 END), 0), " +
+            "COALESCE(SUM(CASE WHEN o.status = 'CANCELLED' THEN 1 ELSE 0 END), 0), " +
+            "COALESCE(SUM(CASE WHEN o.status = 'COMPLETED' THEN o.finalAmount ELSE 0 END), 0) " +
+            "FROM Order o WHERE o.user.userId = :userId")
+    List<Object[]> getUserShoppingSummary(@Param("userId") Long userId);
 }

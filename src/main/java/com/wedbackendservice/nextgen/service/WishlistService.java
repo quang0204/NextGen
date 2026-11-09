@@ -1,11 +1,12 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.request.wishlist.WishlistToggleRequest;
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.wishlist.WishlistListResponse;
-import com.wedbackendservice.nextgen.dto.response.wishlist.WishlistProductResponse;
-import com.wedbackendservice.nextgen.dto.response.wishlist.WishlistToggleResponse;
+import com.wedbackendservice.nextgen.dto.client.request.wishlist.WishlistToggleRequest;
+import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistProductResponse;
+import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistToggleResponse;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
 import com.wedbackendservice.nextgen.entity.Product;
+import com.wedbackendservice.nextgen.entity.ProductImage;
 import com.wedbackendservice.nextgen.entity.ProductVariant;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.entity.Wishlist;
@@ -27,7 +28,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -52,9 +54,36 @@ public class WishlistService {
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<Wishlist> result = wishlistRepository.findByUser_UserId(user.getUserId(), pageable);
+        List<Wishlist> wishlists = result.getContent();
+
+        List<Long> productIds = wishlists.stream()
+                .map(Wishlist::getProduct)
+                .filter(Objects::nonNull)
+                .map(Product::getProductId)
+                .distinct()
+                .toList();
+
+        Map<Long, List<String>> imagesByProduct = productIds.isEmpty() ? Map.of() :
+                productImageRepository.findByProduct_ProductIdInAndIsPrimaryTrue(productIds).stream()
+                        .filter(img -> img.getProduct() != null)
+                        .collect(Collectors.groupingBy(
+                                img -> img.getProduct().getProductId(),
+                                Collectors.mapping(ProductImage::getImageUrl, Collectors.toList())));
+
+        Map<Long, List<String>> specsByProduct = productIds.isEmpty() ? Map.of() :
+                productSpecRepository.findByProduct_ProductIdIn(productIds).stream()
+                        .filter(s -> s.getProduct() != null)
+                        .collect(Collectors.groupingBy(
+                                s -> s.getProduct().getProductId(),
+                                Collectors.mapping(s -> s.getSpecName() + ": " + s.getSpecValue(), Collectors.toList())));
+
+        Map<Long, List<ProductVariant>> variantsByProduct = productIds.isEmpty() ? Map.of() :
+                productVariantRepository.findByProduct_ProductIdIn(productIds).stream()
+                        .filter(v -> v.getProduct() != null)
+                        .collect(Collectors.groupingBy(v -> v.getProduct().getProductId()));
 
         return WishlistListResponse.builder()
-                .items(result.getContent().stream().map(this::toResponse).toList())
+                .items(wishlists.stream().map(w -> toResponse(w, imagesByProduct, specsByProduct, variantsByProduct)).toList())
                 .total(result.getTotalElements())
                 .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
                 .build();
@@ -91,7 +120,11 @@ public class WishlistService {
                 });
     }
 
-    private WishlistProductResponse toResponse(Wishlist wishlist) {
+    private WishlistProductResponse toResponse(
+            Wishlist wishlist,
+            Map<Long, List<String>> imagesByProduct,
+            Map<Long, List<String>> specsByProduct,
+            Map<Long, List<ProductVariant>> variantsByProduct) {
         Product product = wishlist.getProduct();
         if (product == null) {
             return WishlistProductResponse.builder()
@@ -100,21 +133,14 @@ public class WishlistService {
                     .build();
         }
 
-        List<String> images = productImageRepository
-                .findByProduct_ProductIdInAndIsPrimaryTrue(List.of(product.getProductId()))
-                .stream()
-                .map(image -> image.getImageUrl())
-                .toList();
+        Long productId = product.getProductId();
+        List<String> images = imagesByProduct.getOrDefault(productId, List.of());
+        List<String> specs = specsByProduct.getOrDefault(productId, List.of());
+        List<ProductVariant> variants = variantsByProduct.getOrDefault(productId, List.of());
 
-        List<String> specs = productSpecRepository.findByProduct_ProductId(product.getProductId())
-                .stream()
-                .map(spec -> spec.getSpecName() + ": " + spec.getSpecValue())
-                .toList();
-
-        List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(product.getProductId());
         BigDecimal priceFrom = variants.stream()
                 .map(ProductVariant::getPrice)
-                .filter(price -> price != null)
+                .filter(Objects::nonNull)
                 .min(BigDecimal::compareTo)
                 .orElse(product.getBasePrice());
 

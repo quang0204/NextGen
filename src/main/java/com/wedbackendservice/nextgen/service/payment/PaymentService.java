@@ -1,10 +1,10 @@
 package com.wedbackendservice.nextgen.service.payment;
 
 import com.wedbackendservice.nextgen.configuration.BankTransferConfig;
-import com.wedbackendservice.nextgen.dto.request.payment.CreatePaymentIntentRequest;
-import com.wedbackendservice.nextgen.dto.request.payment.SimulateCallbackRequest;
-import com.wedbackendservice.nextgen.dto.response.payment.PaymentIntentResponse;
-import com.wedbackendservice.nextgen.dto.response.payment.SimulateCallbackResponse;
+import com.wedbackendservice.nextgen.dto.client.request.payment.CreatePaymentIntentRequest;
+import com.wedbackendservice.nextgen.dto.client.request.payment.SimulateCallbackRequest;
+import com.wedbackendservice.nextgen.dto.client.response.payment.PaymentIntentResponse;
+import com.wedbackendservice.nextgen.dto.client.response.payment.SimulateCallbackResponse;
 import com.wedbackendservice.nextgen.entity.Order;
 import com.wedbackendservice.nextgen.entity.Payment;
 import com.wedbackendservice.nextgen.entity.User;
@@ -113,17 +113,12 @@ public class PaymentService {
      */
     @Transactional
     public SimulateCallbackResponse simulateCallback(SimulateCallbackRequest request) {
-        User user = securityHelper.getCurrentUser();
+        securityHelper.authenticateAdmin();
         Payment payment = paymentRepository.findByTransactionRef(request.getTransactionRef())
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_REQUEST,
                         "Không tìm thấy giao dịch thanh toán."));
 
         Order order = payment.getOrder();
-        boolean owner = order != null && order.getUser() != null
-                && user.getUserId().equals(order.getUser().getUserId());
-        if (!owner && user.getRole() != Role.ADMIN) {
-            throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
         if (request.getAmount() != null && payment.getAmount() != null
                 && request.getAmount().compareTo(payment.getAmount()) != 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền callback không khớp giao dịch.");

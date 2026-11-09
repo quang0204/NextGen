@@ -1,8 +1,8 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.AuditLogListResponse;
-import com.wedbackendservice.nextgen.dto.response.admin.AuditLogResponse;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogResponse;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Join;

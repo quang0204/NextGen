@@ -145,10 +145,15 @@ public class AdminUsersService {
                         .build())
                 .toList();
 
-        long totalOrders = orderRepository.countByUser_UserId(userId);
-        long completedOrders = orderRepository.countByUser_UserIdAndStatus(userId, "COMPLETED");
-        long cancelledOrders = orderRepository.countByUser_UserIdAndStatus(userId, "CANCELLED");
-        BigDecimal lifetimeValue = orderRepository.sumLifetimeValueByUserId(userId);
+        List<Object[]> summaryList = orderRepository.getUserShoppingSummary(userId);
+        Object[] row = (summaryList != null && !summaryList.isEmpty()) ? summaryList.get(0) : new Object[]{0L, 0L, 0L, BigDecimal.ZERO};
+        long totalOrders = ((Number) row[0]).longValue();
+        long completedOrders = ((Number) row[1]).longValue();
+        long cancelledOrders = ((Number) row[2]).longValue();
+        BigDecimal lifetimeValue = row[3] instanceof BigDecimal ? (BigDecimal) row[3] : BigDecimal.valueOf(((Number) row[3]).doubleValue());
+
+
+
 
         AdminUserDetailResponse.ShoppingSummary shoppingSummary = AdminUserDetailResponse.ShoppingSummary.builder()
                 .totalOrders((int) totalOrders)

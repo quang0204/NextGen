@@ -377,12 +377,17 @@ public class CartService {
     private Cart getOrCreateCart(User user) {
         return cartRepository.findByUserId(user.getUserId())
                 .orElseGet(() -> {
-                    LocalDateTime now = LocalDateTime.now();
+                    try {
+                        LocalDateTime now = LocalDateTime.now();
                     return cartRepository.save(Cart.builder()
                             .user(user)
                             .createdAt(now)
                             .updatedAt(now)
                             .build());
+                    } catch (Exception ex) {
+                        return cartRepository.findByUserId(user.getUserId())
+                                .orElseThrow(() -> new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION, "Không thể khởi tạo giỏ hàng"));
+                    }
                 });
     }
 

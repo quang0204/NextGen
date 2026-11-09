@@ -1,10 +1,10 @@
 package com.wedbackendservice.nextgen.service;
 
-import com.wedbackendservice.nextgen.dto.request.ticket.SupportTicketCreateRequest;
-import com.wedbackendservice.nextgen.dto.request.ticket.SupportTicketResolveRequest;
-import com.wedbackendservice.nextgen.dto.response.PageInfoResponse;
-import com.wedbackendservice.nextgen.dto.response.ticket.AdminSupportTicketListResponse;
-import com.wedbackendservice.nextgen.dto.response.ticket.SupportTicketResponse;
+import com.wedbackendservice.nextgen.dto.client.request.ticket.SupportTicketCreateRequest;
+import com.wedbackendservice.nextgen.dto.portal.request.ticket.SupportTicketResolveRequest;
+import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.ticket.AdminSupportTicketListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.ticket.SupportTicketResponse;
 import com.wedbackendservice.nextgen.entity.SupportTicket;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.enums.TicketStatus;
@@ -76,7 +76,12 @@ public class SupportTicketsService {
 
         Map<String, Long> statusCounts = new LinkedHashMap<>();
         for (TicketStatus ticketStatus : TicketStatus.values()) {
-            statusCounts.put(ticketStatus.name(), supportTicketRepository.countByStatus(ticketStatus.name()));
+            statusCounts.put(ticketStatus.name(), 0L);
+        }
+        for (Object[] row : supportTicketRepository.countByStatusGrouped()) {
+            if (row[0] != null && row[1] != null) {
+                statusCounts.put((String) row[0], ((Number) row[1]).longValue());
+            }
         }
 
         return AdminSupportTicketListResponse.builder()

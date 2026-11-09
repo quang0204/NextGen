@@ -191,6 +191,19 @@ public class TokenRedisService {
         }
     }
 
+    public boolean setIfAbsent(String key, String value, Duration ttl) {
+        Boolean res = redisTemplate.opsForValue().setIfAbsent(key, value, ttl);
+        return Boolean.TRUE.equals(res);
+    }
+
+    public String getValue(String key) {
+        return redisTemplate.opsForValue().get(key);
+    }
+
+    public void setValue(String key, String value, Duration ttl) {
+        redisTemplate.opsForValue().set(key, value, ttl);
+    }
+
     // ===== PRIVATE HELPERS =====
 
     private Duration expiryToTtl(Date expiry) {

@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -52,6 +53,7 @@ public class OrdersService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final AuditLogRepository auditLogRepository;
+    private final TokenRedisService tokenRedisService;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
 
     /**
@@ -62,23 +64,63 @@ public class OrdersService {
         User currentUser = securityHelper.getCurrentUser();
         LocalDateTime now = LocalDateTime.now();
 
-        // 1. Kiểm tra tồn khả dụng của từng sản phẩm
-        Map<ProductVariant, Integer> itemMap = new LinkedHashMap<>();
-        for (OrderItemRequest itemReq : request.getItems()) {
-            ProductVariant variant = productVariantRepository.findById(itemReq.getVariantId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + itemReq.getVariantId() + "!"));
+        // Kiểm tra Idempotency key nếu client gửi
+        if (StringUtils.hasText(idempotencyKey)) {
+            String redisKey = "idempotency:order:" + currentUser.getUserId() + ":" + idempotencyKey.trim();
+            String existingOrderCode = tokenRedisService.getValue(redisKey);
+            if (existingOrderCode != null) {
+                Order existing = orderRepository.findByOrderCode(existingOrderCode).orElse(null);
+                if (existing != null) {
+                    List<OrderItem> existingItems = orderItemRepository.findByOrderId(existing.getOrderId());
+                    return CreateOrderResponse.builder()
+                            .orderId(existing.getOrderId())
+                            .orderCode(existing.getOrderCode())
+                            .status(existing.getStatus())
+                            .subtotal(existing.getSubtotal())
+                            .voucherDiscount(existing.getVoucherDiscount())
+                            .shippingFee(existing.getShippingFee() != null ? existing.getShippingFee() : BigDecimal.ZERO)
+                            .totalAmount(existing.getFinalTotal())
+                            .paymentMethod(existing.getPaymentMethod())
+                            .paymentStatus(existing.getPaymentStatus())
+                            .itemsCount(existingItems != null ? existingItems.size() : 0)
+                            .createdAt(DateTimeUtil.formatIsoInstant(existing.getCreatedAt()))
+                            .build();
+                }
+            }
+        }
 
-            Inventory inv = inventoryRepository.findByVariant_VariantId(variant.getVariantId())
+        // 1. Gộp các sản phẩm trùng lặp và kiểm tra tồn khả dụng
+        Map<Long, Integer> consolidatedQty = new LinkedHashMap<>();
+        if (request.getItems() != null) {
+            for (OrderItemRequest itemReq : request.getItems()) {
+                if (itemReq.getVariantId() != null && itemReq.getQuantity() != null && itemReq.getQuantity() > 0) {
+                    consolidatedQty.merge(itemReq.getVariantId(), itemReq.getQuantity(), Integer::sum);
+                }
+            }
+        }
+        if (consolidatedQty.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Danh sách sản phẩm không hợp lệ!");
+        }
+
+        Map<ProductVariant, Integer> itemMap = new LinkedHashMap<>();
+        for (Map.Entry<Long, Integer> entry : consolidatedQty.entrySet()) {
+            Long variantId = entry.getKey();
+            int requestedQty = entry.getValue();
+
+            ProductVariant variant = productVariantRepository.findById(variantId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + variantId + "!"));
+
+            Inventory inv = inventoryRepository.findByVariant_VariantId(variantId)
                     .orElseGet(() -> Inventory.builder().variant(variant).quantity(0).reservedQuantity(0).minThreshold(5).build());
 
             int available = inv.getAvailableQty();
-            if (available < itemReq.getQuantity()) {
+            if (available < requestedQty) {
                 String prodName = variant.getProduct() != null ? variant.getProduct().getProductName() : variant.getVariantName();
                 throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
                         String.format("Sản phẩm %s (SKU: %s) chỉ còn %d sản phẩm khả dụng trong kho!", prodName, variant.getSku(), available));
             }
 
-            itemMap.put(variant, itemReq.getQuantity());
+            itemMap.put(variant, requestedQty);
         }
 
         // 2. Tính tiền (áp dụng Flash Sale nếu có)
@@ -177,11 +219,14 @@ public class OrdersService {
 
         // 4. Sinh mã đơn hàng an toàn chống trùng lặp (#DH-YYYYMMDD-XXXXXX - Phiếu MB01)
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String orderCode;
-        do {
-            String randomSuffix = String.format("%06d", (int) (Math.random() * 900000) + 100000);
-            orderCode = "DH-" + dateStr + "-" + randomSuffix;
-        } while (orderRepository.existsByOrderCode(orderCode));
+        long millis = System.currentTimeMillis() % 100000;
+        int rand = (int) (Math.random() * 9000) + 1000;
+        String orderCode = String.format("DH-%s-%05d%04d", dateStr, millis, rand);
+        int attempts = 0;
+        while (orderRepository.existsByOrderCode(orderCode) && attempts < 5) {
+            orderCode = String.format("DH-%s-%05d%04d", dateStr, (System.currentTimeMillis() + attempts) % 100000, (int) (Math.random() * 9000) + 1000);
+            attempts++;
+        }
 
         String payMethod = StringUtils.hasText(request.getPaymentMethod()) ? request.getPaymentMethod().trim().toUpperCase() : "COD";
         String payStatus = "UNPAID";
@@ -219,6 +264,11 @@ public class OrdersService {
                 throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
                         String.format("Sản phẩm %s (SKU: %s) vừa hết hàng khả dụng trong kho!", prodName, v.getSku()));
             }
+        }
+
+        if (StringUtils.hasText(idempotencyKey)) {
+            String redisKey = "idempotency:order:" + currentUser.getUserId() + ":" + idempotencyKey.trim();
+            tokenRedisService.setValue(redisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
         }
 
         // 6. Ghi Order Status History
@@ -403,19 +453,13 @@ public class OrdersService {
         for (OrderItem item : items) {
             ProductVariant v = item.getVariant();
             if (v != null) {
-                inventoryRepository.findByVariant_VariantId(v.getVariantId()).ifPresent(inv -> {
-                    inv.setReservedQuantity(Math.max(0, inv.getReservedQty() - item.getQuantity()));
-                    inv.setUpdatedAt(now);
-                    inventoryRepository.save(inv);
-                });
+                inventoryRepository.releaseStockAtomic(v.getVariantId(), item.getQuantity(), now);
             }
         }
 
         // Hoàn trả lượt sử dụng voucher nếu có
         if (order.getVoucher() != null) {
-            Voucher voucher = order.getVoucher();
-            voucher.setUsedCount(Math.max(0, (voucher.getUsedCount() != null ? voucher.getUsedCount() : 1) - 1));
-            voucherRepository.save(voucher);
+            voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
         }
 
         // Cập nhật đơn hàng
@@ -636,10 +680,7 @@ public class OrdersService {
             int onHandBefore = inv.getOnHandQty();
             int onHandAfter = Math.max(0, onHandBefore - item.getQuantity());
 
-            inv.setQuantity(onHandAfter);
-            inv.setReservedQuantity(Math.max(0, inv.getReservedQty() - item.getQuantity()));
-            inv.setUpdatedAt(now);
-            inventoryRepository.save(inv);
+            inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
 
             // Ghi sổ cái bất biến Inventory_Transactions (MB03 EXPORT)
             inventoryTransactionRepository.save(InventoryTransaction.builder()
