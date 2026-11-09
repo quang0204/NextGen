@@ -5,7 +5,7 @@ import com.wedbackendservice.nextgen.dto.client.request.payment.CreatePaymentInt
 import com.wedbackendservice.nextgen.dto.client.request.payment.SimulateCallbackRequest;
 import com.wedbackendservice.nextgen.dto.client.response.payment.PaymentIntentResponse;
 import com.wedbackendservice.nextgen.dto.client.response.payment.SimulateCallbackResponse;
-import com.wedbackendservice.nextgen.service.payment.PaymentService;
+import com.wedbackendservice.nextgen.service.client.PaymentService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

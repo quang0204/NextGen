@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.shared;
 
 import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationListResponse;

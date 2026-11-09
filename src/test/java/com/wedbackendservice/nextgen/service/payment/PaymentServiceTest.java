@@ -16,6 +16,7 @@ import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.OrderRepository;
 import com.wedbackendservice.nextgen.repository.PaymentRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
+import com.wedbackendservice.nextgen.service.client.PaymentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

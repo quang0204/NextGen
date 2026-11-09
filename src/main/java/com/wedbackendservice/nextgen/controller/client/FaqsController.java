@@ -2,7 +2,7 @@ package com.wedbackendservice.nextgen.controller.client;
 
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.response.faq.FaqGroupResponse;
-import com.wedbackendservice.nextgen.service.FaqsService;
+import com.wedbackendservice.nextgen.service.shared.FaqsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

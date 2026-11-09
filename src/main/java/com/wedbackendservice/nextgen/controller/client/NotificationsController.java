@@ -3,7 +3,7 @@ package com.wedbackendservice.nextgen.controller.client;
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationReadResponse;
-import com.wedbackendservice.nextgen.service.NotificationsService;
+import com.wedbackendservice.nextgen.service.shared.NotificationsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

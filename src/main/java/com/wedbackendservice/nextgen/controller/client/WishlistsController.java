@@ -4,7 +4,7 @@ import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.request.wishlist.WishlistToggleRequest;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistToggleResponse;
-import com.wedbackendservice.nextgen.service.WishlistService;
+import com.wedbackendservice.nextgen.service.client.WishlistService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

@@ -4,7 +4,7 @@ import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.portal.request.ticket.SupportTicketResolveRequest;
 import com.wedbackendservice.nextgen.dto.portal.response.ticket.AdminSupportTicketListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.ticket.SupportTicketResponse;
-import com.wedbackendservice.nextgen.service.SupportTicketsService;
+import com.wedbackendservice.nextgen.service.client.SupportTicketsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

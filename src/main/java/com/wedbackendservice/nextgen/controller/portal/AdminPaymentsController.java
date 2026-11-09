@@ -3,7 +3,7 @@ package com.wedbackendservice.nextgen.controller.portal;
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AdminPaymentListResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.PaymentLedgerSummaryResponse;
-import com.wedbackendservice.nextgen.service.AdminPaymentsService;
+import com.wedbackendservice.nextgen.service.portal.AdminPaymentsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;

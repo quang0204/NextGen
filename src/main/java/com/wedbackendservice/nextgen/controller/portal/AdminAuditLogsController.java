@@ -2,7 +2,7 @@ package com.wedbackendservice.nextgen.controller.portal;
 
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;
-import com.wedbackendservice.nextgen.service.AdminAuditLogsService;
+import com.wedbackendservice.nextgen.service.portal.AdminAuditLogsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;

@@ -4,7 +4,7 @@ import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.request.review.ReviewCreateRequest;
 import com.wedbackendservice.nextgen.dto.client.response.review.ProductReviewListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.review.ReviewResponse;
-import com.wedbackendservice.nextgen.service.ReviewsService;
+import com.wedbackendservice.nextgen.service.client.ReviewsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;

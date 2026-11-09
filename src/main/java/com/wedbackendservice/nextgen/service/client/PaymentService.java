@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service.payment;
+package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.configuration.BankTransferConfig;
 import com.wedbackendservice.nextgen.dto.client.request.payment.CreatePaymentIntentRequest;

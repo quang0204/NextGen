@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.wishlist.WishlistToggleRequest;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistListResponse;

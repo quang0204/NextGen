@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.shared;
 
 import com.wedbackendservice.nextgen.dto.portal.request.faq.FaqRequest;
 import com.wedbackendservice.nextgen.dto.client.response.faq.FaqGroupResponse;

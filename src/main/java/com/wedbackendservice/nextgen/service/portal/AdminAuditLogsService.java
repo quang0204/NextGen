@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.portal;
 
 import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;

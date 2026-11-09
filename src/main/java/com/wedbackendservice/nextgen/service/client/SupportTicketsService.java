@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.ticket.SupportTicketCreateRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.ticket.SupportTicketResolveRequest;

@@ -1,4 +1,4 @@
-package com.wedbackendservice.nextgen.service;
+package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.review.ReviewCreateRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.review.ReviewReplyRequest;
