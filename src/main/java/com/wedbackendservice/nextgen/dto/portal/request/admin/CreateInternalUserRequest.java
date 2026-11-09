@@ -26,8 +26,8 @@ public class CreateInternalUserRequest {
     @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Số điện thoại không hợp lệ")
     String phone;
 
+    @NotBlank(message = "Mật khẩu không được để trống")
     String password;
-    String temporaryPassword;
 
     @NotNull(message = "Vai trò không được để trống")
     Role role;

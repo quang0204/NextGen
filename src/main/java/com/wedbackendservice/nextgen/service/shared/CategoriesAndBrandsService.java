@@ -329,8 +329,6 @@ public class CategoriesAndBrandsService {
                 .logoUrl(request.getLogoUrl())
                 .description(request.getDescription())
                 .isActive(isVisible)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
                 .build();
 
         Brand saved = brandRepository.save(brand);

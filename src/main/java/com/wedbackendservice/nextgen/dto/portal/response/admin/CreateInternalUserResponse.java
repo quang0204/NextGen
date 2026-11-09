@@ -20,6 +20,5 @@ public class CreateInternalUserResponse {
     String phone;
     String role;
     String status;
-    Boolean mustChangePassword;
     LocalDateTime createdAt;
 }
