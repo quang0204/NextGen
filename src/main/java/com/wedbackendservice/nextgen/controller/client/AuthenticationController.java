@@ -122,7 +122,7 @@ public class AuthenticationController {
     /**
      * API 13: Đổi mật khẩu
      */
-    @PostMapping("/change-password")
+    @PutMapping("/change-password")
     public ApiResponse<Void> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
         authenticationService.changePassword(request);
         return ApiResponse.ok("Đổi mật khẩu thành công. Vui lòng ghi nhớ mật khẩu mới của bạn.", null);

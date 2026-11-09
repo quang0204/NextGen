@@ -253,9 +253,7 @@ public class AdminUsersService {
         User savedUser = userRepository.save(newUser);
 
         auditLogRepository.log(adminUser, "CREATE_INTERNAL_USER", "User", savedUser.getUserId(), null, savedUser.getRole().name());
-        CreateInternalUserResponse response= usersMapper.toCreateInternalUserResponse(savedUser);
-        response.setMustChangePassword(true);
-        return response;
+        return usersMapper.toCreateInternalUserResponse(savedUser);
     }
 
     /**

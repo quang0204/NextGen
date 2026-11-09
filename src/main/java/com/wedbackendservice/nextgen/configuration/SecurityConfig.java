@@ -43,7 +43,7 @@ public class SecurityConfig {
     };
     @Value("${jwt.signed-key}")
     private String signedKey;
-    @Value("${app.cors.allowed-origins:http://localhost:8080,http://localhost:3000}")
+    @Value("${app.cors.allowed-origins}")
     List<String> allowedOrigins;
 
     private final TokenRedisService tokenRedisService;
@@ -94,6 +94,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource(List<String> origins) {
         CorsConfiguration corsConfiguration = new CorsConfiguration();
         corsConfiguration.setAllowedOrigins(origins);
+        corsConfiguration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
         corsConfiguration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         corsConfiguration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         corsConfiguration.setMaxAge(3600L);
