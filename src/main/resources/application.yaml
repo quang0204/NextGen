@@ -53,3 +53,11 @@ app:
       otp-template: "${SMS_OTP_TEMPLATE:Ma xac nhan cua ban la %s}"
       connect-timeout-ms: ${SMS_CONNECT_TIMEOUT_MS:5000}
       read-timeout-ms: ${SMS_READ_TIMEOUT_MS:10000}
+payment:
+  bank-transfer:
+    bank-name: ${BANK_NAME:Vietcombank}
+    account-number: ${BANK_ACCOUNT_NUMBER:0123456789}
+    account-name: ${BANK_ACCOUNT_NAME:NGUYEN VAN A}
+    branch: ${BANK_BRANCH:Chi nhanh Ha Noi}
+    transfer-prefix: ${BANK_TRANSFER_PREFIX:NG}
+    expire-minutes: ${BANK_TRANSFER_EXPIRE_MINUTES:30}
