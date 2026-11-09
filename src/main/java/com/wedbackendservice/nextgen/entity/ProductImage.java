@@ -33,4 +33,12 @@ public class ProductImage {
 
     @CreatedDate
     LocalDateTime createdAt;
+
+    public Integer getSortOrder() {
+        return displayOrder != null ? displayOrder : 0;
+    }
+
+    public void setSortOrder(Integer sortOrder) {
+        this.displayOrder = sortOrder;
+    }
 }

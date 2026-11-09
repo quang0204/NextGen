@@ -11,4 +11,6 @@ import java.util.List;
 public interface ProductSpecRepository extends JpaRepository<ProductSpec, Long> {
     List<ProductSpec> findByProduct_ProductId(Long productId);
     List<ProductSpec> findByProduct_ProductIdIn(Collection<Long> productIds);
+    List<ProductSpec> findByProduct_ProductIdOrderBySortOrderAsc(Long productId);
+    void deleteByProduct_ProductId(Long productId);
 }
