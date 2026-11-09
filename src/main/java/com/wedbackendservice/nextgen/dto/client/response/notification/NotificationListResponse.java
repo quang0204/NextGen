@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.dto.client.response.notification;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -15,5 +15,5 @@ import java.util.List;
 public class NotificationListResponse {
     List<NotificationResponse> items;
     long unreadCount;
-    PageInfoResponse pageInfo;
+    PageResponse<?> pageInfo;
 }

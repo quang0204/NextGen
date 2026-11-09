@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.dto.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
@@ -13,6 +14,7 @@ import java.util.function.Function;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class PageResponse<T> {
     List<T> content;
     int page;            // 1-based
@@ -34,5 +36,15 @@ public class PageResponse<T> {
 
     public static <T> PageResponse<T> from(Page<T> p) {
         return from(p, Function.identity());
+    }
+
+    public static <T> PageResponse<T> of(int page, int size, Page<?> result) {
+        return PageResponse.<T>builder()
+                .page(page)
+                .size(size)
+                .totalPages(result.getTotalPages())
+                .totalElements(result.getTotalElements())
+                .hasNext(result.hasNext())
+                .build();
     }
 }

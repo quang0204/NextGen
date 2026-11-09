@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.service.portal;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AdminPaymentItemResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AdminPaymentListResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.PaymentLedgerSummaryResponse;
@@ -60,7 +60,7 @@ public class AdminPaymentsService {
 
         return AdminPaymentListResponse.builder()
                 .items(result.getContent().stream().map(this::toItem).toList())
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 

@@ -1,7 +1,7 @@
 package com.wedbackendservice.nextgen.dto.portal.response.ticket;
 
 import com.wedbackendservice.nextgen.dto.client.response.ticket.SupportTicketResponse;
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -16,6 +16,6 @@ import java.util.Map;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminSupportTicketListResponse {
     List<SupportTicketResponse> items;
-    PageInfoResponse pageInfo;
+    PageResponse<?> pageInfo;
     Map<String, Long> statusCounts;
 }

@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.service.shared;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationReadResponse;
 import com.wedbackendservice.nextgen.dto.client.response.notification.NotificationResponse;
@@ -43,7 +43,7 @@ public class NotificationsService {
         return NotificationListResponse.builder()
                 .items(result.getContent().stream().map(this::toResponse).toList())
                 .unreadCount(unread)
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 

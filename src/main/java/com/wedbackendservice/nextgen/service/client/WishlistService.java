@@ -4,7 +4,7 @@ import com.wedbackendservice.nextgen.dto.client.request.wishlist.WishlistToggleR
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistProductResponse;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistToggleResponse;
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.entity.Product;
 import com.wedbackendservice.nextgen.entity.ProductImage;
 import com.wedbackendservice.nextgen.entity.ProductVariant;
@@ -85,7 +85,7 @@ public class WishlistService {
         return WishlistListResponse.builder()
                 .items(wishlists.stream().map(w -> toResponse(w, imagesByProduct, specsByProduct, variantsByProduct)).toList())
                 .total(result.getTotalElements())
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 

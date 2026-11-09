@@ -2,7 +2,7 @@ package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.review.ReviewCreateRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.review.ReviewReplyRequest;
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.review.AdminReviewListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.review.ProductReviewListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.review.ReviewResponse;
@@ -60,7 +60,7 @@ public class ReviewsService {
                 .items(result.getContent().stream().map(this::toResponse).toList())
                 .totalReviews(result.getTotalElements())
                 .averageRating(average == null ? 0d : Math.round(average * 10.0) / 10.0)
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 
@@ -112,7 +112,7 @@ public class ReviewsService {
 
         return AdminReviewListResponse.builder()
                 .items(result.getContent().stream().map(this::toResponse).toList())
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 

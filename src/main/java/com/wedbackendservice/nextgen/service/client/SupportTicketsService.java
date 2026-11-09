@@ -2,7 +2,7 @@ package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.ticket.SupportTicketCreateRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.ticket.SupportTicketResolveRequest;
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.ticket.AdminSupportTicketListResponse;
 import com.wedbackendservice.nextgen.dto.client.response.ticket.SupportTicketResponse;
 import com.wedbackendservice.nextgen.entity.SupportTicket;
@@ -86,7 +86,7 @@ public class SupportTicketsService {
 
         return AdminSupportTicketListResponse.builder()
                 .items(result.getContent().stream().map(this::toResponse).toList())
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .statusCounts(statusCounts)
                 .build();
     }

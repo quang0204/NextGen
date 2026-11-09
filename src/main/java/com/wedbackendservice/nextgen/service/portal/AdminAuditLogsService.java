@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.service.portal;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogResponse;
 import com.wedbackendservice.nextgen.entity.AuditLog;
@@ -49,7 +49,7 @@ public class AdminAuditLogsService {
 
         return AuditLogListResponse.builder()
                 .items(result.getContent().stream().map(this::toResponse).toList())
-                .pageInfo(PageInfoResponse.of(safePage, safeSize, result))
+                .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
 

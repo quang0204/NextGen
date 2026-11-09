@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.dto.client.response.wishlist;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -15,5 +15,5 @@ import java.util.List;
 public class WishlistListResponse {
     List<WishlistProductResponse> items;
     long total;
-    PageInfoResponse pageInfo;
+    PageResponse<?> pageInfo;
 }

@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.dto.client.response.review;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -16,5 +16,5 @@ public class ProductReviewListResponse {
     List<ReviewResponse> items;
     long totalReviews;
     double averageRating;
-    PageInfoResponse pageInfo;
+    PageResponse<?> pageInfo;
 }

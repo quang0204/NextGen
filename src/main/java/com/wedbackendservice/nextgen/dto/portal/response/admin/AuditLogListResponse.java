@@ -1,6 +1,6 @@
 package com.wedbackendservice.nextgen.dto.portal.response.admin;
 
-import com.wedbackendservice.nextgen.dto.common.PageInfoResponse;
+import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -14,5 +14,5 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AuditLogListResponse {
     List<AuditLogResponse> items;
-    PageInfoResponse pageInfo;
+    PageResponse<?> pageInfo;
 }
