@@ -34,10 +34,25 @@ public class ReturnRequest {
     User inspectedBy;
 
     String reason;
+
     String status;
+
     BigDecimal refundAmount;
 
+    String evidenceImages;
+
+    String bankName;
+    String bankAccountNumber;
+    String bankAccountHolder;
+
+    String inspectionResult;
+
+    String rejectReason;
+
     String adminNote;
+
+    LocalDateTime inspectedAt;
+    LocalDateTime approvedAt;
 
     @CreatedDate
     LocalDateTime createdAt;

@@ -98,7 +98,19 @@ public enum     ErrorCode {
     ERR_REVIEW_NOT_ALLOWED(1092, "Chỉ có thể đánh giá sản phẩm sau khi đơn hàng đã hoàn thành.", HttpStatus.BAD_REQUEST),
     ERR_TICKET_NOT_FOUND(1093, "Không tìm thấy phiếu hỗ trợ!", HttpStatus.NOT_FOUND),
     ERR_TICKET_INVALID_STATUS(1094, "Trạng thái phiếu hỗ trợ không hợp lệ.", HttpStatus.BAD_REQUEST),
-    ERR_FAQ_NOT_FOUND(1095, "Không tìm thấy câu hỏi thường gặp!", HttpStatus.NOT_FOUND);
+    ERR_FAQ_NOT_FOUND(1095, "Không tìm thấy câu hỏi thường gặp!", HttpStatus.NOT_FOUND),
+
+    // Nhóm 11: Đổi trả & Biên bản hoàn kho
+    RETURN_PERIOD_EXPIRED(1101, "Đơn hàng đã hoàn thành quá 30 ngày (Chính sách đổi trả áp dụng trong vòng 30 ngày kể từ ngày nhận hàng)!", HttpStatus.BAD_REQUEST),
+    DUPLICATE_RETURN_REQUEST(1102, "Đơn hàng này đã có yêu cầu đổi trả đang trong quá trình xử lý!", HttpStatus.CONFLICT),
+    RETURN_ALREADY_PROCESSED(1103, "Yêu cầu đổi trả này đã được thẩm định trước đó, không thể thay đổi biên bản!", HttpStatus.BAD_REQUEST),
+    RETURN_NOT_FOUND(1104, "Không tìm thấy yêu cầu đổi trả!", HttpStatus.NOT_FOUND),
+    RETURN_ORDER_NOT_COMPLETED(1105, "Đơn hàng chưa hoàn thành, chỉ được gửi yêu cầu đổi trả khi đơn hàng đã giao thành công (COMPLETED)!", HttpStatus.BAD_REQUEST),
+    RETURN_UNAUTHORIZED(1106, "Bạn không có quyền gửi yêu cầu đổi trả cho đơn hàng này!", HttpStatus.FORBIDDEN),
+    RETURN_BANK_INFO_REQUIRED(1107, "Vui lòng cung cấp đầy đủ thông tin tài khoản ngân hàng nhận tiền hoàn đối với đơn thanh toán COD!", HttpStatus.BAD_REQUEST),
+    RETURN_INVALID_STATUS(1108, "Trạng thái thẩm định chỉ được là APPROVED hoặc REJECTED!", HttpStatus.BAD_REQUEST),
+    RETURN_REJECT_REASON_REQUIRED(1109, "Lý do từ chối không được để trống khi từ chối yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
+    RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST);
 
     int code;
     String message;
