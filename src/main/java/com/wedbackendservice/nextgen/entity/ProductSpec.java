@@ -25,8 +25,14 @@ public class ProductSpec {
     @ManyToOne(fetch = FetchType.LAZY)
     Product product;
 
+    @Column(name = "group_name")
+    String groupName;
+
     String specName;
     String specValue;
+
+    @Column(name = "sort_order")
+    Integer sortOrder;
 
     @CreatedDate
     LocalDateTime createdAt;

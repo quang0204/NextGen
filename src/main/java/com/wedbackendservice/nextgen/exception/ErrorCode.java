@@ -65,6 +65,12 @@ public enum     ErrorCode {
     CANNOT_DELETE_DEFAULT_ADDRESS(1048, "Không thể xóa địa chỉ mặc định khi tài khoản vẫn còn các địa chỉ khác. Vui lòng đặt địa chỉ khác làm mặc định trước khi xóa.", HttpStatus.BAD_REQUEST),
     OTP_ATTEMPTS_EXCEEDED(1050, "Bạn đã nhập sai mã OTP quá 5 lần. Phiên xác thực đã bị hủy để đảm bảo an toàn.", HttpStatus.BAD_REQUEST),
     OTP_SEND_LIMIT_EXCEEDED(1049, "Bạn đã yêu cầu gửi mã OTP quá số lần cho phép. Vui lòng thử lại sau.", HttpStatus.TOO_MANY_REQUESTS),
+
+    // Nhóm 4: Sản phẩm & Biến thể SKU
+    PRODUCT_NOT_FOUND(1039, "Không tìm thấy sản phẩm!", HttpStatus.NOT_FOUND),
+    DUPLICATE_SKU(1054, "Mã SKU đã tồn tại trong hệ thống!", HttpStatus.CONFLICT),
+    INVALID_PRODUCT_STATUS(1055, "Trạng thái sản phẩm không hợp lệ.", HttpStatus.BAD_REQUEST),
+
     // Nhóm 5: Kho vận & Tồn kho biến thể
     ERR_STOCK_ADJUST_INVALID(1050, "Số lượng kiểm kê thực tế không được nhỏ hơn số lượng đang giữ chỗ.", HttpStatus.BAD_REQUEST),
     ERR_INVALID_DATE_FORMAT(1051, "Định dạng ngày lọc không hợp lệ.", HttpStatus.BAD_REQUEST),
