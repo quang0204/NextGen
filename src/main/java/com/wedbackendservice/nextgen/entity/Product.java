@@ -22,7 +22,6 @@ import java.time.LocalDateTime;
 public class Product {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-
     Long productId;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -37,6 +36,9 @@ public class Product {
     BigDecimal basePrice;
     String thumbnailUrl;
     String status;
+
+    @Column(name = "warranty_policy", columnDefinition = "TEXT")
+    String warrantyPolicy;
 
     @CreatedDate
     LocalDateTime createdAt;
