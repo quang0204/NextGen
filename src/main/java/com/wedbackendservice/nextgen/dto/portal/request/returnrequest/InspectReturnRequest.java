@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.dto.portal.request.returnrequest;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -23,7 +24,8 @@ public class InspectReturnRequest {
 
     BigDecimal refundAmount;
 
-    List<RestockItemRequest> restockItems;
+    @Valid
+    List<@Valid RestockItemRequest> restockItems;
 
     String rejectReason;
 }

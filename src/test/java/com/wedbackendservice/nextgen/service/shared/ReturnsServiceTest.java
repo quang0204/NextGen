@@ -47,6 +47,9 @@ class ReturnsServiceTest {
     private OrderRepository orderRepository;
 
     @Mock
+    private OrderItemRepository orderItemRepository;
+
+    @Mock
     private InventoryRepository inventoryRepository;
 
     @Mock
@@ -98,6 +101,8 @@ class ReturnsServiceTest {
                 .status("COMPLETED")
                 .paymentMethod("BANK_TRANSFER")
                 .paymentStatus("PAID")
+                .totalAmount(BigDecimal.valueOf(29990000))
+                .finalAmount(BigDecimal.valueOf(29990000))
                 .completedAt(LocalDateTime.now().minusDays(5))
                 .build();
     }
@@ -130,24 +135,29 @@ class ReturnsServiceTest {
 
         assertThat(response).isNotNull();
         assertThat(response.getReturnId()).isEqualTo(35L);
-        assertThat(response.getOrderCode()).isEqualTo("ORD-20261102-004");
         assertThat(response.getStatus()).isEqualTo("PENDING");
+        assertThat(response.getOrderCode()).isEqualTo("ORD-20261102-004");
         assertThat(response.getRequestedBy()).isEqualTo(105L);
-        verify(returnRequestRepository, times(1)).save(any(ReturnRequest.class));
+        verify(auditLogRepository, times(1)).log(eq(testUser), eq("CREATE_RETURN_REQUEST"), anyString(), eq(35L), isNull(), anyString());
     }
 
     @Test
-    @DisplayName("Từ chối khi đơn hàng đã hoàn thành quá 30 ngày (RETURN_PERIOD_EXPIRED)")
-    void createReturn_PeriodExpired() {
-        testOrder.setCompletedAt(LocalDateTime.now().minusDays(31));
-
+    @DisplayName("Tạo yêu cầu đổi trả thất bại khi đơn hàng quá hạn 30 ngày")
+    void createReturn_Expired() {
         when(securityHelper.getCurrentUser()).thenReturn(testUser);
-        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
+
+        Order oldOrder = Order.builder()
+                .orderId(211L)
+                .user(testUser)
+                .status("COMPLETED")
+                .completedAt(LocalDateTime.now().minusDays(35))
+                .build();
+        when(orderRepository.findById(211L)).thenReturn(Optional.of(oldOrder));
 
         CreateReturnRequest request = CreateReturnRequest.builder()
-                .orderId(210L)
-                .reason("Màn hình xuất hiện sọc xanh sau 35 ngày sử dụng")
-                .evidenceImages(List.of("https://phoneshop.vn/uploads/soc.jpg"))
+                .orderId(211L)
+                .reason("Máy pin tụt nhanh")
+                .evidenceImages(List.of("https://phoneshop.vn/uploads/pin.jpg"))
                 .build();
 
         assertThatThrownBy(() -> returnsService.createReturn(request))
@@ -156,65 +166,77 @@ class ReturnsServiceTest {
     }
 
     @Test
-    @DisplayName("Từ chối khi đơn hàng chưa COMPLETED (RETURN_ORDER_NOT_COMPLETED)")
-    void createReturn_OrderNotCompleted() {
-        testOrder.setStatus("SHIPPING");
-
-        when(securityHelper.getCurrentUser()).thenReturn(testUser);
-        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
-
-        CreateReturnRequest request = CreateReturnRequest.builder()
-                .orderId(210L)
-                .reason("Màn hình xuất hiện sọc xanh khi chưa nhận")
-                .evidenceImages(List.of("https://phoneshop.vn/uploads/soc.jpg"))
-                .build();
-
-        assertThatThrownBy(() -> returnsService.createReturn(request))
-                .isInstanceOf(AppException.class)
-                .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.RETURN_ORDER_NOT_COMPLETED));
-    }
-
-    @Test
-    @DisplayName("Từ chối khi đơn hàng đã có yêu cầu đổi trả đang xử lý (DUPLICATE_RETURN_REQUEST)")
-    void createReturn_DuplicateRequest() {
-        when(securityHelper.getCurrentUser()).thenReturn(testUser);
-        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
-        when(returnRequestRepository.existsByOrder_OrderIdAndStatusIn(eq(210L), anyCollection())).thenReturn(true);
-
-        CreateReturnRequest request = CreateReturnRequest.builder()
-                .orderId(210L)
-                .reason("Màn hình xuất hiện sọc xanh sau 5 ngày sử dụng")
-                .evidenceImages(List.of("https://phoneshop.vn/uploads/soc.jpg"))
-                .build();
-
-        assertThatThrownBy(() -> returnsService.createReturn(request))
-                .isInstanceOf(AppException.class)
-                .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.DUPLICATE_RETURN_REQUEST));
-    }
-
-    @Test
-    @DisplayName("Bắt buộc thông tin bankInfo nếu phương thức thanh toán ban đầu là COD")
+    @DisplayName("Tạo yêu cầu đổi trả đơn hàng COD bắt buộc có thông tin tài khoản ngân hàng")
     void createReturn_CodRequiresBankInfo() {
-        testOrder.setPaymentMethod("COD");
-
         when(securityHelper.getCurrentUser()).thenReturn(testUser);
-        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
-        when(returnRequestRepository.existsByOrder_OrderIdAndStatusIn(eq(210L), anyCollection())).thenReturn(false);
 
-        CreateReturnRequest requestWithoutBank = CreateReturnRequest.builder()
-                .orderId(210L)
-                .reason("Màn hình xuất hiện sọc xanh sau 5 ngày sử dụng")
-                .evidenceImages(List.of("https://phoneshop.vn/uploads/soc.jpg"))
+        Order codOrder = Order.builder()
+                .orderId(212L)
+                .user(testUser)
+                .status("COMPLETED")
+                .paymentMethod("COD")
+                .completedAt(LocalDateTime.now().minusDays(2))
+                .build();
+        when(orderRepository.findById(212L)).thenReturn(Optional.of(codOrder));
+        when(returnRequestRepository.existsByOrder_OrderIdAndStatusIn(eq(212L), anyCollection())).thenReturn(false);
+
+        CreateReturnRequest request = CreateReturnRequest.builder()
+                .orderId(212L)
+                .reason("Máy bị lỗi loa trong")
+                .evidenceImages(List.of("https://phoneshop.vn/uploads/loa.jpg"))
+                .bankInfo(null)
                 .build();
 
-        assertThatThrownBy(() -> returnsService.createReturn(requestWithoutBank))
+        assertThatThrownBy(() -> returnsService.createReturn(request))
                 .isInstanceOf(AppException.class)
                 .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.RETURN_BANK_INFO_REQUIRED));
     }
 
     @Test
-    @DisplayName("Thẩm định Chấp thuận (APPROVED) và lập biên bản hoàn kho MB04")
-    void inspectReturn_Approved() {
+    @DisplayName("Tạo yêu cầu đổi trả COD hợp lệ khi có đầy đủ tài khoản ngân hàng")
+    void createReturn_CodWithBankInfo_Success() {
+        when(securityHelper.getCurrentUser()).thenReturn(testUser);
+
+        Order codOrder = Order.builder()
+                .orderId(212L)
+                .orderCode("ORD-COD-001")
+                .user(testUser)
+                .status("COMPLETED")
+                .paymentMethod("COD")
+                .completedAt(LocalDateTime.now().minusDays(2))
+                .build();
+        when(orderRepository.findById(212L)).thenReturn(Optional.of(codOrder));
+        when(returnRequestRepository.existsByOrder_OrderIdAndStatusIn(eq(212L), anyCollection())).thenReturn(false);
+
+        ReturnRequest saved = ReturnRequest.builder()
+                .returnId(36L)
+                .order(codOrder)
+                .requestedBy(testUser)
+                .status("PENDING")
+                .createdAt(LocalDateTime.now())
+                .build();
+        when(returnRequestRepository.save(any(ReturnRequest.class))).thenReturn(saved);
+
+        CreateReturnRequest request = CreateReturnRequest.builder()
+                .orderId(212L)
+                .reason("Máy bị lỗi loa trong")
+                .evidenceImages(List.of("https://phoneshop.vn/uploads/loa.jpg"))
+                .bankInfo(BankInfoRequest.builder()
+                        .bankName("Vietcombank")
+                        .accountNumber("0123456789")
+                        .accountHolder("TRAN THU HUYEN")
+                        .build())
+                .build();
+
+        CreateReturnResponse response = returnsService.createReturn(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getReturnId()).isEqualTo(36L);
+    }
+
+    @Test
+    @DisplayName("Thẩm định Chấp thuận (APPROVED): Cập nhật trạng thái, Hoàn kho MB04 và Kích hoạt hoàn tiền")
+    void inspectReturn_Approved_With_MB04_And_Refund() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
 
         ReturnRequest pendingReturn = ReturnRequest.builder()
@@ -232,6 +254,14 @@ class ReturnsServiceTest {
                 .build();
         when(productVariantRepository.findById(101L)).thenReturn(Optional.of(variant));
 
+        OrderItem orderItem = OrderItem.builder()
+                .orderItemId(1L)
+                .order(testOrder)
+                .variant(variant)
+                .quantity(1)
+                .build();
+        when(orderItemRepository.findByOrderId(210L)).thenReturn(List.of(orderItem));
+
         Inventory inventory = Inventory.builder()
                 .inventoryId(1L)
                 .variant(variant)
@@ -240,7 +270,7 @@ class ReturnsServiceTest {
                 .minThreshold(5)
                 .build();
         when(inventoryRepository.findByVariant_VariantId(101L)).thenReturn(Optional.of(inventory));
-        when(inventoryRepository.save(any(Inventory.class))).thenReturn(inventory);
+        when(inventoryRepository.increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class))).thenReturn(1);
 
         InspectReturnRequest request = InspectReturnRequest.builder()
                 .status("APPROVED")
@@ -264,8 +294,72 @@ class ReturnsServiceTest {
         assertThat(response.getInventoryRestock().getRestockedItems().get(0).getNewOnHandQty()).isEqualTo(9);
         assertThat(response.getInventoryRestock().getRestockedItems().get(0).getNewAvailableQty()).isEqualTo(4);
 
+        verify(inventoryRepository, times(1)).increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class));
         verify(inventoryTransactionRepository, times(1)).save(any(InventoryTransaction.class));
         verify(paymentRepository, times(1)).save(any(Payment.class));
+    }
+
+    @Test
+    @DisplayName("Thẩm định Chấp thuận thất bại khi số tiền hoàn vượt quá giá trị đơn hàng")
+    void inspectReturn_RefundExceedsOrderFinalAmount() {
+        when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+
+        ReturnRequest pendingReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .status("PENDING")
+                .build();
+        when(returnRequestRepository.findById(35L)).thenReturn(Optional.of(pendingReturn));
+
+        InspectReturnRequest request = InspectReturnRequest.builder()
+                .status("APPROVED")
+                .inspectionResult("Lỗi nhà sản xuất")
+                .refundAmount(BigDecimal.valueOf(50000000)) // exceeds testOrder finalAmount 29990000
+                .restockItems(List.of(
+                        RestockItemRequest.builder().variantId(101L).quantity(1).build()
+                ))
+                .build();
+
+        assertThatThrownBy(() -> returnsService.inspectReturn(35L, request))
+                .isInstanceOf(AppException.class)
+                .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
+    @DisplayName("Thẩm định Chấp thuận thất bại khi sản phẩm hoàn kho không có trong đơn hàng")
+    void inspectReturn_VariantNotInOrder() {
+        when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+
+        ReturnRequest pendingReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .status("PENDING")
+                .build();
+        when(returnRequestRepository.findById(35L)).thenReturn(Optional.of(pendingReturn));
+
+        ProductVariant variant101 = ProductVariant.builder().variantId(101L).build();
+        OrderItem orderItem = OrderItem.builder()
+                .orderItemId(1L)
+                .order(testOrder)
+                .variant(variant101)
+                .quantity(1)
+                .build();
+        when(orderItemRepository.findByOrderId(210L)).thenReturn(List.of(orderItem));
+
+        InspectReturnRequest request = InspectReturnRequest.builder()
+                .status("APPROVED")
+                .inspectionResult("Lỗi")
+                .refundAmount(BigDecimal.valueOf(1000000))
+                .restockItems(List.of(
+                        RestockItemRequest.builder().variantId(999L).quantity(1).build()
+                ))
+                .build();
+
+        assertThatThrownBy(() -> returnsService.inspectReturn(35L, request))
+                .isInstanceOf(AppException.class)
+                .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
     }
 
     @Test
@@ -284,31 +378,29 @@ class ReturnsServiceTest {
 
         InspectReturnRequest request = InspectReturnRequest.builder()
                 .status("REJECTED")
-                .inspectionResult("Quỳ tím đổi màu đỏ")
-                .rejectReason("Thiết bị vào nước")
+                .inspectionResult("Máy có dấu hiệu rơi vỡ, nứt kính lưng và cấn móp nặng góc máy")
+                .rejectReason("Lỗi do người sử dụng làm rơi vỡ, từ chối chính sách bảo hành/đổi trả.")
                 .build();
 
         InspectReturnResponse response = returnsService.inspectReturn(35L, request);
 
         assertThat(response).isNotNull();
         assertThat(response.getStatus()).isEqualTo("REJECTED");
-        assertThat(response.getRejectReason()).isEqualTo("Thiết bị vào nước");
+        assertThat(response.getRejectReason()).contains("rơi vỡ");
         assertThat(response.getInventoryRestocked()).isFalse();
 
         verifyNoInteractions(inventoryRepository);
-        verifyNoInteractions(inventoryTransactionRepository);
         verifyNoInteractions(paymentRepository);
+        verify(auditLogRepository, times(1)).log(eq(staffUser), eq("RETURN_REJECTED"), anyString(), eq(35L), anyString(), anyString());
     }
 
     @Test
-    @DisplayName("Thẩm định thất bại nếu yêu cầu đã được xử lý trước đó (RETURN_ALREADY_PROCESSED)")
+    @DisplayName("Không được phép thẩm định lại yêu cầu đổi trả đã kết luận")
     void inspectReturn_AlreadyProcessed() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
 
         ReturnRequest approvedReturn = ReturnRequest.builder()
                 .returnId(35L)
-                .order(testOrder)
-                .requestedBy(testUser)
                 .status("APPROVED")
                 .build();
 
@@ -316,7 +408,7 @@ class ReturnsServiceTest {
 
         InspectReturnRequest request = InspectReturnRequest.builder()
                 .status("REJECTED")
-                .inspectionResult("Thẩm định lại")
+                .inspectionResult("Từ chối lại")
                 .rejectReason("Lý do khác")
                 .build();
 

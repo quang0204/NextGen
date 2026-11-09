@@ -24,6 +24,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long>, Jpa
     List<Inventory> findByVariant_VariantIdIn(Collection<Long> variantIds);
 
     @Modifying(clearAutomatically = true)
+    @Query("UPDATE Inventory i SET i.quantity = :qty, i.updatedAt = :now WHERE i.variant.variantId = :variantId")
+    int setQuantityAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
+
+    @Modifying(clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.quantity = i.quantity + :qty, i.updatedAt = :now WHERE i.variant.variantId = :variantId")
     int increaseQuantityAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 

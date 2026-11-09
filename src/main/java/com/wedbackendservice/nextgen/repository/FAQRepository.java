@@ -12,5 +12,7 @@ public interface FAQRepository extends JpaRepository<FAQ, Long>, JpaSpecificatio
 
     List<FAQ> findByIsActiveTrueOrderByDisplayOrderAsc();
 
+    List<FAQ> findByCategoryIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc(String category);
+
     boolean existsByQuestionIgnoreCase(String question);
 }

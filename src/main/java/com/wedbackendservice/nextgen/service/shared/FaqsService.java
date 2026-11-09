@@ -31,14 +31,12 @@ public class FaqsService {
      */
     @Transactional(readOnly = true)
     public List<FaqGroupResponse> getPublicFaqGroups(String category) {
-        List<FAQ> faqs = faqRepository.findByIsActiveTrueOrderByDisplayOrderAsc();
+        List<FAQ> faqs = (category != null && !category.isBlank())
+                ? faqRepository.findByCategoryIgnoreCaseAndIsActiveTrueOrderByDisplayOrderAsc(category.trim())
+                : faqRepository.findByIsActiveTrueOrderByDisplayOrderAsc();
         Map<String, List<FaqResponse>> grouped = new LinkedHashMap<>();
 
         for (FAQ faq : faqs) {
-            if (category != null && !category.isBlank()
-                    && (faq.getCategory() == null || !faq.getCategory().equalsIgnoreCase(category.trim()))) {
-                continue;
-            }
             String key = faq.getCategory() == null || faq.getCategory().isBlank()
                     ? "Khác" : faq.getCategory();
             grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(toResponse(faq));

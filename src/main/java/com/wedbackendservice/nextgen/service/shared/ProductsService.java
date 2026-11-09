@@ -319,8 +319,28 @@ public class ProductsService {
         List<ProductFeaturedResponse> result = new ArrayList<>();
         LocalDateTime now = LocalDateTime.now();
 
+        List<Long> activeProductIds = products.stream().map(Product::getProductId).toList();
+        List<ProductVariant> allVariants = activeProductIds.isEmpty() ? List.of() :
+                productVariantRepository.findByProduct_ProductIdInAndStatus(activeProductIds, "ACTIVE");
+        Map<Long, List<ProductVariant>> variantsByProduct = allVariants.stream()
+                .collect(Collectors.groupingBy(v -> v.getProduct().getProductId()));
+
+        List<Long> firstVariantIds = products.stream()
+                .map(p -> variantsByProduct.getOrDefault(p.getProductId(), List.of()))
+                .filter(vars -> !vars.isEmpty())
+                .map(vars -> vars.get(0).getVariantId())
+                .toList();
+
+        Map<Long, List<PromotionVariant>> promosByVariant = firstVariantIds.isEmpty() ? Map.of() :
+                promotionVariantRepository.findActivePromotionsForVariantIds(firstVariantIds, now).stream()
+                        .collect(Collectors.groupingBy(pv -> pv.getVariant().getVariantId()));
+
+        Map<Long, Inventory> inventoryMap = firstVariantIds.isEmpty() ? Map.of() :
+                inventoryRepository.findByVariant_VariantIdIn(firstVariantIds).stream()
+                        .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
+
         for (Product product : products) {
-            List<ProductVariant> variants = productVariantRepository.findByProduct_ProductIdAndStatus(product.getProductId(), "ACTIVE");
+            List<ProductVariant> variants = variantsByProduct.getOrDefault(product.getProductId(), List.of());
             if (variants.isEmpty()) continue;
 
             ProductVariant firstVariant = variants.get(0);
@@ -329,7 +349,7 @@ public class ProductsService {
             Integer discountPercent = 0;
             ProductFeaturedResponse.PromotionSummary promoSummary = null;
 
-            List<PromotionVariant> activePromos = promotionVariantRepository.findActivePromotionsForVariant(firstVariant.getVariantId(), now);
+            List<PromotionVariant> activePromos = promosByVariant.getOrDefault(firstVariant.getVariantId(), List.of());
             if (!activePromos.isEmpty()) {
                 PromotionVariant best = activePromos.get(0);
                 salePrice = best.getPromotionalPrice();
@@ -349,7 +369,7 @@ public class ProductsService {
                 }
             }
 
-            Inventory inv = inventoryRepository.findByVariant_VariantId(firstVariant.getVariantId()).orElse(null);
+            Inventory inv = inventoryMap.get(firstVariant.getVariantId());
             boolean inStock = inv != null && inv.getAvailableQty() > 0;
 
             result.add(ProductFeaturedResponse.builder()

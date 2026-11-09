@@ -34,6 +34,11 @@ public final class ClientIpHelper {
             return "127.0.0.1";
         }
 
+        String remoteAddr = request.getRemoteAddr();
+        if (remoteAddr != null && !remoteAddr.isBlank()) {
+            return remoteAddr.trim();
+        }
+
         for (String header : IP_HEADER_CANDIDATES) {
             String ipList = request.getHeader(header);
             if (ipList != null && !ipList.isBlank() && !"unknown".equalsIgnoreCase(ipList)) {
@@ -41,7 +46,6 @@ public final class ClientIpHelper {
             }
         }
 
-        String remoteAddr = request.getRemoteAddr();
-        return (remoteAddr != null && !remoteAddr.isBlank()) ? remoteAddr.trim() : "127.0.0.1";
+        return "127.0.0.1";
     }
 }

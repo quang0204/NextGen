@@ -1,6 +1,10 @@
 package com.wedbackendservice.nextgen.repository;
 
 import com.wedbackendservice.nextgen.entity.ReturnRequest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -11,6 +15,10 @@ import java.util.Collection;
 
 @Repository
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long>, JpaSpecificationExecutor<ReturnRequest> {
+
+    @Override
+    @EntityGraph(attributePaths = {"order", "requestedBy"})
+    Page<ReturnRequest> findAll(Specification<ReturnRequest> spec, Pageable pageable);
 
     boolean existsByOrder_OrderIdAndStatusIn(Long orderId, Collection<String> statuses);
 

@@ -28,6 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.List;
 
@@ -136,9 +138,18 @@ public class UsersService {
             throw new AppException(ErrorCode.OTP_EXPIRED, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!");
         }
 
-        if (!session.getOtpCode().equals(request.getOtpCode())) {
-            throw new AppException(ErrorCode.INVALID_OTP_CODE, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!");
+        if (!MessageDigest.isEqual(session.getOtpCode().getBytes(StandardCharsets.UTF_8), request.getOtpCode().trim().getBytes(StandardCharsets.UTF_8))) {
+            long failedAttempts = tokenRedisService.recordFailedOtpAttempt(request.getOtpSessionToken());
+            if (failedAttempts >= TokenRedisService.MAX_OTP_FAIL_ATTEMPTS) {
+                tokenRedisService.deleteProfileUpdateSession(request.getOtpSessionToken());
+                tokenRedisService.clearFailedOtpAttempts(request.getOtpSessionToken());
+                log.warn("Phiên OTP cập nhật hồ sơ [{}] bị hủy do nhập sai quá {} lần", request.getOtpSessionToken(), TokenRedisService.MAX_OTP_FAIL_ATTEMPTS);
+                throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+            }
+            int remaining = TokenRedisService.MAX_OTP_FAIL_ATTEMPTS - (int) failedAttempts;
+            throw new AppException(ErrorCode.INVALID_OTP_CODE, "Mã xác thực OTP không chính xác. Bạn còn " + remaining + " lần thử.");
         }
+        tokenRedisService.clearFailedOtpAttempts(request.getOtpSessionToken());
 
         String oldJson = String.format("{\"fullName\":\"%s\",\"phone\":\"%s\",\"email\":\"%s\"}",
                 escapeJson(user.getFullName()), escapeJson(user.getPhone()), escapeJson(user.getEmail()));

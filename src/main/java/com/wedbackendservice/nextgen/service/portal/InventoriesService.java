@@ -271,9 +271,8 @@ public class InventoriesService {
         int qtyActual = request.getActualCount();
         int quantityChange = qtyActual - qtyBefore;
 
+        inventoryRepository.setQuantityAtomic(variant.getVariantId(), qtyActual, LocalDateTime.now());
         inventory.setQuantity(qtyActual);
-        inventory.setUpdatedAt(LocalDateTime.now());
-        inventoryRepository.save(inventory);
 
         // Sinh mã phiếu kiểm kê MB05-YYYYMMDD-XXXX
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));

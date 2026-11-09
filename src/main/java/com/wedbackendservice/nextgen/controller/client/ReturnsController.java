@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.service.shared.ReturnsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -19,6 +20,7 @@ public class ReturnsController {
     /**
      * API 11.1: [POST] /api/v1/returns — Khách hàng tạo phiếu yêu cầu đổi trả (Authenticated)
      */
+    @PreAuthorize("isAuthenticated()")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<CreateReturnResponse> createReturn(@Valid @RequestBody CreateReturnRequest request) {

@@ -51,12 +51,16 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers(HttpMethod.POST, PUBLIC_POST_ENDPOINTS).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/auth/me").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/brands", "/api/v1/brands/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/reviews/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/faqs", "/api/v1/faqs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/shipments/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/vouchers/valid").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "STAFF")
-                        .anyRequest().permitAll())
+                        .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o
                         .jwt(j -> j.decoder(jwtDecoder()).jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return httpSecurity.build();

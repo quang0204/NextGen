@@ -32,10 +32,8 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -44,13 +42,14 @@ public class ReturnsService {
 
     private final ReturnRequestRepository returnRequestRepository;
     private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
     private final InventoryRepository inventoryRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final ProductVariantRepository productVariantRepository;
     private final PaymentRepository paymentRepository;
     private final AuditLogRepository auditLogRepository;
     private final SecurityHelper securityHelper;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     /**
      * API 11.1: [POST] /api/v1/returns — Khách hàng tạo phiếu yêu cầu đổi trả (Authenticated)
@@ -265,8 +264,37 @@ public class ReturnsService {
         if (request.getRefundAmount() == null || request.getRefundAmount().compareTo(BigDecimal.ZERO) < 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không hợp lệ khi chấp thuận đổi trả.");
         }
+        Order order = returnRequest.getOrder();
+        if (order != null && order.getFinalAmount() != null && request.getRefundAmount().compareTo(order.getFinalAmount()) > 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không được vượt quá giá trị đơn hàng (" + order.getFinalAmount() + " VND).");
+        }
         if (request.getRestockItems() == null || request.getRestockItems().isEmpty()) {
             throw new AppException(ErrorCode.RETURN_RESTOCK_ITEMS_REQUIRED);
+        }
+
+        // Validate restock items against original order items
+        if (order != null) {
+            List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
+            Map<Long, Integer> orderVariantQtyMap = orderItems.stream()
+                    .filter(oi -> oi.getVariant() != null)
+                    .collect(Collectors.toMap(
+                            oi -> oi.getVariant().getVariantId(),
+                            OrderItem::getQuantity,
+                            Integer::sum
+                    ));
+
+            for (RestockItemRequest item : request.getRestockItems()) {
+                if (item.getVariantId() == null || item.getQuantity() == null || item.getQuantity() <= 0) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST, "Sản phẩm hoặc số lượng hoàn kho không hợp lệ.");
+                }
+                Integer maxAllowed = orderVariantQtyMap.get(item.getVariantId());
+                if (maxAllowed == null) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST, "Sản phẩm (variantId " + item.getVariantId() + ") không thuộc đơn hàng được đổi trả.");
+                }
+                if (item.getQuantity() > maxAllowed) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST, "Số lượng hoàn kho vượt quá số lượng trong đơn hàng (tối đa: " + maxAllowed + ").");
+                }
+            }
         }
 
         returnRequest.setStatus("APPROVED");
@@ -277,7 +305,7 @@ public class ReturnsService {
         returnRequest.setApprovedAt(now);
         returnRequestRepository.save(returnRequest);
 
-        // 1. Tự động hoàn kho vật lý: tăng on_hand_qty và available_qty trong Inventories
+        // 1. Tự động hoàn kho vật lý: tăng on_hand_qty và available_qty trong Inventories (atomic)
         // 2. Ghi nhận sổ cái bất biến Inventory_Transactions với form_code = 'MB04' và txn_type = 'RETURN'
         List<RestockedItemResponse> restockedList = new ArrayList<>();
         for (RestockItemRequest item : request.getRestockItems()) {
@@ -285,23 +313,19 @@ public class ReturnsService {
                     .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
 
             Inventory inventory = inventoryRepository.findByVariant_VariantId(variant.getVariantId())
-                    .orElseGet(() -> {
-                        Inventory newInv = Inventory.builder()
-                                .variant(variant)
-                                .quantity(0)
-                                .reservedQuantity(0)
-                                .minThreshold(5)
-                                .build();
-                        return inventoryRepository.save(newInv);
-                    });
+                    .orElseGet(() -> inventoryRepository.save(Inventory.builder()
+                            .variant(variant)
+                            .quantity(0)
+                            .reservedQuantity(0)
+                            .minThreshold(5)
+                            .build()));
 
             int qtyBefore = inventory.getOnHandQty();
             int qtyRestock = item.getQuantity();
             int qtyAfter = qtyBefore + qtyRestock;
 
+            inventoryRepository.increaseQuantityAtomic(variant.getVariantId(), qtyRestock, now);
             inventory.setQuantity(qtyAfter);
-            inventory.setUpdatedAt(now);
-            inventory = inventoryRepository.save(inventory);
 
             InventoryTransaction txn = InventoryTransaction.builder()
                     .variant(variant)
@@ -329,7 +353,6 @@ public class ReturnsService {
         }
 
         // 3. Kích hoạt tiến trình hoàn tiền (refund_amount) qua phân hệ Payments
-        Order order = returnRequest.getOrder();
         if (order != null) {
             Payment refundPayment = Payment.builder()
                     .order(order)
