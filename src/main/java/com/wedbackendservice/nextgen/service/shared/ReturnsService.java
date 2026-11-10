@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wedbackendservice.nextgen.dto.client.request.returnrequest.BankInfoRequest;
 import com.wedbackendservice.nextgen.dto.client.request.returnrequest.CreateReturnRequest;
+import com.wedbackendservice.nextgen.dto.client.response.order.OrderItemResponse;
 import com.wedbackendservice.nextgen.dto.client.response.returnrequest.CreateReturnResponse;
 import com.wedbackendservice.nextgen.dto.portal.request.returnrequest.InspectReturnRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.returnrequest.RestockItemRequest;
@@ -48,6 +49,8 @@ public class ReturnsService {
     private final ProductVariantRepository productVariantRepository;
     private final PaymentRepository paymentRepository;
     private final AuditLogRepository auditLogRepository;
+    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
+    private final NotificationRepository notificationRepository;
     private final SecurityHelper securityHelper;
     private final ObjectMapper objectMapper;
 
@@ -167,23 +170,66 @@ public class ReturnsService {
         };
 
         Page<ReturnRequest> pageResult = returnRequestRepository.findAll(spec, pageable);
+        List<Long> orderIds = pageResult.getContent().stream()
+                .map(ReturnRequest::getOrder)
+                .filter(Objects::nonNull)
+                .map(Order::getOrderId)
+                .distinct()
+                .toList();
+        Map<Long, List<OrderItemResponse>> orderItemsByOrderId = orderIds.isEmpty() ? Map.of() :
+                orderItemRepository.findByOrderIdIn(orderIds).stream()
+                        .collect(Collectors.groupingBy(
+                                oi -> oi.getOrder().getOrderId(),
+                                Collectors.mapping(oi -> {
+                                    ProductVariant v = oi.getVariant();
+                                    Product p = v != null ? v.getProduct() : null;
+                                    return OrderItemResponse.builder()
+                                            .orderItemId(oi.getOrderItemId())
+                                            .variantId(v != null ? v.getVariantId() : null)
+                                            .productId(p != null ? p.getProductId() : null)
+                                            .productNameSnapshot(oi.getProductNameSnapshot())
+                                            .skuSnapshot(oi.getSkuSnapshot())
+                                            .colorSnapshot(oi.getColorSnapshot())
+                                            .romSnapshot(oi.getRomSnapshot())
+                                            .unitPrice(oi.getUnitPrice())
+                                            .quantity(oi.getQuantity())
+                                            .lineTotal(oi.getLineTotal())
+                                            .imageUrl(oi.getImageUrl())
+                                            .build();
+                                }, Collectors.toList())
+                        ));
 
         List<AdminReturnItemResponse> items = pageResult.getContent().stream().map(r -> {
-            User customer = r.getRequestedBy() != null ? r.getRequestedBy() : (r.getOrder() != null ? r.getOrder().getUser() : null);
+            Order ord = r.getOrder();
+            User customer = r.getRequestedBy() != null ? r.getRequestedBy() : (ord != null ? ord.getUser() : null);
             CustomerInfoResponse customerInfo = customer != null ? CustomerInfoResponse.builder()
                     .userId(customer.getUserId())
                     .fullName(customer.getFullName())
                     .phone(customer.getPhone())
                     .build() : null;
+            BankInfoRequest bankInfo = (StringUtils.hasText(r.getBankName()) || StringUtils.hasText(r.getBankAccountNumber()))
+                    ? BankInfoRequest.builder()
+                            .bankName(r.getBankName())
+                            .accountNumber(r.getBankAccountNumber())
+                            .accountHolder(r.getBankAccountHolder())
+                            .build()
+                    : null;
 
             return AdminReturnItemResponse.builder()
                     .returnId(r.getReturnId())
-                    .orderId(r.getOrder() != null ? r.getOrder().getOrderId() : null)
-                    .orderCode(r.getOrder() != null ? r.getOrder().getOrderCode() : null)
+                    .orderId(ord != null ? ord.getOrderId() : null)
+                    .orderCode(ord != null ? ord.getOrderCode() : null)
+                    .orderTotalAmount(ord != null ? ord.getFinalTotal() : null)
                     .customer(customerInfo)
                     .reason(r.getReason())
                     .evidenceImages(parseImages(r.getEvidenceImages()))
                     .status(r.getStatus())
+                    .inspectionResult(r.getInspectionResult())
+                    .inspectedBy(r.getInspectedBy() != null ? resolveInspector(r.getInspectedBy()) : null)
+                    .inspectedAt(DateTimeUtil.formatIsoInstant(r.getInspectedAt()))
+                    .rejectReason(r.getRejectReason())
+                    .bankInfo(bankInfo)
+                    .items(ord != null ? orderItemsByOrderId.getOrDefault(ord.getOrderId(), List.of()) : List.of())
                     .refundAmount(r.getRefundAmount())
                     .createdAt(DateTimeUtil.formatIsoInstant(r.getCreatedAt()))
                     .build();
@@ -225,12 +271,34 @@ public class ReturnsService {
         }
 
         String newStatus = request.getStatus() != null ? request.getStatus().trim().toUpperCase() : "";
-        if (!"APPROVED".equals(newStatus) && !"REJECTED".equals(newStatus)) {
+        if (!"INSPECTING".equals(newStatus) && !"APPROVED".equals(newStatus) && !"REJECTED".equals(newStatus)) {
             throw new AppException(ErrorCode.RETURN_INVALID_STATUS);
         }
 
         LocalDateTime now = LocalDateTime.now();
         String inspector = resolveInspector(currentUser);
+
+        if ("INSPECTING".equals(newStatus)) {
+            returnRequest.setStatus("INSPECTING");
+            returnRequest.setInspectionResult(request.getInspectionResult());
+            returnRequest.setInspectedBy(currentUser);
+            returnRequest.setInspectedAt(now);
+            returnRequestRepository.saveAndFlush(returnRequest);
+
+            auditLogRepository.log(currentUser, "RETURN_INSPECTING", "ReturnRequests", returnRequest.getReturnId(),
+                    "status: PENDING", "status: INSPECTING");
+
+            return InspectReturnResponse.builder()
+                    .returnId(returnRequest.getReturnId())
+                    .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
+                    .orderCode(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderCode() : null)
+                    .status("INSPECTING")
+                    .inspectionResult(returnRequest.getInspectionResult())
+                    .inspectedBy(inspector)
+                    .inspectedAt(DateTimeUtil.formatIsoInstant(returnRequest.getInspectedAt()))
+                    .inventoryRestocked(false)
+                    .build();
+        }
 
         // Kịch bản TỪ CHỐI (REJECTED)
         if ("REJECTED".equals(newStatus)) {
@@ -243,7 +311,15 @@ public class ReturnsService {
             returnRequest.setRejectReason(request.getRejectReason());
             returnRequest.setInspectedBy(currentUser);
             returnRequest.setInspectedAt(now);
-            returnRequestRepository.save(returnRequest);
+            returnRequestRepository.saveAndFlush(returnRequest);
+
+            String rejOrderCode = returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderCode() : String.valueOf(returnRequest.getReturnId());
+            recordCustomerReturnOutcome(
+                    returnRequest,
+                    returnRequest.getRequestedBy(),
+                    "Yêu cầu đổi trả đơn #" + rejOrderCode + " bị từ chối",
+                    "Yêu cầu đổi trả #RMA-" + returnRequest.getReturnId() + " bị từ chối: " + request.getRejectReason()
+            );
 
             auditLogRepository.log(currentUser, "RETURN_REJECTED", "ReturnRequests", returnRequest.getReturnId(),
                     "status: PENDING", "status: REJECTED, reason: " + request.getRejectReason());
@@ -303,7 +379,7 @@ public class ReturnsService {
         returnRequest.setInspectedBy(currentUser);
         returnRequest.setInspectedAt(now);
         returnRequest.setApprovedAt(now);
-        returnRequestRepository.save(returnRequest);
+        returnRequestRepository.saveAndFlush(returnRequest);
 
         // 1. Tự động hoàn kho vật lý: tăng on_hand_qty và available_qty trong Inventories (atomic)
         // 2. Ghi nhận sổ cái bất biến Inventory_Transactions với form_code = 'MB04' và txn_type = 'RETURN'
@@ -373,6 +449,14 @@ public class ReturnsService {
                     null, "Hoàn trả " + request.getRefundAmount() + " VND cho yêu cầu đổi trả #" + returnRequest.getReturnId());
         }
 
+        String appOrderCode = order != null ? order.getOrderCode() : String.valueOf(returnRequest.getReturnId());
+        recordCustomerReturnOutcome(
+                returnRequest,
+                returnRequest.getRequestedBy(),
+                "Đã duyệt đổi trả & hoàn tiền đơn #" + appOrderCode,
+                "Yêu cầu đổi trả #RMA-" + returnRequest.getReturnId() + " được chấp thuận, hoàn " + request.getRefundAmount().stripTrailingZeros().toPlainString() + "đ và lập phiếu nhập kho MB04."
+        );
+
         auditLogRepository.log(currentUser, "RETURN_APPROVED", "ReturnRequests", returnRequest.getReturnId(),
                 "status: PENDING", "status: APPROVED, refundAmount: " + request.getRefundAmount());
 
@@ -392,6 +476,31 @@ public class ReturnsService {
                         .restockedItems(restockedList)
                         .build())
                 .build();
+    }
+
+    private void recordCustomerReturnOutcome(ReturnRequest returnRequest, User customer, String title, String content) {
+        String safeTitle = title != null && title.length() > 240 ? title.substring(0, 237) + "..." : title;
+        String safeContent = content != null && content.length() > 240 ? content.substring(0, 237) + "..." : content;
+        Order order = returnRequest.getOrder();
+        if (order != null) {
+            orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                    .order(order)
+                    .changedBy(returnRequest.getInspectedBy())
+                    .previousStatus(order.getStatus())
+                    .newStatus(order.getStatus())
+                    .note(safeContent)
+                    .build());
+        }
+        User targetUser = customer != null ? customer : (order != null ? order.getUser() : null);
+        if (targetUser != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(targetUser)
+                    .order(order)
+                    .title(safeTitle)
+                    .content(safeContent)
+                    .isRead(false)
+                    .build());
+        }
     }
 
     private List<String> parseImages(String evidenceImages) {

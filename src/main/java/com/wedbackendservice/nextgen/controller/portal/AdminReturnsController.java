@@ -48,7 +48,9 @@ public class AdminReturnsController {
         InspectReturnResponse response = returnsService.inspectReturn(id, request);
         String message = "APPROVED".equalsIgnoreCase(response.getStatus())
                 ? "Đã hoàn tất giám định, lập biên bản MB04 nhập hoàn kho và phê duyệt hoàn tiền thành công!"
-                : "Đã từ chối yêu cầu đổi trả và lập biên bản kiểm định!";
+                : ("INSPECTING".equalsIgnoreCase(response.getStatus())
+                        ? "Đã ghi nhận biên bản thẩm định ngoại quan thành công!"
+                        : "Đã từ chối yêu cầu đổi trả và lập biên bản kiểm định!");
         return ApiResponse.ok(message, response);
     }
 }

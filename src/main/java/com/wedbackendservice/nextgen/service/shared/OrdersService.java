@@ -50,6 +50,7 @@ public class OrdersService {
     private final VoucherRepository voucherRepository;
     private final PromotionVariantRepository promotionVariantRepository;
     private final ShipmentRepository shipmentRepository;
+    private final ReturnRequestRepository returnRequestRepository;
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final AuditLogRepository auditLogRepository;
@@ -338,17 +339,51 @@ public class OrdersService {
                                 oi -> oi.getOrder().getOrderId(),
                                 Collectors.mapping(this::mapOrderItemResponse, Collectors.toList())
                         ));
+        Map<Long, List<OrderStatusHistoryResponse>> historiesByOrderId = orderIds.isEmpty() ? Map.of() :
+                orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
+                        .collect(Collectors.groupingBy(
+                                h -> h.getOrder().getOrderId(),
+                                Collectors.mapping(this::mapOrderStatusHistoryResponse, Collectors.toList())
+                        ));
+        Map<Long, Shipment> myShipmentMap = orderIds.isEmpty() ? Map.of() :
+                shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
+                        .collect(Collectors.toMap(s -> s.getOrder().getOrderId(), s -> s, (s1, s2) -> s1));
+        Map<Long, ReturnRequest> myReturnMap = orderIds.isEmpty() ? Map.of() :
+                returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
+                        .collect(Collectors.toMap(r -> r.getOrder().getOrderId(), r -> r, (r1, r2) -> r1));
 
-        List<MyOrderItemResponse> items = orders.stream().map(order -> MyOrderItemResponse.builder()
-                .orderId(order.getOrderId())
-                .orderCode(order.getOrderCode())
-                .status(order.getStatus())
-                .totalAmount(order.getFinalTotal())
-                .paymentMethod(order.getPaymentMethod())
-                .paymentStatus(order.getPaymentStatus())
-                .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
-                .items(itemsByOrderId.getOrDefault(order.getOrderId(), List.of()))
-                .build()).toList();
+        List<MyOrderItemResponse> items = orders.stream().map(order -> {
+            Shipment shipment = myShipmentMap.get(order.getOrderId());
+            ReturnRequest latestReturn = myReturnMap.get(order.getOrderId());
+            return MyOrderItemResponse.builder()
+                    .orderId(order.getOrderId())
+                    .orderCode(order.getOrderCode())
+                    .status(order.getStatus())
+                    .recipientName(order.getRecipientName())
+                    .recipientPhone(order.getRecipientPhone())
+                    .shippingAddress(order.getShippingAddress())
+                    .subtotal(order.getSubtotal())
+                    .voucherDiscount(order.getVoucherDiscount())
+                    .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
+                    .totalAmount(order.getFinalTotal())
+                    .paymentMethod(order.getPaymentMethod())
+                    .paymentStatus(order.getPaymentStatus())
+                    .carrier(shipment != null ? shipment.getCarrier() : null)
+                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
+                    .cancelReason(order.getCancelReason())
+                    .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
+                    .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
+                    .returnReason(latestReturn != null ? latestReturn.getReason() : null)
+                    .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
+                    .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
+                    .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
+                    .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
+                    .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
+                    .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
+                    .items(itemsByOrderId.getOrDefault(order.getOrderId(), List.of()))
+                    .statusHistory(historiesByOrderId.getOrDefault(order.getOrderId(), List.of()))
+                    .build();
+        }).toList();
 
         return PageResponse.<MyOrderItemResponse>builder()
                 .content(items)
@@ -379,26 +414,15 @@ public class OrdersService {
         List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
         List<OrderItemResponse> itemResponses = orderItems.stream().map(this::mapOrderItemResponse).toList();
 
-        List<OrderStatusHistory> histories = orderStatusHistoryRepository.findByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
-        List<OrderStatusHistoryResponse> historyResponses = histories.stream().map(h -> {
-            String changedByName = "Hệ thống";
-            if (h.getChangedBy() != null) {
-                changedByName = h.getChangedBy().getFullName() != null
-                        ? h.getChangedBy().getFullName() + " (" + (h.getChangedBy().getRole() != null ? h.getChangedBy().getRole().name() : "Người dùng") + ")"
-                        : "Người dùng";
-            }
-            return OrderStatusHistoryResponse.builder()
-                    .historyId(h.getHistoryId())
-                    .status(h.getToStatus())
-                    .changedBy(changedByName)
-                    .note(h.getReason())
-                    .changedAt(DateTimeUtil.formatIsoInstant(h.getCreatedAt()))
-                    .build();
-        }).toList();
+        List<OrderStatusHistoryResponse> historyResponses = orderStatusHistoryRepository
+                .findByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).stream()
+                .map(this::mapOrderStatusHistoryResponse)
+                .toList();
 
         Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
         String carrier = shipmentOpt.map(Shipment::getCarrier).orElse(null);
         String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
+        ReturnRequest latestReturn = returnRequestRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).orElse(null);
 
         return OrderDetailResponse.builder()
                 .orderId(order.getOrderId())
@@ -416,6 +440,12 @@ public class OrdersService {
                 .carrier(carrier)
                 .trackingCode(trackingCode)
                 .cancelReason(order.getCancelReason())
+                .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
+                .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
+                .returnReason(latestReturn != null ? latestReturn.getReason() : null)
+                .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
+                .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
+                .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
                 .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
                 .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
                 .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
@@ -522,11 +552,22 @@ public class OrdersService {
         Map<Long, Shipment> shipmentMap = orderIds.isEmpty() ? Map.of() :
                 shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
                         .collect(Collectors.toMap(s -> s.getOrder().getOrderId(), s -> s, (s1, s2) -> s1));
+        Map<Long, List<OrderStatusHistoryResponse>> historiesMap = orderIds.isEmpty() ? Map.of() :
+                orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
+                        .collect(Collectors.groupingBy(
+                                h -> h.getOrder().getOrderId(),
+                                Collectors.mapping(this::mapOrderStatusHistoryResponse, Collectors.toList())
+                        ));
+
+        Map<Long, ReturnRequest> adminReturnMap = orderIds.isEmpty() ? Map.of() :
+                returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
+                        .collect(Collectors.toMap(r -> r.getOrder().getOrderId(), r -> r, (r1, r2) -> r1));
 
         List<AdminOrderItemResponse> items = orders.stream().map(order -> {
             List<OrderItem> orderItems = orderItemsMap.getOrDefault(order.getOrderId(), List.of());
             String itemsSummary = buildItemsSummary(orderItems);
             Shipment shipment = shipmentMap.get(order.getOrderId());
+            ReturnRequest latestReturn = adminReturnMap.get(order.getOrderId());
 
             return AdminOrderItemResponse.builder()
                     .orderId(order.getOrderId())
@@ -536,12 +577,26 @@ public class OrdersService {
                     .shippingAddress(order.getShippingAddress())
                     .paymentMethod(order.getPaymentMethod())
                     .paymentStatus(order.getPaymentStatus())
+                    .subtotal(order.getSubtotal())
+                    .voucherDiscount(order.getVoucherDiscount())
+                    .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
                     .totalAmount(order.getFinalTotal())
                     .status(order.getStatus())
                     .carrier(shipment != null ? shipment.getCarrier() : null)
                     .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
+                    .cancelReason(order.getCancelReason())
+                    .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
+                    .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
+                    .returnReason(latestReturn != null ? latestReturn.getReason() : null)
+                    .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
+                    .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
+                    .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
                     .itemsSummary(itemsSummary)
                     .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
+                    .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
+                    .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
+                    .items(orderItems.stream().map(this::mapOrderItemResponse).toList())
+                    .statusHistory(historiesMap.getOrDefault(order.getOrderId(), List.of()))
                     .build();
         }).toList();
 
@@ -756,6 +811,22 @@ public class OrdersService {
                 .shipment(shipmentDetail)
                 .exportedBy(exportedByName)
                 .exportedAt(DateTimeUtil.formatIsoInstant(now))
+                .build();
+    }
+
+    private OrderStatusHistoryResponse mapOrderStatusHistoryResponse(OrderStatusHistory h) {
+        String changedByName = "Hệ thống";
+        if (h.getChangedBy() != null) {
+            changedByName = h.getChangedBy().getFullName() != null
+                    ? h.getChangedBy().getFullName() + " (" + (h.getChangedBy().getRole() != null ? h.getChangedBy().getRole().name() : "Người dùng") + ")"
+                    : "Người dùng";
+        }
+        return OrderStatusHistoryResponse.builder()
+                .historyId(h.getHistoryId())
+                .status(h.getToStatus())
+                .changedBy(changedByName)
+                .note(h.getReason())
+                .changedAt(DateTimeUtil.formatIsoInstant(h.getCreatedAt()))
                 .build();
     }
 

@@ -28,6 +28,12 @@ public class OrderDetailResponse {
     String carrier;
     String trackingCode;
     String cancelReason;
+    Long returnId;
+    String returnStatus;
+    String returnReason;
+    String returnRejectReason;
+    String returnInspectionResult;
+    BigDecimal returnRefundAmount;
     String createdAt;
     String updatedAt;
     String completedAt;

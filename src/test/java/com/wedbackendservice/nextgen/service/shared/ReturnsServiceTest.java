@@ -65,6 +65,12 @@ class ReturnsServiceTest {
     private AuditLogRepository auditLogRepository;
 
     @Mock
+    private OrderStatusHistoryRepository orderStatusHistoryRepository;
+
+    @Mock
+    private NotificationRepository notificationRepository;
+
+    @Mock
     private SecurityHelper securityHelper;
 
     @Spy
@@ -294,9 +300,12 @@ class ReturnsServiceTest {
         assertThat(response.getInventoryRestock().getRestockedItems().get(0).getNewOnHandQty()).isEqualTo(9);
         assertThat(response.getInventoryRestock().getRestockedItems().get(0).getNewAvailableQty()).isEqualTo(4);
 
+        verify(returnRequestRepository, times(1)).saveAndFlush(pendingReturn);
         verify(inventoryRepository, times(1)).increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class));
         verify(inventoryTransactionRepository, times(1)).save(any(InventoryTransaction.class));
         verify(paymentRepository, times(1)).save(any(Payment.class));
+        verify(orderStatusHistoryRepository, times(1)).save(any(OrderStatusHistory.class));
+        verify(notificationRepository, times(1)).save(any(Notification.class));
     }
 
     @Test
@@ -391,6 +400,9 @@ class ReturnsServiceTest {
 
         verifyNoInteractions(inventoryRepository);
         verifyNoInteractions(paymentRepository);
+        verify(returnRequestRepository, times(1)).saveAndFlush(pendingReturn);
+        verify(orderStatusHistoryRepository, times(1)).save(any(OrderStatusHistory.class));
+        verify(notificationRepository, times(1)).save(any(Notification.class));
         verify(auditLogRepository, times(1)).log(eq(staffUser), eq("RETURN_REJECTED"), anyString(), eq(35L), anyString(), anyString());
     }
 

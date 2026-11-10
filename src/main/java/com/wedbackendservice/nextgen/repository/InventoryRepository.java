@@ -23,25 +23,25 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long>, Jpa
 
     List<Inventory> findByVariant_VariantIdIn(Collection<Long> variantIds);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.quantity = :qty, i.updatedAt = :now WHERE i.variant.variantId = :variantId")
     int setQuantityAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.quantity = i.quantity + :qty, i.updatedAt = :now WHERE i.variant.variantId = :variantId")
     int increaseQuantityAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.reservedQuantity = i.reservedQuantity + :qty, i.updatedAt = :now " +
             "WHERE i.variant.variantId = :variantId AND (i.quantity - i.reservedQuantity) >= :qty")
     int reserveStockAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.reservedQuantity = CASE WHEN i.reservedQuantity >= :qty THEN i.reservedQuantity - :qty ELSE 0 END, " +
             "i.updatedAt = :now WHERE i.variant.variantId = :variantId")
     int releaseStockAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
-    @Modifying(clearAutomatically = true)
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("UPDATE Inventory i SET i.quantity = CASE WHEN i.quantity >= :qty THEN i.quantity - :qty ELSE 0 END, " +
             "i.reservedQuantity = CASE WHEN i.reservedQuantity >= :qty THEN i.reservedQuantity - :qty ELSE 0 END, " +
             "i.updatedAt = :now WHERE i.variant.variantId = :variantId")

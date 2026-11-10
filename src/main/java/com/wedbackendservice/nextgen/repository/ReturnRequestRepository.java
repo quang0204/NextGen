@@ -12,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long>, JpaSpecificationExecutor<ReturnRequest> {
@@ -21,6 +23,10 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
     Page<ReturnRequest> findAll(Specification<ReturnRequest> spec, Pageable pageable);
 
     boolean existsByOrder_OrderIdAndStatusIn(Long orderId, Collection<String> statuses);
+
+    Optional<ReturnRequest> findFirstByOrder_OrderIdOrderByCreatedAtDesc(Long orderId);
+
+    List<ReturnRequest> findByOrder_OrderIdInOrderByCreatedAtDesc(Collection<Long> orderIds);
 
     @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status = :status")
     long countByStatus(@Param("status") String status);

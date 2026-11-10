@@ -22,6 +22,7 @@ public class ProductSummaryResponse {
     BigDecimal minPrice;
     BigDecimal maxPrice;
     Integer totalVariants;
+    Integer soldCount;
     List<String> availableColors;
     Boolean isAvailable;
 

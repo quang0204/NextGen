@@ -42,9 +42,17 @@ public class ProductsService {
     private final PromotionRepository promotionRepository;
     private final PromotionVariantRepository promotionVariantRepository;
     private final AuditLogRepository auditLogRepository;
+    private final OrderItemRepository orderItemRepository;
     private final SecurityHelper securityHelper;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
+
+    private Map<Long, Integer> getSoldCountMap(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) return Map.of();
+        return orderItemRepository.countSoldByProductIds(productIds).stream()
+                .filter(r -> r != null && r[0] != null && r[1] != null)
+                .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
+    }
 
     // =========================================================================
     // 4.1 GET /api/v1/products - Danh sách sản phẩm cho khách hàng
@@ -142,6 +150,8 @@ public class ProductsService {
         Map<Long, Inventory> inventoryByVariant = inventories.stream()
                 .collect(Collectors.toMap(inv -> inv.getVariant().getVariantId(), inv -> inv, (a, b) -> a));
 
+        Map<Long, Integer> soldMap = getSoldCountMap(productIds);
+
         List<ProductSummaryResponse> items = new ArrayList<>();
         for (Product product : products) {
             List<ProductVariant> pVariants = variantsByProduct.getOrDefault(product.getProductId(), Collections.emptyList());
@@ -195,6 +205,7 @@ public class ProductsService {
                     .minPrice(minP)
                     .maxPrice(maxP)
                     .totalVariants(pVariants.size())
+                    .soldCount(soldMap.getOrDefault(product.getProductId(), 0))
                     .availableColors(availableColors)
                     .isAvailable(isAvailable)
                     .build());
@@ -474,6 +485,7 @@ public class ProductsService {
                 .description(product.getDescription())
                 .warrantyPolicy(product.getWarrantyPolicy())
                 .status(product.getStatus())
+                .soldCount(getSoldCountMap(List.of(id)).getOrDefault(id, 0))
                 .images(imageResponses)
                 .specs(specGroupResponses)
                 .variants(variantResponses)
