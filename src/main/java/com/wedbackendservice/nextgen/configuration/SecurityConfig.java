@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/reviews/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/faqs", "/api/v1/faqs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/shipments/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/promotions/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/vouchers/valid").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "STAFF")

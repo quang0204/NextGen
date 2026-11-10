@@ -1,7 +1,10 @@
 package com.wedbackendservice.nextgen.dto.portal.response.promotion;
 
+import com.wedbackendservice.nextgen.dto.client.response.promotion.ActivePromotionVariantResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -19,4 +22,5 @@ public class AdminPromotionItemResponse {
     Integer appliedVariantsCount;
     String createdBy;
     String createdAt;
+    List<ActivePromotionVariantResponse> variants;
 }

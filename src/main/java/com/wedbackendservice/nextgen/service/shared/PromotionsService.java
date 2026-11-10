@@ -164,6 +164,43 @@ public class PromotionsService {
                         : "Admin";
             }
 
+            List<PromotionVariant> pvs = promotionVariantRepository.findByPromotion_PromotionId(p.getPromotionId());
+            List<ActivePromotionVariantResponse> variantResponses = new ArrayList<>();
+            for (PromotionVariant pv : pvs) {
+                ProductVariant v = pv.getVariant();
+                if (v == null) continue;
+                Product prod = v.getProduct();
+
+                BigDecimal listPrice = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
+                BigDecimal promoPrice = pv.getPromoPrice() != null ? pv.getPromoPrice() : listPrice;
+
+                int discountPercent = 0;
+                if (listPrice.compareTo(BigDecimal.ZERO) > 0 && promoPrice.compareTo(listPrice) < 0) {
+                    discountPercent = listPrice.subtract(promoPrice)
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(listPrice, 0, RoundingMode.HALF_UP)
+                            .intValue();
+                }
+
+                int availableQty = inventoryRepository.findByVariant_VariantId(v.getVariantId())
+                        .map(Inventory::getAvailableQty)
+                        .orElse(0);
+
+                variantResponses.add(ActivePromotionVariantResponse.builder()
+                        .promoVariantId(pv.getPromoVariantId())
+                        .variantId(v.getVariantId())
+                        .productId(prod != null ? prod.getProductId() : null)
+                        .productName(prod != null ? prod.getProductName() : null)
+                        .sku(v.getSku())
+                        .color(v.getColor())
+                        .romGb(v.getRomGb())
+                        .listPrice(listPrice)
+                        .promoPrice(promoPrice)
+                        .discountPercent(discountPercent)
+                        .availableQty(availableQty)
+                        .build());
+            }
+
             return AdminPromotionItemResponse.builder()
                     .promotionId(p.getPromotionId())
                     .name(p.getName())
@@ -171,9 +208,10 @@ public class PromotionsService {
                     .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
                     .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
                     .status(p.resolveStatus(now))
-                    .appliedVariantsCount(appliedVariantsCount)
+                    .appliedVariantsCount(appliedVariantsCount > 0 ? appliedVariantsCount : variantResponses.size())
                     .createdBy(createdByName)
                     .createdAt(DateTimeUtil.formatIsoInstant(p.getCreatedAt()))
+                    .variants(variantResponses)
                     .build();
         }).toList();
 
