@@ -18,6 +18,16 @@ public class AdminProductsController {
     private final ProductsService productsService;
 
     /**
+     * API 4.4: Lấy chi tiết sản phẩm đầy đủ cho Admin (STAFF / ADMIN) bất kể trạng thái ACTIVE hay INACTIVE
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @GetMapping("/{id}")
+    public ApiResponse<AdminProductDetailResponse> getAdminProductDetail(@PathVariable Long id) {
+        return ApiResponse.ok("Lấy chi tiết sản phẩm quản trị thành công!",
+                productsService.getAdminProductDetail(id));
+    }
+
+    /**
      * API 4.5: Khai báo sản phẩm mới hoàn chỉnh theo luồng Master-Detail (STAFF / ADMIN)
      */
     @PreAuthorize("hasAnyRole('STAFF','ADMIN')")

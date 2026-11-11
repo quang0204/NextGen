@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Data
 @Builder
@@ -19,10 +20,14 @@ public class CreateVariantRequest {
     Integer ramGb;
     Integer romGb;
     String connectionType;
+    Map<String, Object> attributes;
 
     @NotNull(message = "listPrice không được để trống")
     @Positive(message = "listPrice phải lớn hơn 0")
     BigDecimal listPrice;
+
+    BigDecimal salePrice;
+    BigDecimal compareAtPrice;
 
     @NotNull(message = "initialOnHandQty không được để trống")
     @PositiveOrZero(message = "initialOnHandQty phải >= 0")

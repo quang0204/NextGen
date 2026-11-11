@@ -2,6 +2,7 @@ package com.wedbackendservice.nextgen.controller.client;
 
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.response.category.CategoryResponse;
+import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import com.wedbackendservice.nextgen.service.shared.CategoriesAndBrandsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -29,5 +30,13 @@ public class CategoriesController {
     @GetMapping("/{id}")
     public ApiResponse<CategoryResponse> getCategoryById(@PathVariable Long id) {
         return ApiResponse.ok(categoriesAndBrandsService.getCategoryById(id));
+    }
+
+    /**
+     * API 3.6: Lấy schema biến thể hiệu lực của danh mục (Public / Admin)
+     */
+    @GetMapping("/{id}/variant-schema")
+    public ApiResponse<List<VariantSchemaField>> getCategoryVariantSchema(@PathVariable Long id) {
+        return ApiResponse.ok("Lấy cấu hình biến thể danh mục thành công", categoriesAndBrandsService.getCategoryVariantSchema(id));
     }
 }

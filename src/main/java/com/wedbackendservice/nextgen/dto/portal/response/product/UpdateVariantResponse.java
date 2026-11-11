@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
+import java.util.Map;
 
 @Data
 @Builder
@@ -15,8 +16,15 @@ import java.math.BigDecimal;
 public class UpdateVariantResponse {
     Long variantId;
     String sku;
-    BigDecimal oldListPrice;
-    BigDecimal newListPrice;
+    String variantName;
+    String color;
+    Integer ramGb;
+    Integer romGb;
+    String connectionType;
+    Map<String, Object> attributes;
+    Integer minThreshold;
+    BigDecimal listPrice;
+    BigDecimal salePrice;
     Boolean isActive;
     String updatedAt;
 }

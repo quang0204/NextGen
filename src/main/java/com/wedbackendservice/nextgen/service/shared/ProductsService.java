@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.service.shared;
 
+import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import com.wedbackendservice.nextgen.dto.client.response.product.*;
 import com.wedbackendservice.nextgen.dto.portal.request.product.*;
 import com.wedbackendservice.nextgen.dto.portal.response.product.*;
@@ -43,6 +44,7 @@ public class ProductsService {
     private final PromotionVariantRepository promotionVariantRepository;
     private final AuditLogRepository auditLogRepository;
     private final OrderItemRepository orderItemRepository;
+    private final InventoryTransactionRepository inventoryTransactionRepository;
     private final SecurityHelper securityHelper;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
@@ -457,14 +459,24 @@ public class ProductsService {
                     Inventory inv = invMap.get(v.getVariantId());
                     int availableQty = inv != null ? inv.getAvailableQty() : 0;
                     boolean isActive = "ACTIVE".equalsIgnoreCase(v.getStatus());
+                    BigDecimal curPrice = v.getPrice();
+                    BigDecimal origPrice = v.getCompareAtPrice() != null && v.getCompareAtPrice().compareTo(BigDecimal.ZERO) > 0
+                            ? v.getCompareAtPrice()
+                            : curPrice;
+
                     return ProductDetailResponse.VariantDetailResponse.builder()
                             .variantId(v.getVariantId())
                             .sku(v.getSku())
+                            .variantName(v.getVariantName())
                             .color(v.getColor())
                             .ramGb(v.getRamGb())
                             .romGb(v.getRomGb())
                             .connectionType(v.getConnectionType())
-                            .listPrice(v.getPrice())
+                            .attributes(v.getAttributes())
+                            .listPrice(origPrice)
+                            .salePrice(curPrice)
+                            .compareAtPrice(origPrice)
+                            .price(curPrice)
                             .availableQty(availableQty)
                             .isActive(isActive)
                             .build();
@@ -488,6 +500,114 @@ public class ProductsService {
                 .soldCount(getSoldCountMap(List.of(id)).getOrDefault(id, 0))
                 .images(imageResponses)
                 .specs(specGroupResponses)
+                .variantSchema(resolveEffectiveVariantSchema(product.getCategory()))
+                .variants(variantResponses)
+                .build();
+    }
+
+    // =========================================================================
+    // 4.3B GET /api/v1/admin/products/{id} - Chi tiết sản phẩm đầy đủ cho Admin (bất kể trạng thái)
+    // =========================================================================
+    @Transactional(readOnly = true)
+    public AdminProductDetailResponse getAdminProductDetail(Long id) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + id + "!"));
+
+        List<VariantSchemaField> effectiveSchema = resolveEffectiveVariantSchema(product.getCategory());
+
+        List<ProductImage> images = productImageRepository.findByProduct_ProductIdOrderByDisplayOrderAsc(id);
+        List<ProductSpec> specs = productSpecRepository.findByProduct_ProductIdOrderBySortOrderAsc(id);
+        List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(id);
+
+        List<Long> varIds = variants.stream().map(ProductVariant::getVariantId).toList();
+        Map<Long, Inventory> inventoryMap = varIds.isEmpty() ? Map.of() :
+                inventoryRepository.findByVariant_VariantIdIn(varIds).stream()
+                        .filter(i -> i.getVariant() != null)
+                        .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
+
+        List<AdminProductDetailResponse.AdminProductImageResponse> imageResponses = images.stream().map(img -> {
+            String url = img.getImageUrl() != null ? img.getImageUrl() : "";
+            String objectKey = url;
+            String bucket = "products";
+            if (url.contains("/products/")) {
+                objectKey = url.substring(url.indexOf("/products/") + "/products/".length());
+                if (objectKey.contains("?")) {
+                    objectKey = objectKey.substring(0, objectKey.indexOf("?"));
+                }
+            }
+            return AdminProductDetailResponse.AdminProductImageResponse.builder()
+                    .imageId(img.getImageId())
+                    .imageUrl(url)
+                    .objectKey(objectKey)
+                    .bucket(bucket)
+                    .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
+                    .sortOrder(img.getSortOrder())
+                    .build();
+        }).toList();
+
+        List<AdminProductDetailResponse.AdminProductSpecResponse> specResponses = specs.stream().map(s ->
+                AdminProductDetailResponse.AdminProductSpecResponse.builder()
+                        .specId(s.getSpecId())
+                        .groupName(s.getGroupName())
+                        .specName(s.getSpecName())
+                        .specValue(s.getSpecValue())
+                        .sortOrder(s.getSortOrder())
+                        .build()
+        ).toList();
+
+        List<AdminProductDetailResponse.AdminProductVariantResponse> variantResponses = variants.stream().map(v -> {
+            Inventory inv = inventoryMap.get(v.getVariantId());
+            boolean hasTx = orderItemRepository.existsByVariant_VariantId(v.getVariantId())
+                    || inventoryTransactionRepository.existsByVariant_VariantId(v.getVariantId());
+
+            AdminProductDetailResponse.AdminVariantInventoryResponse invResp = null;
+            if (inv != null) {
+                invResp = AdminProductDetailResponse.AdminVariantInventoryResponse.builder()
+                        .inventoryId(inv.getInventoryId())
+                        .onHandQty(inv.getOnHandQty())
+                        .reservedQty(inv.getReservedQty())
+                        .availableQty(inv.getAvailableQty())
+                        .minThreshold(inv.getMinThreshold() != null ? inv.getMinThreshold() : 5)
+                        .build();
+            }
+
+            BigDecimal curPrice = v.getPrice();
+            BigDecimal origPrice = v.getCompareAtPrice() != null && v.getCompareAtPrice().compareTo(BigDecimal.ZERO) > 0
+                    ? v.getCompareAtPrice()
+                    : curPrice;
+
+            return AdminProductDetailResponse.AdminProductVariantResponse.builder()
+                    .variantId(v.getVariantId())
+                    .sku(v.getSku())
+                    .variantName(v.getVariantName() != null ? v.getVariantName() : buildVariantNameFromSchema(product.getProductName(), v, effectiveSchema))
+                    .color(v.getColor())
+                    .ramGb(v.getRamGb())
+                    .romGb(v.getRomGb())
+                    .connectionType(v.getConnectionType())
+                    .attributes(v.getAttributes())
+                    .listPrice(origPrice)
+                    .salePrice(curPrice)
+                    .compareAtPrice(origPrice)
+                    .price(curPrice)
+                    .isActive("ACTIVE".equalsIgnoreCase(v.getStatus()))
+                    .hasTransactions(hasTx)
+                    .inventory(invResp)
+                    .build();
+        }).toList();
+
+        return AdminProductDetailResponse.builder()
+                .productId(product.getProductId())
+                .name(product.getProductName())
+                .categoryId(product.getCategory() != null ? product.getCategory().getCategoryId() : null)
+                .categoryName(product.getCategory() != null ? product.getCategory().getCategoryName() : null)
+                .brandId(product.getBrand() != null ? product.getBrand().getBrandId() : null)
+                .brandName(product.getBrand() != null ? product.getBrand().getBrandName() : null)
+                .description(product.getDescription())
+                .warrantyPolicy(product.getWarrantyPolicy())
+                .status(product.getStatus())
+                .effectiveVariantSchema(effectiveSchema)
+                .images(imageResponses)
+                .specs(specResponses)
                 .variants(variantResponses)
                 .build();
     }
@@ -635,25 +755,39 @@ public class ProductsService {
         }
 
         // Variants & Inventories
+        List<VariantSchemaField> schema = resolveEffectiveVariantSchema(category);
+        List<ProductVariant> createdVariantsList = new ArrayList<>();
         List<CreateProductResponse.CreatedVariantSummary> createdVariants = new ArrayList<>();
         for (CreateProductRequest.VariantItemRequest vReq : request.getVariants()) {
-            String variantName = buildVariantName(savedProduct.getProductName(), vReq.getRomGb(), vReq.getColor());
+            Map<String, Object> sanitizedAttrs = validateAndSanitizeVariant(
+                    vReq.getSku(), vReq.getColor(), vReq.getRamGb(), vReq.getRomGb(),
+                    vReq.getConnectionType(), vReq.getAttributes(), schema
+            );
+
+            checkDuplicateVariantCombination(
+                    savedProduct.getProductId(), vReq.getColor(), vReq.getRamGb(), vReq.getRomGb(),
+                    vReq.getConnectionType(), sanitizedAttrs, createdVariantsList
+            );
 
             ProductVariant variant = ProductVariant.builder()
                     .product(savedProduct)
                     .sku(vReq.getSku().trim())
-                    .variantName(variantName)
                     .price(vReq.getListPrice())
                     .compareAtPrice(vReq.getListPrice())
                     .color(vReq.getColor())
                     .ramGb(vReq.getRamGb())
                     .romGb(vReq.getRomGb())
                     .connectionType(vReq.getConnectionType())
+                    .attributes(sanitizedAttrs)
                     .status("ACTIVE")
                     .imageUrl(primaryImageUrl)
                     .build();
 
+            String variantName = buildVariantNameFromSchema(savedProduct.getProductName(), variant, schema);
+            variant.setVariantName(variantName);
+
             ProductVariant savedVariant = productVariantRepository.save(variant);
+            createdVariantsList.add(savedVariant);
 
             int onHand = vReq.getInitialOnHandQty() != null ? vReq.getInitialOnHandQty() : 0;
             int threshold = vReq.getMinThreshold() != null ? vReq.getMinThreshold() : 5;
@@ -808,21 +942,41 @@ public class ProductsService {
             throw new AppException(ErrorCode.DUPLICATE_SKU, "Mã SKU '" + sku + "' đã tồn tại trong hệ thống!");
         }
 
-        String variantName = buildVariantName(product.getProductName(), request.getRomGb(), request.getColor());
+        List<VariantSchemaField> schema = resolveEffectiveVariantSchema(product.getCategory());
+        Map<String, Object> sanitizedAttrs = validateAndSanitizeVariant(
+                sku, request.getColor(), request.getRamGb(), request.getRomGb(),
+                request.getConnectionType(), request.getAttributes(), schema
+        );
+
+        List<ProductVariant> existingVariants = productVariantRepository.findByProduct_ProductId(productId);
+        checkDuplicateVariantCombination(
+                productId, request.getColor(), request.getRamGb(), request.getRomGb(),
+                request.getConnectionType(), sanitizedAttrs, existingVariants
+        );
+
+        BigDecimal salePrice = request.getSalePrice() != null && request.getSalePrice().compareTo(BigDecimal.ZERO) > 0
+                ? request.getSalePrice()
+                : request.getListPrice();
+        BigDecimal compareAtPrice = request.getListPrice() != null && request.getListPrice().compareTo(BigDecimal.ZERO) > 0
+                ? request.getListPrice()
+                : salePrice;
 
         ProductVariant variant = ProductVariant.builder()
                 .product(product)
                 .sku(sku)
-                .variantName(variantName)
                 .color(request.getColor())
                 .ramGb(request.getRamGb())
                 .romGb(request.getRomGb())
                 .connectionType(request.getConnectionType())
-                .price(request.getListPrice())
-                .compareAtPrice(request.getListPrice())
+                .attributes(sanitizedAttrs)
+                .price(salePrice)
+                .compareAtPrice(compareAtPrice)
                 .status("ACTIVE")
                 .imageUrl(product.getThumbnailUrl())
                 .build();
+
+        String variantName = buildVariantNameFromSchema(product.getProductName(), variant, schema);
+        variant.setVariantName(variantName);
 
         ProductVariant savedVariant = productVariantRepository.save(variant);
 
@@ -873,7 +1027,7 @@ public class ProductsService {
     }
 
     // =========================================================================
-    // 4.8 PUT /api/v1/admin/products/variants/{varId} - Điều chỉnh giá / bật tắt SKU
+    // 4.8 PUT /api/v1/admin/products/variants/{varId} - Điều chỉnh giá / bật tắt SKU / cập nhật thông số
     // =========================================================================
     @Transactional(rollbackFor = Exception.class)
     public UpdateVariantResponse updateVariant(Long varId, UpdateVariantRequest request) {
@@ -883,17 +1037,93 @@ public class ProductsService {
         BigDecimal oldPrice = variant.getPrice();
         String oldStatus = variant.getStatus();
 
-        if (request.getListPrice() != null) {
-            variant.setPrice(request.getListPrice());
+        // 1. Mã SKU là định danh cố định của biến thể, tuyệt đối không được sửa sau khi tạo
+        if (request.getSku() != null && !request.getSku().trim().equalsIgnoreCase(variant.getSku())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Mã SKU biến thể là mã định danh duy nhất cố định trong hệ thống, không được phép chỉnh sửa sau khi tạo!");
         }
 
+        // 2. Giá bán hiện hành (price) & Giá niêm yết gốc (compareAtPrice)
+        BigDecimal effectiveSalePrice = request.getSalePrice() != null ? request.getSalePrice()
+                : (request.getPrice() != null ? request.getPrice() : request.getListPrice());
+        BigDecimal effectiveListPrice = request.getCompareAtPrice() != null ? request.getCompareAtPrice()
+                : (request.getListPrice() != null ? request.getListPrice() : effectiveSalePrice);
+
+        if (effectiveSalePrice != null && effectiveSalePrice.compareTo(BigDecimal.ZERO) > 0) {
+            variant.setPrice(effectiveSalePrice);
+        }
+        if (effectiveListPrice != null && effectiveListPrice.compareTo(BigDecimal.ZERO) > 0) {
+            variant.setCompareAtPrice(effectiveListPrice);
+        } else if (effectiveSalePrice != null && variant.getCompareAtPrice() == null) {
+            variant.setCompareAtPrice(effectiveSalePrice);
+        }
+
+        // 3. Trạng thái bán
         if (request.getIsActive() != null) {
             variant.setStatus(request.getIsActive() ? "ACTIVE" : "INACTIVE");
         }
 
+        // 4. Cột vật lý
+        if (request.getColor() != null) {
+            variant.setColor(request.getColor());
+        }
+        if (request.getRamGb() != null) {
+            variant.setRamGb(request.getRamGb());
+        }
+        if (request.getRomGb() != null) {
+            variant.setRomGb(request.getRomGb());
+        }
+        if (request.getConnectionType() != null) {
+            variant.setConnectionType(request.getConnectionType());
+        }
+        if (request.getImageUrl() != null && !request.getImageUrl().isBlank()) {
+            variant.setImageUrl(request.getImageUrl());
+        }
+
+        // 5. Attributes và schema validation
+        List<VariantSchemaField> schema = resolveEffectiveVariantSchema(variant.getProduct().getCategory());
+        Map<String, Object> currentAttrs = request.getAttributes() != null ? request.getAttributes() : variant.getAttributes();
+        Map<String, Object> sanitized = validateAndSanitizeVariant(
+                variant.getSku(), variant.getColor(), variant.getRamGb(), variant.getRomGb(),
+                variant.getConnectionType(), currentAttrs, schema
+        );
+        variant.setAttributes(sanitized);
+
+        // Kiểm tra trùng tổ hợp biến thể với các biến thể khác cùng sản phẩm
+        List<ProductVariant> otherVariants = productVariantRepository.findByProduct_ProductId(variant.getProduct().getProductId())
+                .stream().filter(v -> !v.getVariantId().equals(varId)).toList();
+        checkDuplicateVariantCombination(variant.getProduct().getProductId(),
+                variant.getColor(), variant.getRamGb(), variant.getRomGb(),
+                variant.getConnectionType(), sanitized, otherVariants);
+
+        variant.setVariantName(buildVariantNameFromSchema(variant.getProduct().getProductName(), variant, schema));
+
         ProductVariant updated = productVariantRepository.save(variant);
 
-        // Audit Log
+        // 6. Cập nhật minThreshold trên Inventory nếu có truyền
+        if (request.getMinThreshold() != null) {
+            inventoryRepository.findByVariant_VariantId(varId).ifPresent(inv -> {
+                inv.setMinThreshold(request.getMinThreshold());
+                inventoryRepository.save(inv);
+            });
+        }
+
+        Integer currentMinThreshold = inventoryRepository.findByVariant_VariantId(varId)
+                .map(Inventory::getMinThreshold)
+                .orElse(5);
+
+        // 7. Tính lại product.basePrice = MIN(price) của các variant ACTIVE
+        List<ProductVariant> allVariants = productVariantRepository.findByProduct_ProductId(variant.getProduct().getProductId());
+        BigDecimal minActivePrice = allVariants.stream()
+                .filter(v -> "ACTIVE".equalsIgnoreCase(v.getStatus()))
+                .map(ProductVariant::getPrice)
+                .filter(Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(variant.getPrice());
+        Product product = variant.getProduct();
+        product.setBasePrice(minActivePrice);
+        productRepository.save(product);
+
+        // 8. Audit Log
         try {
             User operator = securityHelper.getCurrentUser();
             auditLogRepository.log(operator, "UPDATE_PRODUCT_VARIANT", "ProductVariant", varId,
@@ -906,8 +1136,15 @@ public class ProductsService {
         return UpdateVariantResponse.builder()
                 .variantId(updated.getVariantId())
                 .sku(updated.getSku())
-                .oldListPrice(oldPrice)
-                .newListPrice(updated.getPrice())
+                .variantName(updated.getVariantName())
+                .color(updated.getColor())
+                .ramGb(updated.getRamGb())
+                .romGb(updated.getRomGb())
+                .connectionType(updated.getConnectionType())
+                .attributes(updated.getAttributes())
+                .minThreshold(currentMinThreshold)
+                .listPrice(updated.getCompareAtPrice() != null ? updated.getCompareAtPrice() : updated.getPrice())
+                .salePrice(updated.getPrice())
                 .isActive("ACTIVE".equalsIgnoreCase(updated.getStatus()))
                 .updatedAt(updated.getUpdatedAt() != null ? updated.getUpdatedAt().toString() : LocalDateTime.now().toString())
                 .build();
@@ -930,6 +1167,20 @@ public class ProductsService {
 
         product.setStatus(newStatus);
         Product saved = productRepository.save(product);
+
+        if ("INACTIVE".equalsIgnoreCase(newStatus) || "DISCONTINUED".equalsIgnoreCase(newStatus)) {
+            List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(id);
+            for (ProductVariant v : variants) {
+                v.setStatus("INACTIVE");
+            }
+            productVariantRepository.saveAll(variants);
+        } else if ("ACTIVE".equalsIgnoreCase(newStatus)) {
+            List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(id);
+            for (ProductVariant v : variants) {
+                v.setStatus("ACTIVE");
+            }
+            productVariantRepository.saveAll(variants);
+        }
 
         String userEmail = "admin@phoneshop.vn";
         try {
@@ -955,6 +1206,141 @@ public class ProductsService {
     // =========================================================================
     // HELPER METHODS
     // =========================================================================
+    public List<VariantSchemaField> resolveEffectiveVariantSchema(Category category) {
+        if (category == null) return null;
+        Category current = category;
+        int depth = 0;
+        while (current != null && depth < 10) {
+            if (current.getVariantSchema() != null && !current.getVariantSchema().isEmpty()) {
+                return current.getVariantSchema();
+            }
+            current = current.getParent();
+            depth++;
+        }
+        return null;
+    }
+
+    private Map<String, Object> validateAndSanitizeVariant(
+            String sku,
+            String color,
+            Integer ramGb,
+            Integer romGb,
+            String connectionType,
+            Map<String, Object> attributes,
+            List<VariantSchemaField> schema
+    ) {
+        if (schema == null || schema.isEmpty()) {
+            return attributes != null ? new HashMap<>(attributes) : new HashMap<>();
+        }
+
+        Map<String, Object> sanitizedAttrs = new HashMap<>();
+
+        for (VariantSchemaField field : schema) {
+            String key = field.getKey();
+            boolean isRequired = Boolean.TRUE.equals(field.getRequired());
+            Object value = null;
+
+            if ("COLUMN".equalsIgnoreCase(field.getStorage())) {
+                if ("color".equalsIgnoreCase(key)) value = color;
+                else if ("ramGb".equalsIgnoreCase(key)) value = ramGb;
+                else if ("romGb".equalsIgnoreCase(key)) value = romGb;
+                else if ("connectionType".equalsIgnoreCase(key)) value = connectionType;
+            } else {
+                if (attributes != null && attributes.containsKey(key)) {
+                    value = attributes.get(key);
+                    if (value != null && !value.toString().trim().isBlank()) {
+                        sanitizedAttrs.put(key, value);
+                    } else {
+                        value = null;
+                    }
+                }
+            }
+
+            if (isRequired && (value == null || (value instanceof String && ((String) value).trim().isBlank()))) {
+                throw new AppException(ErrorCode.INVALID_REQUEST, "Thiếu thông tin bắt buộc: " + field.getLabel());
+            }
+        }
+
+        return sanitizedAttrs;
+    }
+
+    private void checkDuplicateVariantCombination(
+            Long productId,
+            String color,
+            Integer ramGb,
+            Integer romGb,
+            String connectionType,
+            Map<String, Object> attributes,
+            List<ProductVariant> existingVariants
+    ) {
+        if (existingVariants == null || existingVariants.isEmpty()) return;
+
+        for (ProductVariant existing : existingVariants) {
+            boolean sameColor = Objects.equals(
+                    existing.getColor() != null ? existing.getColor().trim().toLowerCase() : null,
+                    color != null ? color.trim().toLowerCase() : null
+            );
+            boolean sameRam = Objects.equals(existing.getRamGb(), ramGb);
+            boolean sameRom = Objects.equals(existing.getRomGb(), romGb);
+            boolean sameConn = Objects.equals(
+                    existing.getConnectionType() != null ? existing.getConnectionType().trim().toLowerCase() : null,
+                    connectionType != null ? connectionType.trim().toLowerCase() : null
+            );
+            boolean sameAttrs = Objects.equals(existing.getAttributes(), attributes);
+
+            if (sameColor && sameRam && sameRom && sameConn && sameAttrs) {
+                throw new AppException(ErrorCode.INVALID_REQUEST, "Trùng tổ hợp biến thể trong cùng sản phẩm!");
+            }
+        }
+    }
+
+    private String buildVariantNameFromSchema(String productName, ProductVariant variant, List<VariantSchemaField> schema) {
+        if (schema == null || schema.isEmpty()) {
+            return buildVariantName(productName, variant.getRomGb(), variant.getColor());
+        }
+
+        List<String> parts = new ArrayList<>();
+        String colorPart = null;
+
+        for (VariantSchemaField field : schema) {
+            String key = field.getKey();
+            Object val = null;
+            if ("COLUMN".equalsIgnoreCase(field.getStorage())) {
+                if ("color".equalsIgnoreCase(key)) {
+                    colorPart = variant.getColor();
+                    continue;
+                } else if ("ramGb".equalsIgnoreCase(key) && variant.getRamGb() != null) {
+                    val = variant.getRamGb() + (field.getUnit() != null ? field.getUnit() : "GB");
+                } else if ("romGb".equalsIgnoreCase(key) && variant.getRomGb() != null) {
+                    val = variant.getRomGb() + (field.getUnit() != null ? field.getUnit() : "GB");
+                } else if ("connectionType".equalsIgnoreCase(key) && variant.getConnectionType() != null) {
+                    val = variant.getConnectionType();
+                }
+            } else if (variant.getAttributes() != null && variant.getAttributes().containsKey(key)) {
+                Object raw = variant.getAttributes().get(key);
+                if (raw != null && !raw.toString().isBlank()) {
+                    val = raw.toString().trim() + (field.getUnit() != null ? field.getUnit() : "");
+                }
+            }
+
+            if (val != null && !val.toString().isBlank()) {
+                parts.add(val.toString());
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (!parts.isEmpty()) {
+            sb.append(String.join(" / ", parts));
+        }
+        if (colorPart != null && !colorPart.isBlank()) {
+            if (sb.length() > 0) {
+                sb.append(" - ");
+            }
+            sb.append(colorPart.trim());
+        }
+        return sb.length() > 0 ? sb.toString() : (productName != null ? productName : "");
+    }
+
     private String buildVariantName(String productName, Integer romGb, String color) {
         StringBuilder sb = new StringBuilder(productName != null ? productName : "");
         if (romGb != null && romGb > 0) {

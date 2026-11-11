@@ -13,5 +13,6 @@ public interface CategoryMapper {
     @Mapping(source = "isActive", target = "isVisible")
     @Mapping(target = "productCount", ignore = true)
     @Mapping(target = "children", ignore = true)
+    @Mapping(target = "effectiveVariantSchema", ignore = true)
     CategoryResponse tocategoryResponse(Category category);
 }

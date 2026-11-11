@@ -2,9 +2,12 @@ package com.wedbackendservice.nextgen.dto.portal.request.category;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+
+import java.util.List;
 
 @Getter
 @Setter
@@ -24,6 +27,8 @@ public class CategoryRequest {
     String slug;
     String description;
     String iconUrl;
+
+    List<VariantSchemaField> variantSchema;
 
     @JsonProperty("isVisible")
     @JsonAlias({"isVisible", "isActive"})

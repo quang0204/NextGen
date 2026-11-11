@@ -147,7 +147,9 @@ public class OrdersService {
             subtotal = subtotal.add(lineTotal);
 
             Product prod = variant.getProduct();
-            String prodName = prod != null ? prod.getProductName() : variant.getVariantName();
+            String prodName = prod != null 
+                    ? prod.getProductName() + (variant.getVariantName() != null && !variant.getVariantName().isBlank() ? " (" + variant.getVariantName() + ")" : "")
+                    : variant.getVariantName();
             String rom = variant.getRomGb() != null ? variant.getRomGb() + "GB" : null;
 
             OrderItem orderItem = OrderItem.builder()

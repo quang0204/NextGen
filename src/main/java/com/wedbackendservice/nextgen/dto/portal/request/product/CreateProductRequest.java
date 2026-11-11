@@ -7,6 +7,7 @@ import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -73,6 +74,7 @@ public class CreateProductRequest {
         Integer ramGb;
         Integer romGb;
         String connectionType;
+        Map<String, Object> attributes;
 
         @NotNull(message = "listPrice không được để trống")
         @Positive(message = "listPrice phải lớn hơn 0")

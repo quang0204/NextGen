@@ -4,6 +4,7 @@ import com.wedbackendservice.nextgen.dto.portal.request.brand.BrandRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.category.CategoryRequest;
 import com.wedbackendservice.nextgen.dto.client.response.brand.BrandResponse;
 import com.wedbackendservice.nextgen.dto.client.response.category.CategoryResponse;
+import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import com.wedbackendservice.nextgen.entity.Brand;
 import com.wedbackendservice.nextgen.entity.Category;
 import com.wedbackendservice.nextgen.entity.User;
@@ -63,6 +64,7 @@ public class CategoriesAndBrandsService {
             CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
             resp.setProductCount(count);
             resp.setChildren(new ArrayList<>());
+            resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
 
             if (cat.getParent() == null) {
                 rootResponses.add(resp);
@@ -109,6 +111,7 @@ public class CategoriesAndBrandsService {
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
         CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
         resp.setProductCount(productCount);
+        resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
         return resp;
     }
 
@@ -153,6 +156,7 @@ public class CategoriesAndBrandsService {
                 .slug(slug)
                 .description(request.getDescription())
                 .iconUrl(request.getIconUrl())
+                .variantSchema(request.getVariantSchema())
                 .isActive(isVisible)
                 .build();
 
@@ -161,6 +165,7 @@ public class CategoriesAndBrandsService {
         auditLogRepository.log(operator, "CREATE_CATEGORY", "Category", saved.getCategoryId(), null, saved.getCategoryName());
         CategoryResponse resp = categoryMapper.tocategoryResponse(saved);
         resp.setProductCount(0);
+        resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(saved));
         return resp;
     }
 
@@ -222,6 +227,9 @@ public class CategoriesAndBrandsService {
         if (request.getIsVisible() != null) {
             category.setIsActive(request.getIsVisible());
         }
+        if (request.getVariantSchema() != null) {
+            category.setVariantSchema(request.getVariantSchema());
+        }
         category.setUpdatedAt(LocalDateTime.now());
 
         Category updated = categoryRepository.save(category);
@@ -231,7 +239,29 @@ public class CategoriesAndBrandsService {
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
         CategoryResponse resp = categoryMapper.tocategoryResponse(updated);
         resp.setProductCount(productCount);
+        resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(updated));
         return resp;
+    }
+
+    public List<VariantSchemaField> resolveEffectiveVariantSchema(Category category) {
+        if (category == null) return null;
+        Category current = category;
+        int depth = 0;
+        while (current != null && depth < 10) {
+            if (current.getVariantSchema() != null && !current.getVariantSchema().isEmpty()) {
+                return current.getVariantSchema();
+            }
+            current = current.getParent();
+            depth++;
+        }
+        return null;
+    }
+
+    @Transactional(readOnly = true)
+    public List<VariantSchemaField> getCategoryVariantSchema(Long id) {
+        Category cat = categoryRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+        return resolveEffectiveVariantSchema(cat);
     }
 
     /**

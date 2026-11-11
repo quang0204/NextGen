@@ -3,12 +3,15 @@ package com.wedbackendservice.nextgen.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Entity
 @Getter
@@ -37,6 +40,10 @@ public class ProductVariant {
 
     @Column(name = "connection_type")
     String connectionType;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "attributes", columnDefinition = "json")
+    Map<String, Object> attributes;
 
     String imageUrl;
     String status;

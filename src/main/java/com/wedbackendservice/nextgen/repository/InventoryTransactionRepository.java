@@ -19,6 +19,8 @@ public interface InventoryTransactionRepository extends JpaRepository<InventoryT
 
     Page<InventoryTransaction> findByVariant_VariantIdOrderByTxnIdDesc(Long variantId, Pageable pageable);
 
+    boolean existsByVariant_VariantId(Long variantId);
+
     @Override
     @EntityGraph(attributePaths = {"variant", "variant.product", "performedBy", "order"})
     Page<InventoryTransaction> findAll(Specification<InventoryTransaction> spec, Pageable pageable);

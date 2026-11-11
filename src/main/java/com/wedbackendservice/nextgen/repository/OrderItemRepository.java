@@ -22,4 +22,6 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
            "WHERE oi.order.status <> 'CANCELLED' AND oi.variant.product.productId IN :productIds " +
            "GROUP BY oi.variant.product.productId")
     List<Object[]> countSoldByProductIds(@Param("productIds") Collection<Long> productIds);
+
+    boolean existsByVariant_VariantId(Long variantId);
 }

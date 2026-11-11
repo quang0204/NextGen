@@ -1,11 +1,13 @@
 package com.wedbackendservice.nextgen.dto.client.response.product;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -24,6 +26,7 @@ public class ProductDetailResponse {
     Integer soldCount;
     List<ProductImageResponse> images;
     List<SpecGroupResponse> specs;
+    List<VariantSchemaField> variantSchema;
     List<VariantDetailResponse> variants;
 
     @Data
@@ -66,11 +69,16 @@ public class ProductDetailResponse {
     public static class VariantDetailResponse {
         Long variantId;
         String sku;
+        String variantName;
         String color;
         Integer ramGb;
         Integer romGb;
         String connectionType;
+        Map<String, Object> attributes;
         BigDecimal listPrice;
+        BigDecimal salePrice;
+        BigDecimal compareAtPrice;
+        BigDecimal price;
         Integer availableQty;
         Boolean isActive;
     }

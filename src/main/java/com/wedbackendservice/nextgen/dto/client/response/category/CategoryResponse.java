@@ -30,6 +30,9 @@ public class CategoryResponse {
     @JsonProperty("isVisible")
     Boolean isVisible;
 
+    List<VariantSchemaField> variantSchema;
+    List<VariantSchemaField> effectiveVariantSchema;
+
     Integer productCount;
     LocalDateTime createdAt;
     LocalDateTime updatedAt;
