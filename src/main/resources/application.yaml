@@ -38,6 +38,30 @@ jwt :
   signed-key: ${JWT_SECRET_KEY:prH5KZ52uBeUkW8r83pntzBa7vaIqeXc0U7Lmsw59Kopq8wwcIVDk01eAew1XS97cwh3M8a3PHH6CVwVJkv9dA}
   access-expiration: ${JWT_ACCESS_EXPIRATION:1800}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800}
+aws:
+  region: ${AWS_REGION:ap-southeast-2}
+  access-key: ${AWS_ACCESS_KEY_ID:}
+  secret-key: ${AWS_SECRET_ACCESS_KEY:}
+  s3:
+    bucket: ${S3_BUCKET:quang-identity-pdf-2026}
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
+  region: ${MINIO_REGION:us-east-1}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  presign-put-expiration-seconds: ${MINIO_PRESIGN_PUT_EXPIRY:300}
+  presign-get-expiration-seconds: ${MINIO_PRESIGN_GET_EXPIRY:3600}
+  presign-get-enabled: ${MINIO_PRESIGN_GET_ENABLED:true}
+  public-base-url: ${MINIO_PUBLIC_BASE_URL:}
+  max-file-size-bytes: ${MINIO_MAX_FILE_SIZE:10485760}
+  max-files-per-product: ${MINIO_MAX_FILES_PER_PRODUCT:10}
+  cleanup-interval-ms: ${MINIO_CLEANUP_INTERVAL_MS:300000}
+  orphan-max-age-minutes: ${MINIO_ORPHAN_MAX_AGE_MINUTES:180}
+  buckets:
+    products: ${MINIO_BUCKET_PRODUCTS:products}
+    banners: ${MINIO_BUCKET_BANNERS:banners}
+    avatars: ${MINIO_BUCKET_AVATARS:avatars}
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:"http://localhost:8080,http://localhost:3000"}

@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.dto.client.response.product;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.wedbackendservice.nextgen.enums.StorageProvider;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -31,9 +32,13 @@ public class ProductDetailResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     @FieldDefaults(level = AccessLevel.PRIVATE)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public static class ProductImageResponse {
         Long imageId;
         String imageUrl;
+        StorageProvider storageProvider;
+        String bucket;
+        String objectKey;
         Boolean isPrimary;
         Integer sortOrder;
     }

@@ -3,7 +3,10 @@ package com.wedbackendservice.nextgen.service.shared;
 import com.wedbackendservice.nextgen.dto.client.response.product.*;
 import com.wedbackendservice.nextgen.dto.portal.request.product.*;
 import com.wedbackendservice.nextgen.dto.portal.response.product.*;
+import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.StorageType;
+import com.wedbackendservice.nextgen.enums.UploadStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
@@ -19,6 +22,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -44,6 +49,8 @@ public class ProductsService {
     private final AuditLogRepository auditLogRepository;
     private final OrderItemRepository orderItemRepository;
     private final SecurityHelper securityHelper;
+    private final StorageService storageService;
+    private final TokenRedisService tokenRedisService;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
 
@@ -183,11 +190,11 @@ public class ProductsService {
             List<ProductImage> pImages = imagesByProduct.getOrDefault(product.getProductId(), Collections.emptyList());
             String primaryImage = pImages.stream()
                     .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                    .map(ProductImage::getImageUrl)
+                    .map(this::resolveProductImageUrl)
                     .findFirst()
                     .orElseGet(() -> pImages.stream()
                             .min(Comparator.comparingInt(img -> img.getDisplayOrder() != null ? img.getDisplayOrder() : 9999))
-                            .map(ProductImage::getImageUrl)
+                            .map(this::resolveProductImageUrl)
                             .orElse(product.getThumbnailUrl()));
 
             items.add(ProductSummaryResponse.builder()
@@ -250,6 +257,9 @@ public class ProductsService {
                     }
                 }
 
+                Map<Long, String> promoPrimaryImageMap = promoVariantsByProduct.isEmpty() ? Map.of() :
+                        getPrimaryImageUrlMap(promoVariantsByProduct.keySet());
+
                 List<ProductFeaturedResponse> featured = new ArrayList<>();
                 for (Map.Entry<Long, List<PromotionVariant>> entry : promoVariantsByProduct.entrySet()) {
                     if (featured.size() >= maxItems) break;
@@ -280,9 +290,10 @@ public class ProductsService {
                     Inventory inv = inventoryRepository.findByVariant_VariantId(variant.getVariantId()).orElse(null);
                     boolean inStock = inv != null && inv.getAvailableQty() > 0;
 
-                    String image = variant.getImageUrl() != null && !variant.getImageUrl().isBlank()
-                            ? variant.getImageUrl()
-                            : product.getThumbnailUrl();
+                    String image = promoPrimaryImageMap.getOrDefault(product.getProductId(),
+                            variant.getImageUrl() != null && !variant.getImageUrl().isBlank()
+                                    ? variant.getImageUrl()
+                                    : product.getThumbnailUrl());
 
                     featured.add(ProductFeaturedResponse.builder()
                             .productId(product.getProductId())
@@ -350,6 +361,8 @@ public class ProductsService {
                 inventoryRepository.findByVariant_VariantIdIn(firstVariantIds).stream()
                         .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
 
+        Map<Long, String> primaryImageMap = getPrimaryImageUrlMap(activeProductIds);
+
         for (Product product : products) {
             List<ProductVariant> variants = variantsByProduct.getOrDefault(product.getProductId(), List.of());
             if (variants.isEmpty()) continue;
@@ -386,7 +399,7 @@ public class ProductsService {
             result.add(ProductFeaturedResponse.builder()
                     .productId(product.getProductId())
                     .name(product.getProductName())
-                    .primaryImage(product.getThumbnailUrl())
+                    .primaryImage(primaryImageMap.getOrDefault(product.getProductId(), product.getThumbnailUrl()))
                     .originalPrice(originalPrice)
                     .salePrice(salePrice)
                     .discountPercent(Math.max(0, discountPercent))
@@ -415,7 +428,10 @@ public class ProductsService {
         List<ProductDetailResponse.ProductImageResponse> imageResponses = images.stream()
                 .map(img -> ProductDetailResponse.ProductImageResponse.builder()
                         .imageId(img.getImageId())
-                        .imageUrl(img.getImageUrl())
+                        .imageUrl(resolveProductImageUrl(img))
+                        .storageProvider(img.getStorageProvider())
+                        .bucket(img.getBucket())
+                        .objectKey(img.getObjectKey())
                         .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
                         .sortOrder(img.getSortOrder())
                         .build())
@@ -516,7 +532,7 @@ public class ProductsService {
 
         List<ProductImage> images = productImageRepository.findByProduct_ProductIdInAndIsPrimaryTrue(relIds);
         Map<Long, String> primaryImageByProduct = images.stream()
-                .collect(Collectors.toMap(img -> img.getProduct().getProductId(), ProductImage::getImageUrl, (a, b) -> a));
+                .collect(Collectors.toMap(img -> img.getProduct().getProductId(), this::resolveProductImageUrl, (a, b) -> a));
 
         List<ProductRelatedResponse> response = new ArrayList<>();
         for (Product p : related) {
@@ -571,14 +587,12 @@ public class ProductsService {
                 .min(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
 
-        String primaryImageUrl = null;
-        if (request.getImages() != null && !request.getImages().isEmpty()) {
-            primaryImageUrl = request.getImages().stream()
-                    .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                    .map(CreateProductRequest.ImageItemRequest::getImageUrl)
-                    .findFirst()
-                    .orElse(request.getImages().get(0).getImageUrl());
-        }
+        List<ImageInput> imageInputs = request.getImages() == null ? List.of() : request.getImages().stream()
+                .map(img -> new ImageInput(null, img.getUploadId(), img.getObjectKey(), img.getImageUrl(), img.getIsPrimary(), img.getSortOrder()))
+                .toList();
+        List<String> consumedUploadIds = new ArrayList<>();
+        List<ProductImage> builtImages = buildProductImages(null, imageInputs, Map.of(), consumedUploadIds);
+        String primaryImageUrl = extractPrimaryImageUrl(builtImages);
 
         String baseSlug = CategoriesAndBrandsService.toSlug(request.getName());
         String slug = generateUniqueSlug(baseSlug, null);
@@ -603,19 +617,14 @@ public class ProductsService {
 
         // Images
         int totalImages = 0;
-        if (request.getImages() != null) {
-            int order = 1;
-            for (CreateProductRequest.ImageItemRequest img : request.getImages()) {
-                ProductImage image = ProductImage.builder()
-                        .product(savedProduct)
-                        .imageUrl(img.getImageUrl())
-                        .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
-                        .displayOrder(img.getSortOrder() != null ? img.getSortOrder() : order++)
-                        .build();
-                productImageRepository.save(image);
-                totalImages++;
+        if (!builtImages.isEmpty()) {
+            for (ProductImage image : builtImages) {
+                image.setProduct(savedProduct);
             }
+            productImageRepository.saveAll(builtImages);
+            totalImages = builtImages.size();
         }
+        cleanupConsumedUploadSessionsAfterCommit(consumedUploadIds);
 
         // Specs
         int totalSpecs = 0;
@@ -739,25 +748,37 @@ public class ProductsService {
         }
 
         // Update images if provided
+        List<RemovedStorageObject> removedObjects = List.of();
+        List<String> consumedUploadIds = new ArrayList<>();
         if (request.getImages() != null) {
+            List<ProductImage> existingImages = productImageRepository.findByProduct_ProductIdOrderByDisplayOrderAsc(id);
+            Map<Long, ProductImage> existingById = existingImages.stream()
+                    .filter(img -> img.getImageId() != null)
+                    .collect(Collectors.toMap(ProductImage::getImageId, img -> img, (a, b) -> a));
+
+            List<ImageInput> imageInputs = request.getImages().stream()
+                    .map(img -> new ImageInput(img.getImageId(), img.getUploadId(), img.getObjectKey(), img.getImageUrl(), img.getIsPrimary(), img.getSortOrder()))
+                    .toList();
+            List<ProductImage> newImages = buildProductImages(product, imageInputs, existingById, consumedUploadIds);
+
+            Set<String> keptKeys = newImages.stream()
+                    .map(ProductImage::getObjectKey)
+                    .filter(k -> k != null && !k.isBlank())
+                    .collect(Collectors.toSet());
+            removedObjects = existingImages.stream()
+                    .filter(old -> old.getObjectKey() != null && !old.getObjectKey().isBlank() && !keptKeys.contains(old.getObjectKey()))
+                    .map(old -> new RemovedStorageObject(
+                            old.getBucket() != null ? old.getBucket() : storageService.resolveBucket(StorageType.PRODUCTS),
+                            old.getObjectKey()))
+                    .distinct()
+                    .toList();
+
             productImageRepository.deleteByProduct_ProductId(id);
-            int order = 1;
-            String newPrimaryUrl = null;
-            for (UpdateProductRequest.UpdateImageItem imgReq : request.getImages()) {
-                ProductImage img = ProductImage.builder()
-                        .product(product)
-                        .imageUrl(imgReq.getImageUrl())
-                        .isPrimary(Boolean.TRUE.equals(imgReq.getIsPrimary()))
-                        .displayOrder(imgReq.getSortOrder() != null ? imgReq.getSortOrder() : order++)
-                        .build();
-                productImageRepository.save(img);
-                if (Boolean.TRUE.equals(imgReq.getIsPrimary()) && newPrimaryUrl == null) {
-                    newPrimaryUrl = imgReq.getImageUrl();
-                }
+            productImageRepository.flush();
+            if (!newImages.isEmpty()) {
+                productImageRepository.saveAll(newImages);
             }
-            if (newPrimaryUrl != null) {
-                product.setThumbnailUrl(newPrimaryUrl);
-            }
+            product.setThumbnailUrl(extractPrimaryImageUrl(newImages));
         }
 
         // Update specs if provided
@@ -777,6 +798,8 @@ public class ProductsService {
         }
 
         Product saved = productRepository.save(product);
+        cleanupConsumedUploadSessionsAfterCommit(consumedUploadIds);
+        cleanupRemovedStorageObjectsAfterCommit(removedObjects);
 
         // Audit Log
         try {
@@ -953,6 +976,60 @@ public class ProductsService {
     }
 
     // =========================================================================
+    // DELETE /api/v1/products/{productId}/images/{imageId} - Xóa ảnh sản phẩm
+    // =========================================================================
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteProductImage(Long productId, Long imageId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + productId + "!"));
+
+        ProductImage image = productImageRepository.findById(imageId)
+                .orElseThrow(() -> new AppException(ErrorCode.STORAGE_FILE_NOT_FOUND, "Không tìm thấy ảnh có ID " + imageId + "!"));
+
+        if (image.getProduct() == null || !productId.equals(image.getProduct().getProductId())) {
+            throw new AppException(ErrorCode.STORAGE_FILE_NOT_FOUND, "Ảnh không thuộc sản phẩm này!");
+        }
+
+        String objectKey = image.getObjectKey();
+        String bucket = image.getBucket() != null ? image.getBucket() : storageService.resolveBucket(StorageType.PRODUCTS);
+        boolean wasPrimary = Boolean.TRUE.equals(image.getIsPrimary());
+        String deletedUrl = image.getImageUrl();
+
+        productImageRepository.delete(image);
+        productImageRepository.flush();
+
+        if (wasPrimary || Objects.equals(deletedUrl, product.getThumbnailUrl())) {
+            List<ProductImage> remaining = productImageRepository.findByProduct_ProductIdOrderByDisplayOrderAsc(productId);
+            if (remaining.isEmpty()) {
+                product.setThumbnailUrl(null);
+            } else {
+                ProductImage nextPrimary = remaining.stream()
+                        .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            ProductImage first = remaining.get(0);
+                            first.setIsPrimary(true);
+                            productImageRepository.save(first);
+                            return first;
+                        });
+                product.setThumbnailUrl(nextPrimary.getImageUrl());
+            }
+            productRepository.save(product);
+        }
+
+        if (objectKey != null && !objectKey.isBlank()) {
+            cleanupRemovedStorageObjectsAfterCommit(List.of(new RemovedStorageObject(bucket, objectKey)));
+        }
+
+        try {
+            User operator = securityHelper.getCurrentUser();
+            auditLogRepository.log(operator, "DELETE_PRODUCT_IMAGE", "ProductImage", imageId, objectKey != null ? objectKey : deletedUrl, null);
+        } catch (Exception e) {
+            log.warn("Không thể ghi audit log cho deleteProductImage: {}", e.getMessage());
+        }
+    }
+
+    // =========================================================================
     // HELPER METHODS
     // =========================================================================
     private String buildVariantName(String productName, Integer romGb, String color) {
@@ -984,5 +1061,184 @@ public class ProductsService {
             return productRepository.existsBySlug(slug);
         }
         return productRepository.existsBySlugAndProductIdNot(slug, excludeProductId);
+    }
+
+    private String resolveProductImageUrl(ProductImage image) {
+        if (image == null) {
+            return null;
+        }
+        if (image.getObjectKey() != null && !image.getObjectKey().isBlank()) {
+            String bucket = image.getBucket() != null && !image.getBucket().isBlank()
+                    ? image.getBucket()
+                    : storageService.resolveBucket(StorageType.PRODUCTS);
+            return storageService.getAccessUrl(bucket, image.getObjectKey());
+        }
+        return image.getImageUrl();
+    }
+
+    private Map<Long, String> getPrimaryImageUrlMap(Collection<Long> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            return Map.of();
+        }
+        return productImageRepository.findByProduct_ProductIdInAndIsPrimaryTrue(productIds).stream()
+                .filter(img -> img.getProduct() != null)
+                .collect(Collectors.toMap(
+                        img -> img.getProduct().getProductId(),
+                        this::resolveProductImageUrl,
+                        (a, b) -> a));
+    }
+
+    private List<ProductImage> buildProductImages(
+            Product product,
+            List<ImageInput> inputs,
+            Map<Long, ProductImage> existingById,
+            List<String> consumedUploadIds) {
+        if (inputs == null || inputs.isEmpty()) {
+            return List.of();
+        }
+
+        List<ProductImage> result = new ArrayList<>(inputs.size());
+        int order = 1;
+        for (ImageInput input : inputs) {
+            int displayOrder = input.sortOrder() != null ? input.sortOrder() : order++;
+            boolean isPrimary = Boolean.TRUE.equals(input.isPrimary());
+
+            if (input.uploadId() != null && !input.uploadId().isBlank()) {
+                String uploadId = input.uploadId().trim();
+                UploadSessionData session = tokenRedisService.getUploadSession(uploadId);
+                if (session == null) {
+                    throw new AppException(ErrorCode.STORAGE_UPLOAD_SESSION_EXPIRED);
+                }
+                if (session.getStatus() != UploadStatus.COMPLETED) {
+                    throw new AppException(ErrorCode.STORAGE_FILE_NOT_CONFIRMED);
+                }
+                if (input.objectKey() != null && !input.objectKey().isBlank()
+                        && !input.objectKey().trim().equals(session.getObjectKey())) {
+                    throw new AppException(ErrorCode.STORAGE_OBJECT_KEY_MISMATCH);
+                }
+                consumedUploadIds.add(uploadId);
+                result.add(ProductImage.builder()
+                        .product(product)
+                        .imageUrl(storageService.getObjectUrl(session.getBucketName(), session.getObjectKey()))
+                        .storageProvider(session.getStorageProvider())
+                        .storageType(session.getStorageType())
+                        .bucket(session.getBucketName())
+                        .objectKey(session.getObjectKey())
+                        .originalFileName(session.getOriginalFileName())
+                        .contentType(session.getContentType())
+                        .fileSize(session.getActualFileSize() != null ? session.getActualFileSize() : session.getExpectedFileSize())
+                        .eTag(session.getETag())
+                        .isPrimary(isPrimary)
+                        .displayOrder(displayOrder)
+                        .build());
+                continue;
+            }
+
+            if (input.imageId() != null && existingById.containsKey(input.imageId())) {
+                ProductImage prev = existingById.get(input.imageId());
+                result.add(ProductImage.builder()
+                        .product(product)
+                        .imageUrl(prev.getImageUrl())
+                        .storageProvider(prev.getStorageProvider())
+                        .storageType(prev.getStorageType())
+                        .bucket(prev.getBucket())
+                        .objectKey(prev.getObjectKey())
+                        .originalFileName(prev.getOriginalFileName())
+                        .contentType(prev.getContentType())
+                        .fileSize(prev.getFileSize())
+                        .eTag(prev.getETag())
+                        .isPrimary(isPrimary)
+                        .displayOrder(displayOrder)
+                        .build());
+                continue;
+            }
+
+            if (input.imageUrl() != null && !input.imageUrl().isBlank()) {
+                result.add(ProductImage.builder()
+                        .product(product)
+                        .imageUrl(input.imageUrl().trim())
+                        .isPrimary(isPrimary)
+                        .displayOrder(displayOrder)
+                        .build());
+                continue;
+            }
+
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Mỗi ảnh sản phẩm phải có uploadId, imageId hoặc imageUrl.");
+        }
+        return result;
+    }
+
+    private String extractPrimaryImageUrl(List<ProductImage> images) {
+        if (images == null || images.isEmpty()) {
+            return null;
+        }
+        return images.stream()
+                .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
+                .map(ProductImage::getImageUrl)
+                .findFirst()
+                .orElse(images.get(0).getImageUrl());
+    }
+
+    private void cleanupConsumedUploadSessionsAfterCommit(List<String> uploadIds) {
+        if (uploadIds == null || uploadIds.isEmpty()) {
+            return;
+        }
+        runAfterCommit(() -> {
+            for (String uploadId : uploadIds) {
+                try {
+                    tokenRedisService.deleteUploadSession(uploadId);
+                } catch (Exception e) {
+                    log.warn("Không thể xóa upload session {}: {}", uploadId, e.getMessage());
+                }
+            }
+        });
+    }
+
+    private void cleanupRemovedStorageObjectsAfterCommit(List<RemovedStorageObject> removedObjects) {
+        if (removedObjects == null || removedObjects.isEmpty()) {
+            return;
+        }
+        runAfterCommit(() -> {
+            for (RemovedStorageObject item : removedObjects) {
+                try {
+                    storageService.deleteObject(item.bucket(), item.objectKey());
+                } catch (Exception e) {
+                    log.error("ORPHAN_STORAGE_OBJECT cleanup failed bucket={}, key={}: {}",
+                            item.bucket(), item.objectKey(), e.getMessage());
+                    try {
+                        tokenRedisService.addOrphanObject(item.bucket(), item.objectKey());
+                    } catch (Exception ex) {
+                        log.error("Không thể ghi orphan queue cho bucket={}, key={}: {}",
+                                item.bucket(), item.objectKey(), ex.getMessage());
+                    }
+                }
+            }
+        });
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
+    private record ImageInput(
+            Long imageId,
+            String uploadId,
+            String objectKey,
+            String imageUrl,
+            Boolean isPrimary,
+            Integer sortOrder
+    ) {
+    }
+
+    private record RemovedStorageObject(String bucket, String objectKey) {
     }
 }

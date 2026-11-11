@@ -5,6 +5,7 @@ import com.wedbackendservice.nextgen.dto.session.ProfileUpdateSessionData;
 import com.wedbackendservice.nextgen.dto.session.RegisterSessionData;
 import com.wedbackendservice.nextgen.dto.session.ResetPasswordSessionData;
 import com.wedbackendservice.nextgen.dto.session.TokenPair;
+import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -13,6 +14,8 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.Date;
+import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -26,6 +29,9 @@ public class TokenRedisService {
     private static final String REG_PREFIX       = "reg_token_";
     private static final String RESET_PREFIX     = "reset_token_";
     private static final String PROFILE_UPDATE_PREFIX = "profile_update_session:";
+    private static final String UPLOAD_SESSION_PREFIX = "storage:upload:";
+    private static final String UPLOAD_PENDING_ZSET   = "storage:pending:zset";
+    private static final String STORAGE_ORPHAN_SET    = "storage:orphan:set";
     private static final String OTP_RATE_IP_PREFIX     = "otp:rate:ip:";
     private static final String OTP_RATE_TARGET_PREFIX = "otp:rate:target:";
     private static final String OTP_FAIL_PREFIX        = "otp:fail:";
@@ -88,6 +94,50 @@ public class TokenRedisService {
     }
     public ProfileUpdateSessionData getProfileUpdateSession(String token) { return read(PROFILE_UPDATE_PREFIX + token, ProfileUpdateSessionData.class); }
     public void deleteProfileUpdateSession(String token)                  { delete(PROFILE_UPDATE_PREFIX + token); }
+
+    // ===== STORAGE UPLOAD SESSIONS & ORPHAN TRACKING =====
+
+    public void saveUploadSession(String uploadId, UploadSessionData data, Duration ttl) {
+        save(UPLOAD_SESSION_PREFIX + uploadId, data, ttl);
+    }
+
+    public UploadSessionData getUploadSession(String uploadId) {
+        return read(UPLOAD_SESSION_PREFIX + uploadId, UploadSessionData.class);
+    }
+
+    public void deleteUploadSession(String uploadId) {
+        delete(UPLOAD_SESSION_PREFIX + uploadId);
+    }
+
+    public void trackPendingUpload(String uploadId, String bucket, String objectKey, long expiresAtEpochMs) {
+        redisTemplate.opsForZSet().add(UPLOAD_PENDING_ZSET, uploadId + "|" + bucket + "|" + objectKey, expiresAtEpochMs);
+    }
+
+    public void untrackPendingUpload(String uploadId, String bucket, String objectKey) {
+        redisTemplate.opsForZSet().remove(UPLOAD_PENDING_ZSET, uploadId + "|" + bucket + "|" + objectKey);
+    }
+
+    public List<String> getExpiredPendingUploadEntries(long maxScoreEpochMs) {
+        Set<String> items = redisTemplate.opsForZSet().rangeByScore(UPLOAD_PENDING_ZSET, 0, maxScoreEpochMs);
+        return items == null ? List.of() : List.copyOf(items);
+    }
+
+    public void removePendingEntry(String rawEntry) {
+        redisTemplate.opsForZSet().remove(UPLOAD_PENDING_ZSET, rawEntry);
+    }
+
+    public void addOrphanObject(String bucket, String objectKey) {
+        redisTemplate.opsForSet().add(STORAGE_ORPHAN_SET, bucket + "|" + objectKey);
+    }
+
+    public List<String> getOrphanObjects() {
+        Set<String> items = redisTemplate.opsForSet().members(STORAGE_ORPHAN_SET);
+        return items == null ? List.of() : List.copyOf(items);
+    }
+
+    public void removeOrphanObject(String rawEntry) {
+        redisTemplate.opsForSet().remove(STORAGE_ORPHAN_SET, rawEntry);
+    }
 
     // ===== RATE LIMIT LOGIN =====
 

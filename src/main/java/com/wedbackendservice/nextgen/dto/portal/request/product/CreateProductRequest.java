@@ -43,6 +43,8 @@ public class CreateProductRequest {
     @AllArgsConstructor
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class ImageItemRequest {
+        String uploadId;
+        String objectKey;
         String imageUrl;
         Boolean isPrimary;
         Integer sortOrder;

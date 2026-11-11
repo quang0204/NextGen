@@ -1,0 +1,30 @@
+services:
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: nextgen-minio
+    restart: unless-stopped
+    user: "0:0"
+    ports:
+      - "9000:9000" # MinIO S3 API
+      - "9001:9001" # MinIO Web Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      # Cho phép React Frontend gửi HTTP PUT trực tiếp lên Presigned URL
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_CORS_ORIGIN:-http://localhost:3000,http://localhost:5173}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: cgr.dev/chainguard/minio-client:latest
+    container_name: nextgen-minio-init
+    depends_on:
+      - minio
+    restart: on-failure
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minioadmin}:${MINIO_ROOT_PASSWORD:-minioadmin}@minio:9000
+    command: mb --ignore-existing local/products local/banners local/avatars
+
+volumes:
+  minio_data:

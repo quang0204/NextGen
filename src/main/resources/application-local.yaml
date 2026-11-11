@@ -1,0 +1,18 @@
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+  region: ${MINIO_REGION:us-east-1}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  presign-put-expiration-seconds: 300
+  presign-get-expiration-seconds: 3600
+  presign-get-enabled: true
+  public-base-url: ${MINIO_PUBLIC_BASE_URL:}
+  max-file-size-bytes: 10485760
+  max-files-per-product: 10
+  cleanup-interval-ms: 300000
+  orphan-max-age-minutes: 180
+  buckets:
+    products: products
+    banners: banners
+    avatars: avatars

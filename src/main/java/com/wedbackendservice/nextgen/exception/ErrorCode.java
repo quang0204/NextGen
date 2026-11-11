@@ -116,7 +116,19 @@ public enum     ErrorCode {
     RETURN_BANK_INFO_REQUIRED(1107, "Vui lòng cung cấp đầy đủ thông tin tài khoản ngân hàng nhận tiền hoàn đối với đơn thanh toán COD!", HttpStatus.BAD_REQUEST),
     RETURN_INVALID_STATUS(1108, "Trạng thái thẩm định chỉ được là APPROVED hoặc REJECTED!", HttpStatus.BAD_REQUEST),
     RETURN_REJECT_REASON_REQUIRED(1109, "Lý do từ chối không được để trống khi từ chối yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
-    RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST);
+    RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
+
+    // Nhóm 14: Lưu trữ & Upload ảnh (MinIO)
+    STORAGE_INVALID_FILE(1120, "Tệp tải lên không hợp lệ (chỉ chấp nhận ảnh JPEG, PNG, WEBP, GIF).", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_TOO_LARGE(1121, "Kích thước tệp vượt quá giới hạn cho phép.", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_NOT_FOUND(1122, "Không tìm thấy thông tin ảnh lưu trữ.", HttpStatus.NOT_FOUND),
+    STORAGE_OBJECT_NOT_UPLOADED(1123, "Tệp chưa được tải lên thành công trên MinIO.", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_NOT_CONFIRMED(1124, "Ảnh chưa được xác nhận upload hợp lệ.", HttpStatus.BAD_REQUEST),
+    STORAGE_OPERATION_FAILED(1125, "Lỗi kết nối hoặc thao tác với hệ thống lưu trữ MinIO.", HttpStatus.INTERNAL_SERVER_ERROR),
+    STORAGE_UPLOAD_SESSION_EXPIRED(1126, "Phiên upload ảnh đã hết hạn hoặc không tồn tại.", HttpStatus.BAD_REQUEST),
+    STORAGE_MAX_FILES_EXCEEDED(1127, "Số lượng ảnh của sản phẩm đã đạt giới hạn tối đa.", HttpStatus.BAD_REQUEST),
+    STORAGE_OBJECT_KEY_MISMATCH(1128, "Object key không khớp với phiên upload đã cấp.", HttpStatus.BAD_REQUEST),
+    STORAGE_UPLOAD_ALREADY_CONFIRMED(1129, "Phiên upload này đã được xác nhận trước đó.", HttpStatus.CONFLICT);
 
     int code;
     String message;
