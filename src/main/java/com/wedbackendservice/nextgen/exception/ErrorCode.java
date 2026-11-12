@@ -118,6 +118,17 @@ public enum     ErrorCode {
     RETURN_REJECT_REASON_REQUIRED(1109, "Lý do từ chối không được để trống khi từ chối yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
     RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
 
+    // Nhóm 13: Lưu trữ tệp & MinIO
+    STORAGE_INVALID_FILE(1120, "Tệp tải lên không hợp lệ hoặc không đúng định dạng ảnh cho phép.", HttpStatus.BAD_REQUEST),
+    STORAGE_OBJECT_NOT_UPLOADED(1121, "Tệp chưa được tải lên MinIO hoặc không tồn tại.", HttpStatus.BAD_REQUEST),
+    STORAGE_SESSION_NOT_FOUND(1122, "Phiên tải ảnh không tồn tại hoặc đã hết hạn.", HttpStatus.NOT_FOUND),
+    STORAGE_UPLOAD_EXPIRED(1123, "Liên kết tải ảnh đã hết hạn. Vui lòng tạo lại liên kết mới.", HttpStatus.BAD_REQUEST),
+    STORAGE_SESSION_INVALID(1124, "Trạng thái phiên tải ảnh không hợp lệ.", HttpStatus.BAD_REQUEST),
+    STORAGE_MAX_FILES_EXCEEDED(1125, "Số lượng ảnh tải lên vượt quá giới hạn tối đa cho phép.", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_TOO_LARGE(1126, "Kích thước tệp vượt quá dung lượng tối đa cho phép.", HttpStatus.BAD_REQUEST),
+    STORAGE_UNSUPPORTED_TYPE(1127, "Loại tệp hoặc storageType không được hỗ trợ.", HttpStatus.BAD_REQUEST),
+    STORAGE_OPERATION_FAILED(1128, "Lỗi thao tác với hệ thống lưu trữ MinIO.", HttpStatus.INTERNAL_SERVER_ERROR),
+    PRODUCT_IMAGE_NOT_FOUND(1129, "Không tìm thấy ảnh sản phẩm.", HttpStatus.NOT_FOUND);
     // Nhóm 13: Storage & MinIO Upload
     STORAGE_INVALID_FILE_TYPE(1120, "Định dạng tập tin không hợp lệ hoặc không phải ảnh cho phép (hỗ trợ JPG, PNG, WEBP, GIF, SVG).", HttpStatus.BAD_REQUEST),
     STORAGE_FILE_SIZE_EXCEEDED(1121, "Kích thước tập tin vượt quá giới hạn tối đa cho phép (10MB).", HttpStatus.BAD_REQUEST),

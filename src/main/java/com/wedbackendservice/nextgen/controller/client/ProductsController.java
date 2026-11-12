@@ -4,6 +4,7 @@ import com.wedbackendservice.nextgen.dto.client.response.product.*;
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.service.shared.ProductsService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -64,5 +65,17 @@ public class ProductsController {
             @RequestParam(defaultValue = "4") int limit) {
         return ApiResponse.ok("Lấy sản phẩm liên quan thành công!",
                 productsService.getRelatedProducts(id, limit));
+    }
+
+    /**
+     * Xóa ảnh sản phẩm (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @DeleteMapping("/{productId}/images/{imageId}")
+    public ApiResponse<Void> deleteProductImage(
+            @PathVariable Long productId,
+            @PathVariable Long imageId) {
+        productsService.deleteProductImage(productId, imageId);
+        return ApiResponse.ok("Xóa ảnh sản phẩm thành công!", null);
     }
 }

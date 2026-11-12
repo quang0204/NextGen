@@ -43,6 +43,7 @@ public class UpdateProductRequest {
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class UpdateImageItem {
         Long imageId;
+        String uploadId;
         String imageUrl;
         Boolean isPrimary;
         Integer sortOrder;

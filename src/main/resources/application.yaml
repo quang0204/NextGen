@@ -67,6 +67,16 @@ minio:
   public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  region: ${MINIO_REGION:us-east-1}
+  bucket:
+    products: ${MINIO_BUCKET_PRODUCTS:products}
+  public-read: ${MINIO_PUBLIC_READ:true}
+  presigned-upload-expiry-minutes: ${MINIO_PRESIGNED_UPLOAD_EXPIRY_MINUTES:15}
+  presigned-get-expiry-minutes: ${MINIO_PRESIGNED_GET_EXPIRY_MINUTES:60}
+  completed-session-ttl-hours: ${MINIO_COMPLETED_SESSION_TTL_HOURS:2}
+  max-file-size-bytes: ${MINIO_MAX_FILE_SIZE_BYTES:5242880}
+  max-files-per-product: ${MINIO_MAX_FILES_PER_PRODUCT:10}
+  cleanup-interval-ms: ${MINIO_CLEANUP_INTERVAL_MS:300000}
   brands-bucket: ${MINIO_BRANDS_BUCKET:brands}
   presigned-expiry-seconds: ${MINIO_PRESIGNED_EXPIRY:900}
   public-base-url: ${MINIO_PUBLIC_BASE_URL:}

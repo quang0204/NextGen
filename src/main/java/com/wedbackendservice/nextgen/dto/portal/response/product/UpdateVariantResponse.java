@@ -25,6 +25,7 @@ public class UpdateVariantResponse {
     Integer minThreshold;
     BigDecimal listPrice;
     BigDecimal salePrice;
+    String imageUrl;
     Boolean isActive;
     String updatedAt;
 }

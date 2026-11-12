@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+@Data
 @Getter
 @Setter
 @Builder
@@ -13,6 +14,17 @@ import lombok.experimental.FieldDefaults;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class StorageFileResponse {
     String uploadId;
+    Long imageId;
+    Long productId;
+    String imageUrl;
+    String bucket;
+    String objectKey;
+    String originalFileName;
+    String contentType;
+    Long fileSize;
+    String etag;
+    Boolean isPrimary;
+    Integer sortOrder;
     String objectKey;
     String canonicalUrl;
     String accessUrl;

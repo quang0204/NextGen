@@ -20,6 +20,7 @@ public class CreateVariantRequest {
     Integer ramGb;
     Integer romGb;
     String connectionType;
+    String imageUrl;
     Map<String, Object> attributes;
 
     @NotNull(message = "listPrice không được để trống")

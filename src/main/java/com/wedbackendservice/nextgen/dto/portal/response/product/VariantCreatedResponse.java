@@ -20,6 +20,7 @@ public class VariantCreatedResponse {
     Integer ramGb;
     Integer romGb;
     BigDecimal listPrice;
+    String imageUrl;
     Boolean isActive;
     CreateProductResponse.InventorySummary inventory;
     String createdAt;

@@ -45,6 +45,7 @@ public class ProductVariant {
     @Column(name = "attributes", columnDefinition = "json")
     Map<String, Object> attributes;
 
+    @Column(length = 1000)
     String imageUrl;
     String status;
 
