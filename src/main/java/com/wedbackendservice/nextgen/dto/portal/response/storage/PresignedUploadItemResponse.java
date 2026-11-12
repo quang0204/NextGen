@@ -7,6 +7,13 @@ import lombok.experimental.FieldDefaults;
 import java.util.Map;
 
 @Data
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+
+import java.time.Instant;
+
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,4 +30,9 @@ public class PresignedUploadItemResponse {
     Long expiresAt;
     Integer expiresInSeconds;
     Map<String, String> requiredHeaders;
+public class PresignedUploadItemResponse {
+    String uploadId;
+    String objectKey;
+    String uploadUrl;
+    Instant expiresAt;
 }

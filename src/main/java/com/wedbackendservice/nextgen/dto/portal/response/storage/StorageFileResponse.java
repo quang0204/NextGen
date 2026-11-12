@@ -5,6 +5,8 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 @Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,5 +25,9 @@ public class StorageFileResponse {
     String etag;
     Boolean isPrimary;
     Integer sortOrder;
+    String objectKey;
+    String canonicalUrl;
+    String accessUrl;
+    Long brandId;
     String status;
 }

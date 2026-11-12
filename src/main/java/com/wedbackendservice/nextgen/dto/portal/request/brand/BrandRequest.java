@@ -21,6 +21,7 @@ public class BrandRequest {
 
     String slug;
     String logoUrl;
+    String logoUploadId;
     String description;
 
     @JsonProperty("isVisible")

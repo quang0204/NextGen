@@ -45,4 +45,14 @@ public class AdminBrandsController {
         categoriesAndBrandsService.deleteBrand(id);
         return ApiResponse.ok("Xóa thương hiệu thành công!", null);
     }
+
+    /**
+     * API Xóa riêng Logo thương hiệu (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @DeleteMapping("/{id}/logo")
+    public ApiResponse<Void> deleteBrandLogo(@PathVariable Long id) {
+        categoriesAndBrandsService.deleteBrandLogo(id);
+        return ApiResponse.ok("Xóa logo thương hiệu thành công!", null);
+    }
 }
