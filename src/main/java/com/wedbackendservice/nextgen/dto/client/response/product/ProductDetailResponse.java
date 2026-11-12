@@ -79,6 +79,7 @@ public class ProductDetailResponse {
         BigDecimal salePrice;
         BigDecimal compareAtPrice;
         BigDecimal price;
+        String imageUrl;
         Integer availableQty;
         Boolean isActive;
     }

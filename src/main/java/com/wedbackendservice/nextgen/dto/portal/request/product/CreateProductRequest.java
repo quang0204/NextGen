@@ -44,6 +44,7 @@ public class CreateProductRequest {
     @AllArgsConstructor
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class ImageItemRequest {
+        String uploadId;
         String imageUrl;
         Boolean isPrimary;
         Integer sortOrder;
@@ -74,6 +75,7 @@ public class CreateProductRequest {
         Integer ramGb;
         Integer romGb;
         String connectionType;
+        String imageUrl;
         Map<String, Object> attributes;
 
         @NotNull(message = "listPrice không được để trống")

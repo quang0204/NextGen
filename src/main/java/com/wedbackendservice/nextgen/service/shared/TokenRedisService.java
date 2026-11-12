@@ -5,6 +5,7 @@ import com.wedbackendservice.nextgen.dto.session.ProfileUpdateSessionData;
 import com.wedbackendservice.nextgen.dto.session.RegisterSessionData;
 import com.wedbackendservice.nextgen.dto.session.ResetPasswordSessionData;
 import com.wedbackendservice.nextgen.dto.session.TokenPair;
+import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -13,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.util.Date;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -29,6 +31,8 @@ public class TokenRedisService {
     private static final String OTP_RATE_IP_PREFIX     = "otp:rate:ip:";
     private static final String OTP_RATE_TARGET_PREFIX = "otp:rate:target:";
     private static final String OTP_FAIL_PREFIX        = "otp:fail:";
+    private static final String STORAGE_UPLOAD_PREFIX  = "storage:upload:";
+    public static final String STORAGE_PENDING_ZSET    = "storage:pending:zset";
     private static final int MAX_FAILED_ATTEMPTS = 5;
     public static final int MAX_OTP_SEND_PER_IP        = 10;
     public static final int MAX_OTP_SEND_PER_TARGET    = 5;
@@ -202,6 +206,39 @@ public class TokenRedisService {
 
     public void setValue(String key, String value, Duration ttl) {
         redisTemplate.opsForValue().set(key, value, ttl);
+    }
+
+    // ===== STORAGE UPLOAD SESSION & PENDING ZSET =====
+
+    public void saveUploadSession(String uploadId, UploadSessionData data, Duration ttl) {
+        save(STORAGE_UPLOAD_PREFIX + uploadId, data, ttl);
+    }
+
+    public UploadSessionData getUploadSession(String uploadId) {
+        if (uploadId == null || uploadId.isBlank()) return null;
+        return read(STORAGE_UPLOAD_PREFIX + uploadId, UploadSessionData.class);
+    }
+
+    public void deleteUploadSession(String uploadId) {
+        if (uploadId != null && !uploadId.isBlank()) {
+            delete(STORAGE_UPLOAD_PREFIX + uploadId);
+        }
+    }
+
+    public void addPendingUpload(String uploadId, long expiresAtEpochMillis) {
+        if (uploadId != null && !uploadId.isBlank()) {
+            redisTemplate.opsForZSet().add(STORAGE_PENDING_ZSET, uploadId, expiresAtEpochMillis);
+        }
+    }
+
+    public void removePendingUpload(String uploadId) {
+        if (uploadId != null && !uploadId.isBlank()) {
+            redisTemplate.opsForZSet().remove(STORAGE_PENDING_ZSET, uploadId);
+        }
+    }
+
+    public Set<String> getExpiredPendingUploadIds(long maxScoreEpochMillis, long count) {
+        return redisTemplate.opsForZSet().rangeByScore(STORAGE_PENDING_ZSET, 0, maxScoreEpochMillis, 0, count);
     }
 
     // ===== PRIVATE HELPERS =====

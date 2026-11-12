@@ -25,11 +25,28 @@ public class ProductImage {
     @ManyToOne(fetch = FetchType.LAZY)
     Product product;
 
+    @Column(length = 1000)
     String imageUrl;
     Integer displayOrder;
 
     @Builder.Default
     Boolean isPrimary = false;
+
+    @Column(length = 100)
+    String bucket;
+
+    @Column(length = 500)
+    String objectKey;
+
+    String originalFileName;
+
+    @Column(length = 100)
+    String contentType;
+
+    Long fileSize;
+
+    @Column(length = 100)
+    String etag;
 
     @CreatedDate
     LocalDateTime createdAt;

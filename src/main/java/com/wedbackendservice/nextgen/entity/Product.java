@@ -34,6 +34,7 @@ public class Product {
     String slug;
     String description;
     BigDecimal basePrice;
+    @Column(length = 1000)
     String thumbnailUrl;
     String status;
 

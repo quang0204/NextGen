@@ -78,6 +78,7 @@ public class AdminProductDetailResponse {
         BigDecimal salePrice;
         BigDecimal compareAtPrice;
         BigDecimal price;
+        String imageUrl;
         Boolean isActive;
         Boolean hasTransactions;
         AdminVariantInventoryResponse inventory;

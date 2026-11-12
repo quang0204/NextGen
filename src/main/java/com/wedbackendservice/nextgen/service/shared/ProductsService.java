@@ -4,6 +4,7 @@ import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaF
 import com.wedbackendservice.nextgen.dto.client.response.product.*;
 import com.wedbackendservice.nextgen.dto.portal.request.product.*;
 import com.wedbackendservice.nextgen.dto.portal.response.product.*;
+import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
@@ -20,6 +21,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -46,6 +49,8 @@ public class ProductsService {
     private final OrderItemRepository orderItemRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final SecurityHelper securityHelper;
+    private final TokenRedisService tokenRedisService;
+    private final MinioStorageService minioStorageService;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
 
@@ -477,6 +482,7 @@ public class ProductsService {
                             .salePrice(curPrice)
                             .compareAtPrice(origPrice)
                             .price(curPrice)
+                            .imageUrl(v.getImageUrl())
                             .availableQty(availableQty)
                             .isActive(isActive)
                             .build();
@@ -527,13 +533,19 @@ public class ProductsService {
 
         List<AdminProductDetailResponse.AdminProductImageResponse> imageResponses = images.stream().map(img -> {
             String url = img.getImageUrl() != null ? img.getImageUrl() : "";
-            String objectKey = url;
-            String bucket = "products";
-            if (url.contains("/products/")) {
-                objectKey = url.substring(url.indexOf("/products/") + "/products/".length());
-                if (objectKey.contains("?")) {
-                    objectKey = objectKey.substring(0, objectKey.indexOf("?"));
+            String objectKey = img.getObjectKey();
+            String bucket = img.getBucket();
+            if (objectKey == null || objectKey.isBlank()) {
+                objectKey = url;
+                if (url.contains("/products/")) {
+                    objectKey = url.substring(url.indexOf("/products/") + "/products/".length());
+                    if (objectKey.contains("?")) {
+                        objectKey = objectKey.substring(0, objectKey.indexOf("?"));
+                    }
                 }
+            }
+            if (bucket == null || bucket.isBlank()) {
+                bucket = "products";
             }
             return AdminProductDetailResponse.AdminProductImageResponse.builder()
                     .imageId(img.getImageId())
@@ -589,6 +601,7 @@ public class ProductsService {
                     .salePrice(curPrice)
                     .compareAtPrice(origPrice)
                     .price(curPrice)
+                    .imageUrl(v.getImageUrl())
                     .isActive("ACTIVE".equalsIgnoreCase(v.getStatus()))
                     .hasTransactions(hasTx)
                     .inventory(invResp)
@@ -691,13 +704,38 @@ public class ProductsService {
                 .min(BigDecimal::compareTo)
                 .orElse(BigDecimal.ZERO);
 
-        String primaryImageUrl = null;
+        List<ResolvedImageData> resolvedImages = new ArrayList<>();
+        List<String> consumedUploadIds = new ArrayList<>();
         if (request.getImages() != null && !request.getImages().isEmpty()) {
-            primaryImageUrl = request.getImages().stream()
-                    .filter(img -> Boolean.TRUE.equals(img.getIsPrimary()))
-                    .map(CreateProductRequest.ImageItemRequest::getImageUrl)
+            int order = 1;
+            for (CreateProductRequest.ImageItemRequest img : request.getImages()) {
+                int sortOrder = img.getSortOrder() != null ? img.getSortOrder() : order++;
+                boolean isPrimary = Boolean.TRUE.equals(img.getIsPrimary());
+                if (img.getUploadId() != null && !img.getUploadId().isBlank()) {
+                    String uploadId = img.getUploadId().trim();
+                    UploadSessionData session = validateCompletedUploadSession(uploadId, null);
+                    String resolvedUrl = minioStorageService.getFileUrl(session.getBucket(), session.getObjectKey());
+                    resolvedImages.add(new ResolvedImageData(
+                            resolvedUrl, session.getBucket(), session.getObjectKey(),
+                            session.getOriginalFileName(), session.getContentType(),
+                            session.getActualSize() != null ? session.getActualSize() : session.getExpectedSize(),
+                            session.getEtag(), isPrimary, sortOrder));
+                    consumedUploadIds.add(uploadId);
+                } else {
+                    validateImageUrlNotBase64(img.getImageUrl());
+                    resolvedImages.add(new ResolvedImageData(
+                            img.getImageUrl(), null, null, null, null, null, null, isPrimary, sortOrder));
+                }
+            }
+        }
+
+        String primaryImageUrl = null;
+        if (!resolvedImages.isEmpty()) {
+            primaryImageUrl = resolvedImages.stream()
+                    .filter(ResolvedImageData::isPrimary)
+                    .map(ResolvedImageData::imageUrl)
                     .findFirst()
-                    .orElse(request.getImages().get(0).getImageUrl());
+                    .orElse(resolvedImages.get(0).imageUrl());
         }
 
         String baseSlug = CategoriesAndBrandsService.toSlug(request.getName());
@@ -723,18 +761,26 @@ public class ProductsService {
 
         // Images
         int totalImages = 0;
-        if (request.getImages() != null) {
-            int order = 1;
-            for (CreateProductRequest.ImageItemRequest img : request.getImages()) {
-                ProductImage image = ProductImage.builder()
-                        .product(savedProduct)
-                        .imageUrl(img.getImageUrl())
-                        .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
-                        .displayOrder(img.getSortOrder() != null ? img.getSortOrder() : order++)
-                        .build();
-                productImageRepository.save(image);
-                totalImages++;
-            }
+        for (ResolvedImageData img : resolvedImages) {
+            ProductImage image = ProductImage.builder()
+                    .product(savedProduct)
+                    .imageUrl(img.imageUrl())
+                    .bucket(img.bucket())
+                    .objectKey(img.objectKey())
+                    .originalFileName(img.originalFileName())
+                    .contentType(img.contentType())
+                    .fileSize(img.fileSize())
+                    .etag(img.etag())
+                    .isPrimary(img.isPrimary())
+                    .displayOrder(img.sortOrder())
+                    .build();
+            productImageRepository.save(image);
+            totalImages++;
+        }
+
+        if (!consumedUploadIds.isEmpty()) {
+            List<String> idsToDelete = List.copyOf(consumedUploadIds);
+            runAfterCommit(() -> idsToDelete.forEach(tokenRedisService::deleteUploadSession));
         }
 
         // Specs
@@ -769,6 +815,12 @@ public class ProductsService {
                     vReq.getConnectionType(), sanitizedAttrs, createdVariantsList
             );
 
+            String variantImageUrl = primaryImageUrl;
+            if (vReq.getImageUrl() != null && !vReq.getImageUrl().isBlank()) {
+                validateImageUrlNotBase64(vReq.getImageUrl());
+                variantImageUrl = vReq.getImageUrl().trim();
+            }
+
             ProductVariant variant = ProductVariant.builder()
                     .product(savedProduct)
                     .sku(vReq.getSku().trim())
@@ -780,7 +832,7 @@ public class ProductsService {
                     .connectionType(vReq.getConnectionType())
                     .attributes(sanitizedAttrs)
                     .status("ACTIVE")
-                    .imageUrl(primaryImageUrl)
+                    .imageUrl(variantImageUrl)
                     .build();
 
             String variantName = buildVariantNameFromSchema(savedProduct.getProductName(), variant, schema);
@@ -874,23 +926,103 @@ public class ProductsService {
 
         // Update images if provided
         if (request.getImages() != null) {
-            productImageRepository.deleteByProduct_ProductId(id);
+            List<ProductImage> existingImages = productImageRepository.findByProduct_ProductIdOrderByDisplayOrderAsc(id);
+            Map<Long, ProductImage> existingById = existingImages.stream()
+                    .filter(img -> img.getImageId() != null)
+                    .collect(Collectors.toMap(ProductImage::getImageId, img -> img, (a, b) -> a));
+            Map<String, ProductImage> existingByUrl = existingImages.stream()
+                    .filter(img -> img.getImageUrl() != null && !img.getImageUrl().isBlank())
+                    .collect(Collectors.toMap(ProductImage::getImageUrl, img -> img, (a, b) -> a));
+
+            List<ResolvedImageData> resolvedImages = new ArrayList<>();
+            List<String> consumedUploadIds = new ArrayList<>();
             int order = 1;
-            String newPrimaryUrl = null;
             for (UpdateProductRequest.UpdateImageItem imgReq : request.getImages()) {
+                int sortOrder = imgReq.getSortOrder() != null ? imgReq.getSortOrder() : order++;
+                boolean isPrimary = Boolean.TRUE.equals(imgReq.getIsPrimary());
+                if (imgReq.getUploadId() != null && !imgReq.getUploadId().isBlank()) {
+                    String uploadId = imgReq.getUploadId().trim();
+                    UploadSessionData session = validateCompletedUploadSession(uploadId, id);
+                    String resolvedUrl = minioStorageService.getFileUrl(session.getBucket(), session.getObjectKey());
+                    resolvedImages.add(new ResolvedImageData(
+                            resolvedUrl, session.getBucket(), session.getObjectKey(),
+                            session.getOriginalFileName(), session.getContentType(),
+                            session.getActualSize() != null ? session.getActualSize() : session.getExpectedSize(),
+                            session.getEtag(), isPrimary, sortOrder));
+                    consumedUploadIds.add(uploadId);
+                } else {
+                    validateImageUrlNotBase64(imgReq.getImageUrl());
+                    ProductImage matched = imgReq.getImageId() != null
+                            ? existingById.get(imgReq.getImageId())
+                            : (imgReq.getImageUrl() != null ? existingByUrl.get(imgReq.getImageUrl()) : null);
+                    String resolvedUrl = (imgReq.getImageUrl() != null && !imgReq.getImageUrl().isBlank())
+                            ? imgReq.getImageUrl()
+                            : (matched != null ? matched.getImageUrl() : null);
+                    validateImageUrlNotBase64(resolvedUrl);
+                    resolvedImages.add(new ResolvedImageData(
+                            resolvedUrl,
+                            matched != null ? matched.getBucket() : null,
+                            matched != null ? matched.getObjectKey() : null,
+                            matched != null ? matched.getOriginalFileName() : null,
+                            matched != null ? matched.getContentType() : null,
+                            matched != null ? matched.getFileSize() : null,
+                            matched != null ? matched.getEtag() : null,
+                            isPrimary,
+                            sortOrder));
+                }
+            }
+
+            Set<String> retainedKeys = resolvedImages.stream()
+                    .filter(r -> r.objectKey() != null && !r.objectKey().isBlank())
+                    .map(r -> (r.bucket() != null ? r.bucket() : "products") + "/" + r.objectKey())
+                    .collect(Collectors.toSet());
+
+            List<MinioObjectRef> removedObjects = existingImages.stream()
+                    .filter(old -> old.getObjectKey() != null && !old.getObjectKey().isBlank())
+                    .filter(old -> {
+                        String b = old.getBucket() != null && !old.getBucket().isBlank() ? old.getBucket() : "products";
+                        return !retainedKeys.contains(b + "/" + old.getObjectKey());
+                    })
+                    .map(old -> new MinioObjectRef(
+                            old.getBucket() != null && !old.getBucket().isBlank() ? old.getBucket() : "products",
+                            old.getObjectKey()))
+                    .toList();
+
+            productImageRepository.deleteByProduct_ProductId(id);
+            String newPrimaryUrl = null;
+            for (ResolvedImageData resolved : resolvedImages) {
                 ProductImage img = ProductImage.builder()
                         .product(product)
-                        .imageUrl(imgReq.getImageUrl())
-                        .isPrimary(Boolean.TRUE.equals(imgReq.getIsPrimary()))
-                        .displayOrder(imgReq.getSortOrder() != null ? imgReq.getSortOrder() : order++)
+                        .imageUrl(resolved.imageUrl())
+                        .bucket(resolved.bucket())
+                        .objectKey(resolved.objectKey())
+                        .originalFileName(resolved.originalFileName())
+                        .contentType(resolved.contentType())
+                        .fileSize(resolved.fileSize())
+                        .etag(resolved.etag())
+                        .isPrimary(resolved.isPrimary())
+                        .displayOrder(resolved.sortOrder())
                         .build();
                 productImageRepository.save(img);
-                if (Boolean.TRUE.equals(imgReq.getIsPrimary()) && newPrimaryUrl == null) {
-                    newPrimaryUrl = imgReq.getImageUrl();
+                if (resolved.isPrimary() && newPrimaryUrl == null) {
+                    newPrimaryUrl = resolved.imageUrl();
                 }
             }
             if (newPrimaryUrl != null) {
                 product.setThumbnailUrl(newPrimaryUrl);
+            } else if (!resolvedImages.isEmpty()) {
+                product.setThumbnailUrl(resolvedImages.get(0).imageUrl());
+            } else {
+                product.setThumbnailUrl(null);
+            }
+
+            if (!consumedUploadIds.isEmpty() || !removedObjects.isEmpty()) {
+                List<String> idsToDelete = List.copyOf(consumedUploadIds);
+                List<MinioObjectRef> objectsToDelete = List.copyOf(removedObjects);
+                runAfterCommit(() -> {
+                    idsToDelete.forEach(tokenRedisService::deleteUploadSession);
+                    objectsToDelete.forEach(obj -> minioStorageService.deleteObject(obj.bucket(), obj.objectKey()));
+                });
             }
         }
 
@@ -961,6 +1093,12 @@ public class ProductsService {
                 ? request.getListPrice()
                 : salePrice;
 
+        String variantImageUrl = product.getThumbnailUrl();
+        if (request.getImageUrl() != null && !request.getImageUrl().isBlank()) {
+            validateImageUrlNotBase64(request.getImageUrl());
+            variantImageUrl = request.getImageUrl().trim();
+        }
+
         ProductVariant variant = ProductVariant.builder()
                 .product(product)
                 .sku(sku)
@@ -972,7 +1110,7 @@ public class ProductsService {
                 .price(salePrice)
                 .compareAtPrice(compareAtPrice)
                 .status("ACTIVE")
-                .imageUrl(product.getThumbnailUrl())
+                .imageUrl(variantImageUrl)
                 .build();
 
         String variantName = buildVariantNameFromSchema(product.getProductName(), variant, schema);
@@ -1014,6 +1152,7 @@ public class ProductsService {
                 .ramGb(savedVariant.getRamGb())
                 .romGb(savedVariant.getRomGb())
                 .listPrice(savedVariant.getPrice())
+                .imageUrl(savedVariant.getImageUrl())
                 .isActive(true)
                 .inventory(CreateProductResponse.InventorySummary.builder()
                         .inventoryId(savedInventory.getInventoryId())
@@ -1076,6 +1215,7 @@ public class ProductsService {
             variant.setConnectionType(request.getConnectionType());
         }
         if (request.getImageUrl() != null && !request.getImageUrl().isBlank()) {
+            validateImageUrlNotBase64(request.getImageUrl());
             variant.setImageUrl(request.getImageUrl());
         }
 
@@ -1145,6 +1285,7 @@ public class ProductsService {
                 .minThreshold(currentMinThreshold)
                 .listPrice(updated.getCompareAtPrice() != null ? updated.getCompareAtPrice() : updated.getPrice())
                 .salePrice(updated.getPrice())
+                .imageUrl(updated.getImageUrl())
                 .isActive("ACTIVE".equalsIgnoreCase(updated.getStatus()))
                 .updatedAt(updated.getUpdatedAt() != null ? updated.getUpdatedAt().toString() : LocalDateTime.now().toString())
                 .build();
@@ -1204,8 +1345,102 @@ public class ProductsService {
     }
 
     // =========================================================================
+    // DELETE /api/v1/products/{productId}/images/{imageId} - Xóa ảnh sản phẩm & object MinIO sau commit
+    // =========================================================================
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteProductImage(Long productId, Long imageId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + productId + "!"));
+
+        ProductImage image = productImageRepository.findByImageIdAndProduct_ProductId(imageId, productId)
+                .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_IMAGE_NOT_FOUND));
+
+        boolean wasPrimary = Boolean.TRUE.equals(image.getIsPrimary());
+        String deletedUrl = image.getImageUrl();
+        String bucket = image.getBucket() != null && !image.getBucket().isBlank() ? image.getBucket() : "products";
+        String objectKey = image.getObjectKey();
+
+        productImageRepository.delete(image);
+
+        if (wasPrimary || Objects.equals(product.getThumbnailUrl(), deletedUrl)) {
+            List<ProductImage> remaining = productImageRepository.findByProduct_ProductIdOrderByDisplayOrderAsc(productId)
+                    .stream()
+                    .filter(img -> !Objects.equals(img.getImageId(), imageId))
+                    .toList();
+            if (!remaining.isEmpty()) {
+                ProductImage nextPrimary = remaining.get(0);
+                nextPrimary.setIsPrimary(true);
+                productImageRepository.save(nextPrimary);
+                product.setThumbnailUrl(nextPrimary.getImageUrl());
+            } else {
+                product.setThumbnailUrl(null);
+            }
+            productRepository.save(product);
+        }
+
+        if (objectKey != null && !objectKey.isBlank()) {
+            runAfterCommit(() -> minioStorageService.deleteObject(bucket, objectKey));
+        }
+    }
+
+    // =========================================================================
     // HELPER METHODS
     // =========================================================================
+    private UploadSessionData validateCompletedUploadSession(String uploadId, Long expectedProductId) {
+        UploadSessionData session = tokenRedisService.getUploadSession(uploadId);
+        if (session == null) {
+            throw new AppException(ErrorCode.STORAGE_SESSION_NOT_FOUND,
+                    "Phiên tải ảnh '" + uploadId + "' không tồn tại hoặc đã hết hạn.");
+        }
+        if (!UploadSessionData.STATUS_COMPLETED.equals(session.getStatus())) {
+            throw new AppException(ErrorCode.STORAGE_SESSION_INVALID,
+                    "Phiên tải ảnh '" + uploadId + "' chưa được xác nhận (COMPLETED).");
+        }
+        if (session.getProductId() != null && !Objects.equals(session.getProductId(), expectedProductId)) {
+            throw new AppException(ErrorCode.STORAGE_SESSION_INVALID,
+                    "Phiên tải ảnh '" + uploadId + "' không thuộc sản phẩm hiện tại.");
+        }
+        User currentUser = null;
+        try {
+            currentUser = securityHelper.getCurrentUser();
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception ignored) {
+        }
+        if (currentUser != null && session.getOwnerId() != null
+                && !Objects.equals(session.getOwnerId(), currentUser.getUserId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED,
+                    "Bạn không có quyền sử dụng phiên tải ảnh của người dùng khác.");
+        }
+        return session;
+    }
+
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
+    private record ResolvedImageData(
+            String imageUrl,
+            String bucket,
+            String objectKey,
+            String originalFileName,
+            String contentType,
+            Long fileSize,
+            String etag,
+            boolean isPrimary,
+            int sortOrder
+    ) {}
+
+    private record MinioObjectRef(String bucket, String objectKey) {}
     public List<VariantSchemaField> resolveEffectiveVariantSchema(Category category) {
         if (category == null) return null;
         Category current = category;
@@ -1363,6 +1598,13 @@ public class ProductsService {
             count++;
         }
         return slug;
+    }
+
+    private void validateImageUrlNotBase64(String imageUrl) {
+        if (imageUrl != null && imageUrl.trim().toLowerCase().startsWith("data:")) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Không hỗ trợ lưu trực tiếp dữ liệu ảnh base64 (data URI). Vui lòng upload ảnh lên MinIO qua /api/v1/storage/presigned-urls hoặc dùng URL ảnh hợp lệ.");
+        }
     }
 
     private boolean slugExists(String slug, Long excludeProductId) {

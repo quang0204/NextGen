@@ -86,4 +86,16 @@ public class AdminProductsController {
         return ApiResponse.ok("Cập nhật trạng thái kinh doanh của sản phẩm thành công!",
                 productsService.updateProductStatus(id, request));
     }
+
+    /**
+     * Xóa ảnh sản phẩm (STAFF / ADMIN) và tự động xóa object trên MinIO sau khi DB commit
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @DeleteMapping("/{productId}/images/{imageId}")
+    public ApiResponse<Void> deleteProductImage(
+            @PathVariable Long productId,
+            @PathVariable Long imageId) {
+        productsService.deleteProductImage(productId, imageId);
+        return ApiResponse.ok("Xóa ảnh sản phẩm thành công!", null);
+    }
 }
