@@ -1,15 +1,12 @@
 package com.wedbackendservice.nextgen.dto.portal.request.storage;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.wedbackendservice.nextgen.enums.StorageType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
-import com.wedbackendservice.nextgen.enums.StorageType;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -25,14 +22,48 @@ import java.util.List;
 public class PresignedUploadRequest {
 
     Long productId;
-
+    Long brandId;
     String storageType;
 
     @NotEmpty(message = "Danh sách tệp tải lên không được để trống")
     @Valid
     List<FileItem> files;
 
+    public void setStorageType(Object val) {
+        if (val instanceof StorageType st) {
+            this.storageType = st.name();
+        } else if (val != null) {
+            this.storageType = val.toString();
+        } else {
+            this.storageType = null;
+        }
+    }
+
+    public StorageType getStorageTypeEnum() {
+        if (storageType == null || storageType.isBlank()) {
+            return StorageType.PRODUCTS;
+        }
+        String s = storageType.trim().toUpperCase();
+        if (s.equals("BRAND") || s.equals("BRANDS")) return StorageType.BRANDS;
+        if (s.equals("AVATAR") || s.equals("AVATARS")) return StorageType.AVATARS;
+        return StorageType.PRODUCTS;
+    }
+
+    public static class PresignedUploadRequestBuilder {
+        public PresignedUploadRequestBuilder storageType(StorageType type) {
+            this.storageType = (type != null) ? type.name() : null;
+            return this;
+        }
+
+        public PresignedUploadRequestBuilder storageType(String type) {
+            this.storageType = type;
+            return this;
+        }
+    }
+
     @Data
+    @Getter
+    @Setter
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -51,12 +82,4 @@ public class PresignedUploadRequest {
         @JsonAlias({"size", "sizeBytes"})
         Long fileSize;
     }
-    @NotNull(message = "Loại lưu trữ (storageType) không được để trống")
-    StorageType storageType;
-
-    Long brandId;
-
-    @NotEmpty(message = "Danh sách tập tin không được để trống")
-    @Valid
-    List<UploadFileInput> files;
 }

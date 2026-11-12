@@ -22,14 +22,20 @@ public class MinioProperties {
     boolean publicRead = true;
     int presignedUploadExpiryMinutes = 15;
     int presignedGetExpiryMinutes = 60;
+    int presignedExpirySeconds = 900;
     int completedSessionTtlHours = 2;
-    long maxFileSizeBytes = 5 * 1024 * 1024L;
+    long maxFileSizeBytes = 10 * 1024 * 1024L; // 10MB
     int maxFilesPerProduct = 10;
+    long cleanupIntervalMs = 300000L;
+    String brandsBucket = "brands";
+    String publicBaseUrl = "";
 
     @Getter
     @Setter
     @FieldDefaults(level = AccessLevel.PRIVATE)
     public static class Bucket {
         String products = "products";
+        String brands = "brands";
+        String avatars = "avatars";
     }
 }

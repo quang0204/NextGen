@@ -25,7 +25,6 @@ public class StorageFileResponse {
     String etag;
     Boolean isPrimary;
     Integer sortOrder;
-    String objectKey;
     String canonicalUrl;
     String accessUrl;
     Long brandId;

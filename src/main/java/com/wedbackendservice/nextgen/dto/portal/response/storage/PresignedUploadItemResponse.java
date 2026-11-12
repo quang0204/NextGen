@@ -4,13 +4,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.util.Map;
-
-@Data
-import lombok.*;
-import lombok.experimental.FieldDefaults;
-
 import java.time.Instant;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -27,12 +22,8 @@ public class PresignedUploadItemResponse {
     String originalFileName;
     String contentType;
     Long fileSize;
-    Long expiresAt;
+    Instant expiresAt;
+    Long expiresAtEpochMs;
     Integer expiresInSeconds;
     Map<String, String> requiredHeaders;
-public class PresignedUploadItemResponse {
-    String uploadId;
-    String objectKey;
-    String uploadUrl;
-    Instant expiresAt;
 }

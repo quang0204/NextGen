@@ -8,11 +8,6 @@ import com.wedbackendservice.nextgen.dto.portal.response.storage.StorageFileResp
 import com.wedbackendservice.nextgen.service.shared.StorageFileService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -25,14 +20,6 @@ import java.util.List;
 public class StorageController {
 
     private final StorageFileService storageFileService;
-
-    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
-    @PostMapping("/presigned-urls")
-    public ApiResponse<List<PresignedUploadItemResponse>> generatePresignedUrls(
-            @Valid @RequestBody PresignedUploadRequest request) {
-        return ApiResponse.ok("Tạo presigned URL tải ảnh thành công!",
-                storageFileService.generatePresignedUrls(request));
-    }
 
     /**
      * Bước 1: Tạo liên kết Presigned URL để tải trực tiếp lên MinIO (STAFF / ADMIN)
@@ -53,8 +40,6 @@ public class StorageController {
     @PostMapping("/confirm")
     public ApiResponse<StorageFileResponse> confirmUpload(
             @Valid @RequestBody ConfirmUploadRequest request) {
-        return ApiResponse.ok("Xác nhận tải ảnh lên MinIO thành công!",
-                storageFileService.confirmUpload(request));
         StorageFileResponse response = storageFileService.confirmUpload(request);
         return ApiResponse.ok("Xác nhận tải lên tập tin thành công!", response);
     }
