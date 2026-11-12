@@ -38,6 +38,7 @@ public class CategoriesAndBrandsService {
     private final ProductRepository productRepository;
     private final AuditLogRepository auditLogRepository;
     private final CategoryMapper  categoryMapper;
+    private final StorageFileService storageFileService;
 
     // =========================================================================
     // CATEGORIES
@@ -353,10 +354,17 @@ public class CategoriesAndBrandsService {
 
         Boolean isVisible = request.getIsVisible() != null ? request.getIsVisible() : true;
 
+        String logoUrl = request.getLogoUrl();
+        if (request.getLogoUploadId() != null && !request.getLogoUploadId().isBlank()) {
+            logoUrl = storageFileService.reserveInputBrandLogo(request.getLogoUploadId(), null);
+        } else if (logoUrl != null) {
+            logoUrl = storageFileService.toCanonicalUrl(logoUrl);
+        }
+
         Brand brand = Brand.builder()
                 .brandName(brandName)
                 .slug(slug)
-                .logoUrl(request.getLogoUrl())
+                .logoUrl(logoUrl)
                 .description(request.getDescription())
                 .isActive(isVisible)
                 .build();
@@ -398,7 +406,17 @@ public class CategoriesAndBrandsService {
 
         brand.setBrandName(brandName);
         brand.setSlug(slug);
-        brand.setLogoUrl(request.getLogoUrl());
+
+        if (request.getLogoUploadId() != null && !request.getLogoUploadId().isBlank()) {
+            String canonicalLogoUrl = storageFileService.reserveInputBrandLogo(request.getLogoUploadId(), brand.getLogoUrl());
+            if (canonicalLogoUrl != null) {
+                brand.setLogoUrl(canonicalLogoUrl);
+            }
+        } else if (request.getLogoUrl() != null) {
+            String canonicalLogoUrl = storageFileService.toCanonicalUrl(request.getLogoUrl());
+            brand.setLogoUrl(canonicalLogoUrl);
+        }
+
         brand.setDescription(request.getDescription());
         if (request.getIsVisible() != null) {
             brand.setIsActive(request.getIsVisible());
@@ -429,9 +447,32 @@ public class CategoriesAndBrandsService {
             throw new AppException(ErrorCode.BRAND_HAS_PRODUCTS);
         }
 
+        String oldLogoUrl = brand.getLogoUrl();
         brandRepository.delete(brand);
 
+        storageFileService.deleteBrandLogoObjectAfterCommit(oldLogoUrl);
+
         auditLogRepository.log(operator, "DELETE_BRAND", "Brand", id, brand.getBrandName(), null);
+    }
+
+    /**
+     * API Xóa riêng Logo thương hiệu (STAFF / ADMIN)
+     */
+    @Transactional
+    public void deleteBrandLogo(Long id) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
+
+        Brand brand = brandRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
+
+        String oldLogoUrl = brand.getLogoUrl();
+        brand.setLogoUrl(null);
+        brand.setUpdatedAt(LocalDateTime.now());
+        brandRepository.save(brand);
+
+        storageFileService.deleteBrandLogoObjectAfterCommit(oldLogoUrl);
+
+        auditLogRepository.log(operator, "DELETE_BRAND_LOGO", "Brand", id, oldLogoUrl, null);
     }
 
     // =========================================================================
@@ -444,10 +485,12 @@ public class CategoriesAndBrandsService {
                 .brandId(brand.getBrandId())
                 .name(brand.getBrandName())
                 .slug(brand.getSlug())
-                .logoUrl(brand.getLogoUrl())
+                .logoUrl(storageFileService.resolveAccessUrl(brand.getLogoUrl()))
                 .description(brand.getDescription())
                 .isVisible(brand.getIsActive())
                 .totalProducts(totalProducts)
+                .createdAt(brand.getCreatedAt())
+                .updatedAt(brand.getUpdatedAt())
                 .build();
     }
 

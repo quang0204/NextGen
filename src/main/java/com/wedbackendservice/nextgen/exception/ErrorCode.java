@@ -116,7 +116,17 @@ public enum     ErrorCode {
     RETURN_BANK_INFO_REQUIRED(1107, "Vui lòng cung cấp đầy đủ thông tin tài khoản ngân hàng nhận tiền hoàn đối với đơn thanh toán COD!", HttpStatus.BAD_REQUEST),
     RETURN_INVALID_STATUS(1108, "Trạng thái thẩm định chỉ được là APPROVED hoặc REJECTED!", HttpStatus.BAD_REQUEST),
     RETURN_REJECT_REASON_REQUIRED(1109, "Lý do từ chối không được để trống khi từ chối yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
-    RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST);
+    RETURN_RESTOCK_ITEMS_REQUIRED(1110, "Danh sách sản phẩm hoàn kho không được để trống khi chấp thuận yêu cầu đổi trả!", HttpStatus.BAD_REQUEST),
+
+    // Nhóm 13: Storage & MinIO Upload
+    STORAGE_INVALID_FILE_TYPE(1120, "Định dạng tập tin không hợp lệ hoặc không phải ảnh cho phép (hỗ trợ JPG, PNG, WEBP, GIF, SVG).", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_SIZE_EXCEEDED(1121, "Kích thước tập tin vượt quá giới hạn tối đa cho phép (10MB).", HttpStatus.BAD_REQUEST),
+    STORAGE_SESSION_NOT_FOUND(1122, "Phiên tải lên không tồn tại hoặc đã hết hạn.", HttpStatus.NOT_FOUND),
+    STORAGE_SESSION_INVALID(1123, "Phiên tải lên không hợp lệ hoặc không thuộc quyền sở hữu.", HttpStatus.FORBIDDEN),
+    STORAGE_FILE_NOT_FOUND(1124, "Tập tin chưa được tải lên máy chủ lưu trữ.", HttpStatus.BAD_REQUEST),
+    STORAGE_FILE_CORRUPTED(1125, "Tập tin bị hỏng hoặc chữ ký định dạng (magic bytes) không hợp lệ.", HttpStatus.BAD_REQUEST),
+    STORAGE_ERROR(1126, "Lỗi kết nối hoặc xử lý lưu trữ tập tin.", HttpStatus.INTERNAL_SERVER_ERROR),
+    STORAGE_LIMIT_EXCEEDED(1127, "Số lượng tập tin tải lên vượt quá giới hạn cho phép.", HttpStatus.BAD_REQUEST);
 
     int code;
     String message;
