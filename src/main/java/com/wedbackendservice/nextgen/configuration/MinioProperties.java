@@ -28,6 +28,7 @@ public class MinioProperties {
     int maxFilesPerProduct = 10;
     long cleanupIntervalMs = 300000L;
     String brandsBucket = "brands";
+    String categoriesBucket = "categories";
     String publicBaseUrl = "";
 
     @Getter
@@ -36,6 +37,7 @@ public class MinioProperties {
     public static class Bucket {
         String products = "products";
         String brands = "brands";
+        String categories = "categories";
         String avatars = "avatars";
     }
 }

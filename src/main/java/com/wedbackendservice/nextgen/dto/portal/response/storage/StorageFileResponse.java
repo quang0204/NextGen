@@ -28,5 +28,6 @@ public class StorageFileResponse {
     String canonicalUrl;
     String accessUrl;
     Long brandId;
+    Long categoryId;
     String status;
 }

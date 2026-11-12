@@ -50,6 +50,10 @@ public class MinioStorageService {
         return minioProperties.getBrandsBucket();
     }
 
+    public String getCategoriesBucket() {
+        return minioProperties.getCategoriesBucket();
+    }
+
     public int getPresignedExpirySeconds() {
         return minioProperties.getPresignedExpirySeconds();
     }
@@ -59,6 +63,7 @@ public class MinioStorageService {
         try {
             ensureBucketReady(minioProperties.getBucket().getProducts());
             ensureBucketReady(minioProperties.getBrandsBucket());
+            ensureBucketReady(minioProperties.getCategoriesBucket());
         } catch (Exception e) {
             log.warn("MinIO chưa sẵn sàng khi khởi động ({}). Sẽ tự khởi tạo bucket ở lần upload đầu tiên.", e.getMessage());
         }

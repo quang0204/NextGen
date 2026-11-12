@@ -62,7 +62,7 @@ public class CategoriesAndBrandsService {
 
         for (Category cat : allCategories) {
             int count = productCountMap.getOrDefault(cat.getCategoryId(), 0);
-            CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
+            CategoryResponse resp = toCategoryResponse(cat);
             resp.setProductCount(count);
             resp.setChildren(new ArrayList<>());
             resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
@@ -110,7 +110,7 @@ public class CategoriesAndBrandsService {
         }
 
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
-        CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
+        CategoryResponse resp = toCategoryResponse(cat);
         resp.setProductCount(productCount);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
         return resp;
@@ -151,12 +151,19 @@ public class CategoriesAndBrandsService {
 
         Boolean isVisible = request.getIsVisible() != null ? request.getIsVisible() : true;
 
+        String iconUrl = request.getIconUrl();
+        if (request.getIconUploadId() != null && !request.getIconUploadId().isBlank()) {
+            iconUrl = storageFileService.reserveInputCategoryIcon(request.getIconUploadId(), null);
+        } else if (iconUrl != null) {
+            iconUrl = storageFileService.toCanonicalCategoryUrl(iconUrl);
+        }
+
         Category category = Category.builder()
                 .categoryName(categoryName)
                 .parent(parent)
                 .slug(slug)
                 .description(request.getDescription())
-                .iconUrl(request.getIconUrl())
+                .iconUrl(iconUrl)
                 .variantSchema(request.getVariantSchema())
                 .isActive(isVisible)
                 .build();
@@ -164,7 +171,7 @@ public class CategoriesAndBrandsService {
         Category saved = categoryRepository.save(category);
 
         auditLogRepository.log(operator, "CREATE_CATEGORY", "Category", saved.getCategoryId(), null, saved.getCategoryName());
-        CategoryResponse resp = categoryMapper.tocategoryResponse(saved);
+        CategoryResponse resp = toCategoryResponse(saved);
         resp.setProductCount(0);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(saved));
         return resp;
@@ -220,11 +227,20 @@ public class CategoriesAndBrandsService {
             throw new AppException(ErrorCode.CATEGORY_SLUG_ALREADY_EXISTS);
         }
 
+        if (request.getIconUploadId() != null && !request.getIconUploadId().isBlank()) {
+            String canonicalIconUrl = storageFileService.reserveInputCategoryIcon(request.getIconUploadId(), category.getIconUrl());
+            if (canonicalIconUrl != null) {
+                category.setIconUrl(canonicalIconUrl);
+            }
+        } else if (request.getIconUrl() != null) {
+            String canonicalIconUrl = storageFileService.toCanonicalCategoryUrl(request.getIconUrl());
+            category.setIconUrl(canonicalIconUrl);
+        }
+
         category.setParent(parent);
         category.setCategoryName(categoryName);
         category.setSlug(slug);
         category.setDescription(request.getDescription());
-        category.setIconUrl(request.getIconUrl());
         if (request.getIsVisible() != null) {
             category.setIsActive(request.getIsVisible());
         }
@@ -238,7 +254,7 @@ public class CategoriesAndBrandsService {
         auditLogRepository.log(operator, "UPDATE_CATEGORY", "Category", id, oldValue, updated.getCategoryName());
 
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
-        CategoryResponse resp = categoryMapper.tocategoryResponse(updated);
+        CategoryResponse resp = toCategoryResponse(updated);
         resp.setProductCount(productCount);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(updated));
         return resp;
@@ -287,9 +303,39 @@ public class CategoriesAndBrandsService {
             throw new AppException(ErrorCode.CATEGORY_HAS_PRODUCTS);
         }
 
+        String oldIconUrl = category.getIconUrl();
         categoryRepository.delete(category);
+        storageFileService.deleteCategoryIconObjectAfterCommit(oldIconUrl);
 
         auditLogRepository.log(operator, "DELETE_CATEGORY", "Category", id, category.getCategoryName(), null);
+    }
+
+    /**
+     * API Xóa riêng Icon danh mục (STAFF / ADMIN)
+     */
+    @Transactional
+    public void deleteCategoryIcon(Long id) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
+
+        Category category = categoryRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
+
+        String oldIconUrl = category.getIconUrl();
+        category.setIconUrl(null);
+        category.setUpdatedAt(LocalDateTime.now());
+        categoryRepository.save(category);
+
+        storageFileService.deleteCategoryIconObjectAfterCommit(oldIconUrl);
+        auditLogRepository.log(operator, "DELETE_CATEGORY_ICON", "Category", id, oldIconUrl, null);
+    }
+
+    private CategoryResponse toCategoryResponse(Category cat) {
+        if (cat == null) return null;
+        CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
+        if (resp != null) {
+            resp.setIconUrl(storageFileService.resolveCategoryAccessUrl(cat.getIconUrl()));
+        }
+        return resp;
     }
 
     // =========================================================================

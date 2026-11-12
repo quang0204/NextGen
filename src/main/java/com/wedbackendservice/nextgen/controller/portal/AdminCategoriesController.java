@@ -45,4 +45,14 @@ public class AdminCategoriesController {
         categoriesAndBrandsService.deleteCategory(id);
         return ApiResponse.ok("Xóa danh mục thành công!", null);
     }
+
+    /**
+     * API Xóa riêng Icon danh mục (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @DeleteMapping("/{id}/icon")
+    public ApiResponse<Void> deleteCategoryIcon(@PathVariable Long id) {
+        categoriesAndBrandsService.deleteCategoryIcon(id);
+        return ApiResponse.ok("Xóa icon danh mục thành công!", null);
+    }
 }

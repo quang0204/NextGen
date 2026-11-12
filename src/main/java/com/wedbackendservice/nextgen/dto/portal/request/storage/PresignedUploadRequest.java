@@ -23,6 +23,7 @@ public class PresignedUploadRequest {
 
     Long productId;
     Long brandId;
+    Long categoryId;
     String storageType;
 
     @NotEmpty(message = "Danh sách tệp tải lên không được để trống")
@@ -45,6 +46,7 @@ public class PresignedUploadRequest {
         }
         String s = storageType.trim().toUpperCase();
         if (s.equals("BRAND") || s.equals("BRANDS")) return StorageType.BRANDS;
+        if (s.equals("CATEGORY") || s.equals("CATEGORIES")) return StorageType.CATEGORIES;
         if (s.equals("AVATAR") || s.equals("AVATARS")) return StorageType.AVATARS;
         return StorageType.PRODUCTS;
     }

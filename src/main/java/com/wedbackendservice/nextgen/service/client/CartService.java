@@ -406,17 +406,17 @@ public class CartService {
     }
 
     private void validateVariantActiveForAdd(ProductVariant variant) {
-        if ("INACTIVE".equalsIgnoreCase(variant.getStatus())) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Sản phẩm hiện không kinh doanh hoặc tạm ngừng.");
+        if (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm này hiện đã ngừng kinh doanh hoặc tạm khóa.");
         }
-        if (variant.getProduct() != null && "INACTIVE".equalsIgnoreCase(variant.getProduct().getStatus())) {
-            throw new AppException(ErrorCode.PRODUCT_INACTIVE);
+        if (variant.getProduct() != null && variant.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getProduct().getStatus())) {
+            throw new AppException(ErrorCode.PRODUCT_INACTIVE, "Sản phẩm hiện đã ngừng kinh doanh hoặc tạm ngừng phân phối.");
         }
     }
 
     private boolean isVariantOrProductInactive(ProductVariant variant) {
-        return "INACTIVE".equalsIgnoreCase(variant.getStatus())
-                || (variant.getProduct() != null && "INACTIVE".equalsIgnoreCase(variant.getProduct().getStatus()));
+        return (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus()))
+                || (variant.getProduct() != null && variant.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getProduct().getStatus()));
     }
 
     public int getAvailableStock(Long variantId) {

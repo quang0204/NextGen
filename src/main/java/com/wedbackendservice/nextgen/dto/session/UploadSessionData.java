@@ -24,6 +24,7 @@ public class UploadSessionData {
 
     Long productId;
     Long brandId;
+    Long categoryId;
 
     String storageType;
     String bucket;

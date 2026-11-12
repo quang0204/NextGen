@@ -28,6 +28,9 @@ public class CategoryRequest {
     String description;
     String iconUrl;
 
+    @JsonAlias({"iconUploadId", "imageUploadId", "logoUploadId", "uploadId"})
+    String iconUploadId;
+
     List<VariantSchemaField> variantSchema;
 
     @JsonProperty("isVisible")

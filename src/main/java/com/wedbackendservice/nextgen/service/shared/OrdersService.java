@@ -111,6 +111,17 @@ public class OrdersService {
             ProductVariant variant = productVariantRepository.findById(variantId)
                     .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + variantId + "!"));
 
+            if (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus())) {
+                String prodName = variant.getProduct() != null ? variant.getProduct().getProductName() : variant.getVariantName();
+                throw new AppException(ErrorCode.PRODUCT_INACTIVE,
+                        String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinh doanh!", prodName, variant.getSku()));
+            }
+
+            if (variant.getProduct() != null && variant.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getProduct().getStatus())) {
+                throw new AppException(ErrorCode.PRODUCT_INACTIVE,
+                        String.format("Sản phẩm '%s' hiện đã ngừng kinh doanh!", variant.getProduct().getProductName()));
+            }
+
             Inventory inv = inventoryRepository.findByVariant_VariantId(variantId)
                     .orElseGet(() -> Inventory.builder().variant(variant).quantity(0).reservedQuantity(0).minThreshold(5).build());
 
