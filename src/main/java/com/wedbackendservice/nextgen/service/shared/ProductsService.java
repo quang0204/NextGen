@@ -83,7 +83,12 @@ public class ProductsService {
                 predicates.add(cb.equal(root.get("brand").get("brandId"), brandId));
             }
             if (categoryId != null) {
-                predicates.add(cb.equal(root.get("category").get("categoryId"), categoryId));
+                var categoryJoin = root.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+                var parentCategoryJoin = categoryJoin.join("parent", jakarta.persistence.criteria.JoinType.LEFT);
+                predicates.add(cb.or(
+                        cb.equal(categoryJoin.get("categoryId"), categoryId),
+                        cb.equal(parentCategoryJoin.get("categoryId"), categoryId)
+                ));
             }
 
             if (minPrice != null || maxPrice != null || ram != null || rom != null) {
