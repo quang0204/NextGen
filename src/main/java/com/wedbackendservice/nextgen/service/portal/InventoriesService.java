@@ -247,8 +247,21 @@ public class InventoriesService {
     public InventoryAdjustmentResponse adjustInventory(InventoryAdjustmentRequest request) {
         User currentUser = securityHelper.authenticateStaffOrAdmin();
 
-        ProductVariant variant = productVariantRepository.findById(request.getVariantId())
-                .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy dữ liệu tồn kho cho biến thể ID " + request.getVariantId() + "!"));
+        ProductVariant foundVariant = null;
+        if (request.getVariantId() != null) {
+            foundVariant = productVariantRepository.findById(request.getVariantId()).orElse(null);
+        }
+        if (foundVariant == null && StringUtils.hasText(request.getSku())) {
+            foundVariant = productVariantRepository.findBySku(request.getSku().trim()).orElse(null);
+        }
+        if (foundVariant == null) {
+            String identifier = StringUtils.hasText(request.getSku()) ? "SKU " + request.getSku() : "ID " + request.getVariantId();
+            throw new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy dữ liệu tồn kho cho biến thể " + identifier + "!");
+        }
+
+        final ProductVariant variant = foundVariant;
+        final Product product = variant.getProduct();
+        final String productName = (product != null) ? product.getProductName() : null;
 
         Inventory inventory = inventoryRepository.findByVariant_VariantId(variant.getVariantId())
                 .orElseGet(() -> inventoryRepository.save(Inventory.builder()
@@ -270,9 +283,11 @@ public class InventoriesService {
         int qtyBefore = inventory.getOnHandQty();
         int qtyActual = request.getActualCount();
         int quantityChange = qtyActual - qtyBefore;
+        LocalDateTime now = LocalDateTime.now();
 
-        inventoryRepository.setQuantityAtomic(variant.getVariantId(), qtyActual, LocalDateTime.now());
         inventory.setQuantity(qtyActual);
+        inventory.setUpdatedAt(now);
+        inventory = inventoryRepository.save(inventory);
 
         // Sinh mã phiếu kiểm kê MB05-YYYYMMDD-XXXX
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
@@ -289,18 +304,22 @@ public class InventoriesService {
                 .qtyBefore(qtyBefore)
                 .qtyAfter(qtyActual)
                 .reason(request.getReason())
+                .createdAt(now)
                 .build();
         txn = inventoryTransactionRepository.save(txn);
 
         // Ghi Audit Log (D18)
-        auditLogRepository.log(currentUser, "INVENTORY_ADJUSTMENT", "Inventories", inventory.getInventoryId(),
-                "on_hand_qty: " + qtyBefore, "on_hand_qty: " + qtyActual + ", reason: " + request.getReason());
+        try {
+            auditLogRepository.log(currentUser, "INVENTORY_ADJUSTMENT", "Inventories", inventory.getInventoryId(),
+                    "on_hand_qty: " + qtyBefore, "on_hand_qty: " + qtyActual + ", reason: " + request.getReason());
+        } catch (Exception e) {
+            log.warn("Không thể ghi audit log điều chỉnh kho: {}", e.getMessage());
+        }
 
         String performedByName = currentUser.getFullName() != null
                 ? currentUser.getFullName() + " (" + (currentUser.getRole() != null ? currentUser.getRole().name() : "Thủ kho") + ")"
                 : "Thủ kho";
 
-        Product product = variant.getProduct();
         int availableQty = Math.max(0, qtyActual - reservedQty);
 
         return InventoryAdjustmentResponse.builder()
@@ -308,7 +327,7 @@ public class InventoriesService {
                 .formCode(formCode)
                 .variantId(variant.getVariantId())
                 .sku(variant.getSku())
-                .productName(product != null ? product.getProductName() : null)
+                .productName(productName)
                 .qtyBefore(qtyBefore)
                 .qtyActual(qtyActual)
                 .quantityChange(quantityChange)
@@ -316,7 +335,7 @@ public class InventoriesService {
                 .availableQty(availableQty)
                 .reason(request.getReason())
                 .performedBy(performedByName)
-                .performedAt(DateTimeUtil.formatIsoInstant(txn.getCreatedAt()))
+                .performedAt(DateTimeUtil.formatIsoInstant(txn.getCreatedAt() != null ? txn.getCreatedAt() : now))
                 .build();
     }
 

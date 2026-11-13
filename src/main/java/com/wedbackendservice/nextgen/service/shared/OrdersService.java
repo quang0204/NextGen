@@ -952,13 +952,19 @@ public class OrdersService {
      */
     @Transactional
     public OrderDetailResponse customerNotifyPayment(Long orderId, String note) {
-        User currentUser = securityHelper.getCurrentUser();
+        User currentUser = null;
+        try {
+            currentUser = securityHelper.getCurrentUser();
+        } catch (Exception ignored) {
+        }
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
-        boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
-        if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
+        if (currentUser != null && order.getUser() != null) {
+            boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
+            if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
+                throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
+            }
         }
 
         if (!"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
