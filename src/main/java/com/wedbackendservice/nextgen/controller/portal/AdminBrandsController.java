@@ -33,7 +33,12 @@ public class AdminBrandsController {
     @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
     @PutMapping("/{id}")
     public ApiResponse<BrandResponse> updateBrand(@PathVariable Long id, @Valid @RequestBody BrandRequest request) {
-        return ApiResponse.ok("Cập nhật thương hiệu thành công!", categoriesAndBrandsService.updateBrand(id, request));
+        BrandResponse response = categoriesAndBrandsService.updateBrand(id, request);
+        String message = "Cập nhật thương hiệu thành công!";
+        if (Boolean.FALSE.equals(request.getIsVisible()) && response.getTotalProducts() != null && response.getTotalProducts() > 0) {
+            message = "Cảnh báo ràng buộc: Đã tạm ẩn thương hiệu \"" + response.getName() + "\", lưu ý đang có " + response.getTotalProducts() + " sản phẩm liên kết có thể bị ảnh hưởng!";
+        }
+        return ApiResponse.ok(message, response);
     }
 
     /**
