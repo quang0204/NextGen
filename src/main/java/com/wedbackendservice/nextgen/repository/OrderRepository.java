@@ -16,6 +16,9 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
 
+    @Query("SELECT o FROM Order o WHERE o.status = 'PENDING_PAYMENT' AND (o.paymentStatus IS NULL OR UPPER(o.paymentStatus) <> 'PAID') AND o.createdAt <= :expiredBefore")
+    List<Order> findExpiredPendingOrders(@Param("expiredBefore") java.time.LocalDateTime expiredBefore);
+
     Optional<Order> findByOrderCode(String orderCode);
 
     boolean existsByOrderCode(String orderCode);

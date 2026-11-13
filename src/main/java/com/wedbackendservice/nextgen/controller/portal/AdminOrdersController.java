@@ -56,4 +56,16 @@ public class AdminOrdersController {
         return ApiResponse.ok("Đã hoàn tất đóng gói, lập phiếu xuất kho MB03 và bàn giao đơn vị vận chuyển thành công!",
                 ordersService.packAndExportOrder(id, request));
     }
+
+    /**
+     * API 8.8: [POST] /api/v1/admin/orders/{id}/confirm-payment — Xác nhận đã nhận tiền chuyển khoản (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @PostMapping("/{id:[0-9]+}/confirm-payment")
+    public ApiResponse<com.wedbackendservice.nextgen.dto.client.response.order.OrderDetailResponse> confirmPayment(
+            @PathVariable Long id,
+            @RequestParam(required = false) String note) {
+        return ApiResponse.ok("Đã xác nhận nhận tiền chuyển khoản cho đơn hàng thành công!",
+                ordersService.confirmOrderPayment(id, note));
+    }
 }

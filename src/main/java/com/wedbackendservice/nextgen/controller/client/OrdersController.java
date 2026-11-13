@@ -62,4 +62,15 @@ public class OrdersController {
         return ApiResponse.ok("Đơn hàng đã được hủy thành công! Tồn kho giữ chỗ đã được giải phóng hoàn toàn.",
                 ordersService.cancelOrder(orderCode, request));
     }
+
+    /**
+     * API 8.5: [POST] /api/v1/orders/{id:[0-9]+}/notify-payment — Khách hàng xác nhận đã chuyển khoản thành công (Authenticated)
+     */
+    @PostMapping("/{id:[0-9]+}/notify-payment")
+    public ApiResponse<OrderDetailResponse> notifyPayment(
+            @PathVariable Long id,
+            @RequestParam(required = false) String note) {
+        return ApiResponse.ok("Đã tiếp nhận thông báo chuyển khoản thành công! Nhân viên sẽ kiểm tra và xác nhận đơn hàng.",
+                ordersService.customerNotifyPayment(id, note));
+    }
 }

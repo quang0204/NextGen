@@ -9,6 +9,8 @@ import com.wedbackendservice.nextgen.dto.portal.response.order.*;
 import com.wedbackendservice.nextgen.dto.client.response.order.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.Role;
+import com.wedbackendservice.nextgen.enums.PaymentMethod;
+import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
@@ -33,6 +35,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -55,6 +58,7 @@ public class OrdersService {
     private final CartItemRepository cartItemRepository;
     private final AuditLogRepository auditLogRepository;
     private final TokenRedisService tokenRedisService;
+    private final PaymentRepository paymentRepository;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
 
     /**
@@ -244,7 +248,8 @@ public class OrdersService {
 
         String payMethod = StringUtils.hasText(request.getPaymentMethod()) ? request.getPaymentMethod().trim().toUpperCase() : "COD";
         String payStatus = "UNPAID";
-        String initialStatus = "WAITING_CONFIRMATION";
+        boolean isTransfer = "BANK_TRANSFER".equals(payMethod) || "SIMULATED_TRANSFER".equals(payMethod);
+        String initialStatus = isTransfer ? "PENDING_PAYMENT" : "WAITING_CONFIRMATION";
 
         Order order = Order.builder()
                 .orderCode(orderCode)
@@ -264,6 +269,19 @@ public class OrdersService {
                 .build();
 
         Order savedOrder = orderRepository.save(order);
+
+        // Khởi tạo bản ghi thanh toán chuyển khoản ban đầu để theo dõi giao dịch
+        if (isTransfer) {
+            String txnRef = "TXN-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + "-" + ThreadLocalRandom.current().nextInt(1000, 9999);
+            paymentRepository.save(Payment.builder()
+                    .order(savedOrder)
+                    .paymentMethod(PaymentMethod.BANK_TRANSFER.name())
+                    .paymentProvider("SIMULATED_QR")
+                    .amount(totalAmount)
+                    .transactionRef(txnRef)
+                    .status(PaymentStatus.PENDING.name())
+                    .build());
+        }
 
         // 5. Lưu Order Items & TỰ ĐỘNG GIỮ CHỖ KHO NGUYÊN TỬ (Chống bán khống / overselling)
         for (OrderItem oi : orderItemsToSave) {
@@ -875,5 +893,138 @@ public class OrdersService {
         } else {
             return String.format("%s (x%d) + %d sản phẩm khác", firstName, firstQty, items.size() - 1);
         }
+    }
+
+    /**
+     * API Xác nhận đã nhận tiền chuyển khoản đơn hàng (STAFF / ADMIN)
+     */
+    @Transactional
+    public OrderDetailResponse confirmOrderPayment(Long orderId, String note) {
+        User operator = securityHelper.getCurrentUser();
+        if (operator.getRole() != Role.ADMIN && operator.getRole() != Role.STAFF) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Chỉ quản trị viên hoặc nhân viên mới có quyền xác nhận thanh toán!");
+        }
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
+
+        order.setPaymentStatus("PAID");
+        String prevStatus = order.getStatus();
+        if ("PENDING_PAYMENT".equalsIgnoreCase(prevStatus)) {
+            order.setStatus("WAITING_CONFIRMATION");
+        }
+        order.setUpdatedAt(LocalDateTime.now());
+        Order updated = orderRepository.save(order);
+
+        // Cập nhật hoặc tạo mới bản ghi Payment
+        Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId)
+                .orElseGet(() -> Payment.builder()
+                        .order(updated)
+                        .paymentMethod(updated.getPaymentMethod() != null ? updated.getPaymentMethod() : "BANK_TRANSFER")
+                        .paymentProvider("SIMULATED_QR")
+                        .amount(updated.getFinalTotal())
+                        .transactionRef("TXN-" + System.currentTimeMillis())
+                        .build());
+        payment.setStatus(PaymentStatus.SUCCESS.name());
+        payment.setPaidAt(LocalDateTime.now());
+        paymentRepository.save(payment);
+
+        String noteText = StringUtils.hasText(note) ? note.trim() : "Nhân viên xác nhận đã nhận tiền chuyển khoản ngân hàng";
+        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                .order(updated)
+                .changedBy(operator)
+                .previousStatus(prevStatus)
+                .newStatus(updated.getStatus())
+                .note(noteText)
+                .build());
+
+        try {
+            auditLogRepository.log(operator, "CONFIRM_PAYMENT", "Orders", orderId, "paymentStatus: UNPAID", "paymentStatus: PAID");
+        } catch (Exception e) {
+            log.warn("Không thể ghi audit log confirmOrderPayment: {}", e.getMessage());
+        }
+
+        return getOrderDetail(updated.getOrderCode());
+    }
+
+    /**
+     * API Khách hàng thông báo đã chuyển khoản thành công (Authenticated)
+     */
+    @Transactional
+    public OrderDetailResponse customerNotifyPayment(Long orderId, String note) {
+        User currentUser = securityHelper.getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
+
+        boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
+        if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
+        }
+
+        if (!"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
+            order.setPaymentStatus("PENDING"); // Đang chờ kế toán/nhân viên đối soát sao kê
+            order.setUpdatedAt(LocalDateTime.now());
+            orderRepository.save(order);
+
+            String noteText = StringUtils.hasText(note) ? note.trim() : "Khách hàng đã xác nhận chuyển khoản thành công, chờ kiểm tra giao dịch";
+            orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                    .order(order)
+                    .changedBy(currentUser)
+                    .previousStatus(order.getStatus())
+                    .newStatus(order.getStatus())
+                    .note(noteText)
+                    .build());
+        }
+
+        return getOrderDetail(order.getOrderCode());
+    }
+
+    /**
+     * Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn (15 phút), giải phóng tồn kho
+     */
+    @Transactional
+    public int cancelExpiredOrders() {
+        LocalDateTime expiredBefore = LocalDateTime.now().minusMinutes(15);
+        List<Order> expiredOrders = orderRepository.findExpiredPendingOrders(expiredBefore);
+        if (expiredOrders.isEmpty()) {
+            return 0;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        int count = 0;
+
+        for (Order order : expiredOrders) {
+            // 1. Rollback giải phóng tồn giữ chỗ (reserved_qty -= quantity)
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+            for (OrderItem item : items) {
+                ProductVariant v = item.getVariant();
+                if (v != null) {
+                    inventoryRepository.releaseStockAtomic(v.getVariantId(), item.getQuantity(), now);
+                }
+            }
+
+            // 2. Hoàn trả voucher nếu có
+            if (order.getVoucher() != null) {
+                voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
+            }
+
+            // 3. Cập nhật trạng thái CANCELLED
+            order.setStatus("CANCELLED");
+            order.setCancelReason("Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ 15 phút) - Hệ thống tự động hủy đơn và giải phóng tồn kho");
+            order.setUpdatedAt(now);
+            orderRepository.save(order);
+
+            // 4. Ghi lịch sử OrderStatusHistory
+            orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                    .order(order)
+                    .changedBy(null)
+                    .previousStatus("PENDING_PAYMENT")
+                    .newStatus("CANCELLED")
+                    .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR 15 phút và đã nhả toàn bộ tồn kho giữ chỗ.")
+                    .build());
+
+            count++;
+        }
+        return count;
     }
 }
