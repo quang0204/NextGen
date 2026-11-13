@@ -61,7 +61,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/vouchers/valid").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers("/api/v1/storage/**").hasAnyRole("ADMIN", "STAFF")
+                        // Khách đã đăng nhập được tải ảnh đánh giá (storageType = REVIEWS); loại khác StorageFileService chỉ cho STAFF / ADMIN
+                        .requestMatchers("/api/v1/storage/**").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/products/*/images/*").hasAnyRole("ADMIN", "STAFF")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o

@@ -22,9 +22,10 @@ public class StorageController {
     private final StorageFileService storageFileService;
 
     /**
-     * Bước 1: Tạo liên kết Presigned URL để tải trực tiếp lên MinIO (STAFF / ADMIN)
+     * Bước 1: Tạo liên kết Presigned URL để tải trực tiếp lên MinIO.
+     * STAFF / ADMIN: ảnh sản phẩm, thương hiệu, danh mục. Khách đã đăng nhập: chỉ ảnh đánh giá (storageType = REVIEWS).
      */
-    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/presigned-urls")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<List<PresignedUploadItemResponse>> createPresignedUploads(
@@ -34,9 +35,10 @@ public class StorageController {
     }
 
     /**
-     * Bước 3: Xác nhận tải lên và kiểm tra tính toàn vẹn của tập tin trên MinIO (STAFF / ADMIN)
+     * Bước 3: Xác nhận tải lên và kiểm tra tính toàn vẹn của tập tin trên MinIO.
+     * Khách chỉ được xác nhận phiên ảnh đánh giá của chính mình.
      */
-    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     @PostMapping("/confirm")
     public ApiResponse<StorageFileResponse> confirmUpload(
             @Valid @RequestBody ConfirmUploadRequest request) {

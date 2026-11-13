@@ -48,6 +48,7 @@ public class PresignedUploadRequest {
         if (s.equals("BRAND") || s.equals("BRANDS")) return StorageType.BRANDS;
         if (s.equals("CATEGORY") || s.equals("CATEGORIES")) return StorageType.CATEGORIES;
         if (s.equals("AVATAR") || s.equals("AVATARS")) return StorageType.AVATARS;
+        if (s.equals("REVIEW") || s.equals("REVIEWS")) return StorageType.REVIEWS;
         return StorageType.PRODUCTS;
     }
 

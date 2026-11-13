@@ -4,5 +4,6 @@ public enum StorageType {
     BRANDS,
     PRODUCTS,
     CATEGORIES,
-    AVATARS
+    AVATARS,
+    REVIEWS
 }
