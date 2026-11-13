@@ -5,6 +5,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -22,6 +23,8 @@ public class ReviewResponse {
     String customerName;
     Integer rating;
     String comment;
+    /** Link xem ảnh đánh giá (lấy từ bảng review_images). */
+    List<String> imageUrls;
     Boolean isVerifiedPurchase;
     String status;
     String reply;
