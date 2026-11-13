@@ -294,13 +294,15 @@ public class CategoriesAndBrandsService {
         long childCategoriesCount = categoryRepository.countByParent_CategoryId(id);
         if (childCategoriesCount > 0) {
             log.warn("Không thể xóa danh mục {}: có {} danh mục con", id, childCategoriesCount);
-            throw new AppException(ErrorCode.CATEGORY_HAS_CHILDREN);
+            throw new AppException(ErrorCode.CATEGORY_HAS_CHILDREN,
+                    "Hệ thống chặn: Không thể xóa danh mục \"" + category.getCategoryName() + "\" vì đang có " + childCategoriesCount + " danh mục con trực thuộc! Vui lòng xóa hoặc di chuyển các danh mục con trước.");
         }
 
         long childProductsCount = productRepository.countByCategory_CategoryId(id);
         if (childProductsCount > 0) {
             log.warn("Không thể xóa danh mục {}: có {} sản phẩm liên kết", id, childProductsCount);
-            throw new AppException(ErrorCode.CATEGORY_HAS_PRODUCTS);
+            throw new AppException(ErrorCode.CATEGORY_HAS_PRODUCTS,
+                    "Hệ thống chặn hoàn toàn: Không thể xóa danh mục \"" + category.getCategoryName() + "\" vì đang có " + childProductsCount + " sản phẩm liên kết! Vui lòng chuyển sản phẩm sang danh mục khác trước khi xóa.");
         }
 
         String oldIconUrl = category.getIconUrl();
@@ -490,7 +492,8 @@ public class CategoriesAndBrandsService {
         long productsCount = productRepository.countByBrand_BrandId(id);
         if (productsCount > 0) {
             log.warn("Không thể xóa thương hiệu {}: có {} sản phẩm liên kết", id, productsCount);
-            throw new AppException(ErrorCode.BRAND_HAS_PRODUCTS);
+            throw new AppException(ErrorCode.BRAND_HAS_PRODUCTS,
+                    "Cảnh báo ràng buộc: Không thể xóa thương hiệu \"" + brand.getBrandName() + "\" vì đang có " + productsCount + " sản phẩm thuộc hãng trên hệ thống! Hãy đổi hãng cho các sản phẩm trước hoặc chọn ẩn thương hiệu thay vì xóa.");
         }
 
         String oldLogoUrl = brand.getLogoUrl();

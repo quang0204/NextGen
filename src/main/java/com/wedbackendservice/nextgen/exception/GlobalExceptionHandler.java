@@ -87,6 +87,19 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(value = org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
+        log.error("Data integrity violation: ", exception);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .statusCode(HttpStatus.BAD_REQUEST.value())
+                        .message("Ràng buộc toàn vẹn dữ liệu: Không thể xóa hoặc thay đổi do đang có dữ liệu liên quan (sản phẩm hoặc danh mục con) trên hệ thống.")
+                        .error("DATA_INTEGRITY_VIOLATION")
+                        .timestamp(Instant.now().toString())
+                        .build());
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiResponse<Void>> handleAuth(AuthenticationException e) {
         ErrorCode c = ErrorCode.UNAUTHENTICATED;
