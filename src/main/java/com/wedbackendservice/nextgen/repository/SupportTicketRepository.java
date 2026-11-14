@@ -26,7 +26,9 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
     @Query("SELECT t.status, COUNT(t) FROM SupportTicket t GROUP BY t.status")
     List<Object[]> countByStatusGrouped();
 
+    @EntityGraph(attributePaths = {"user", "handledBy"})
     List<SupportTicket> findByUserOrderByCreatedAtDesc(User user);
 
+    @EntityGraph(attributePaths = {"user", "handledBy"})
     List<SupportTicket> findByUser_UserIdOrderByCreatedAtDesc(Long userId);
 }
