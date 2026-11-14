@@ -59,6 +59,8 @@ public class OrdersService {
     private final AuditLogRepository auditLogRepository;
     private final TokenRedisService tokenRedisService;
     private final PaymentRepository paymentRepository;
+    @org.springframework.beans.factory.annotation.Value("${payment.bank-transfer.expire-minutes:30}")
+    private int paymentExpireMinutes = 30;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
 
     /**
@@ -762,12 +764,16 @@ public class OrdersService {
             if (v == null) continue;
 
             Inventory inv = inventoryRepository.findByVariant_VariantId(v.getVariantId())
-                    .orElseGet(() -> Inventory.builder().variant(v).quantity(0).reservedQuantity(0).minThreshold(5).build());
+                    .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                            "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
 
             int onHandBefore = inv.getOnHandQty();
-            int onHandAfter = Math.max(0, onHandBefore - item.getQuantity());
-
-            inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
+            int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
+            if (updatedRows == 0) {
+                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                        "Tồn kho vật lý của SKU " + v.getSku() + " không đủ để xuất kho (cần " + item.getQuantity() + ", hiện có " + onHandBefore + ")!");
+            }
+            int onHandAfter = onHandBefore - item.getQuantity();
 
             // Ghi sổ cái bất biến Inventory_Transactions (MB03 EXPORT)
             inventoryTransactionRepository.save(InventoryTransaction.builder()
@@ -953,19 +959,13 @@ public class OrdersService {
      */
     @Transactional
     public OrderDetailResponse customerNotifyPayment(Long orderId, String note) {
-        User currentUser = null;
-        try {
-            currentUser = securityHelper.getCurrentUser();
-        } catch (Exception ignored) {
-        }
+        User currentUser = securityHelper.getCurrentUser();
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
-        if (currentUser != null && order.getUser() != null) {
-            boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
-            if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
-                throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
-            }
+        boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
+        if (!isStaffOrAdmin && (order.getUser() == null || !order.getUser().getUserId().equals(currentUser.getUserId()))) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
         }
 
         if (!"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
@@ -987,11 +987,12 @@ public class OrdersService {
     }
 
     /**
-     * Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn (15 phút), giải phóng tồn kho
+     * Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn, giải phóng tồn kho
      */
     @Transactional
     public int cancelExpiredOrders() {
-        LocalDateTime expiredBefore = LocalDateTime.now().minusMinutes(15);
+        int expireMins = paymentExpireMinutes > 0 ? paymentExpireMinutes : 30;
+        LocalDateTime expiredBefore = LocalDateTime.now().minusMinutes(expireMins);
         List<Order> expiredOrders = orderRepository.findExpiredPendingOrders(expiredBefore);
         if (expiredOrders.isEmpty()) {
             return 0;
@@ -1017,7 +1018,7 @@ public class OrdersService {
 
             // 3. Cập nhật trạng thái CANCELLED
             order.setStatus("CANCELLED");
-            order.setCancelReason("Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ 15 phút) - Hệ thống tự động hủy đơn và giải phóng tồn kho");
+            order.setCancelReason("Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ " + expireMins + " phút) - Hệ thống tự động hủy đơn và giải phóng tồn kho");
             order.setUpdatedAt(now);
             orderRepository.save(order);
 
@@ -1027,7 +1028,7 @@ public class OrdersService {
                     .changedBy(null)
                     .previousStatus("PENDING_PAYMENT")
                     .newStatus("CANCELLED")
-                    .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR 15 phút và đã nhả toàn bộ tồn kho giữ chỗ.")
+                    .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR " + expireMins + " phút và đã nhả toàn bộ tồn kho giữ chỗ.")
                     .build());
 
             count++;

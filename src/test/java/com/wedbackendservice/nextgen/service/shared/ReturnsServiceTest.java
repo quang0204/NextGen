@@ -445,9 +445,12 @@ class ReturnsServiceTest {
 
         when(returnRequestRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(ret)));
-        when(returnRequestRepository.countByStatusIn(anyCollection())).thenReturn(5L);
-        when(returnRequestRepository.countByStatus("APPROVED")).thenReturn(42L);
-        when(returnRequestRepository.countByStatus("REJECTED")).thenReturn(8L);
+        when(returnRequestRepository.countByStatusGrouped()).thenReturn(List.of(
+                new Object[]{"PENDING", 3L},
+                new Object[]{"INSPECTING", 2L},
+                new Object[]{"APPROVED", 42L},
+                new Object[]{"REJECTED", 8L}
+        ));
 
         AdminReturnListResponse response = returnsService.getAdminReturns(1, 20, "PENDING", null, "createdAt", "desc");
 

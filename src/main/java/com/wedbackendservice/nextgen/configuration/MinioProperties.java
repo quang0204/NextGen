@@ -39,5 +39,6 @@ public class MinioProperties {
         String brands = "brands";
         String categories = "categories";
         String avatars = "avatars";
+        String reviews = "reviews";
     }
 }

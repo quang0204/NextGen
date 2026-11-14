@@ -16,6 +16,9 @@ public interface PromotionVariantRepository extends JpaRepository<PromotionVaria
 
     List<PromotionVariant> findByPromotion_PromotionId(Long promotionId);
 
+    @Query("SELECT pv FROM PromotionVariant pv JOIN FETCH pv.variant v LEFT JOIN FETCH v.product WHERE pv.promotion.promotionId IN :promotionIds")
+    List<PromotionVariant> findByPromotionIdInWithVariantAndProduct(@Param("promotionIds") Collection<Long> promotionIds);
+
     long countByPromotion_PromotionId(Long promotionId);
 
     @Query("SELECT pv.promotion.promotionId, COUNT(pv) FROM PromotionVariant pv WHERE pv.promotion.promotionId IN :promotionIds GROUP BY pv.promotion.promotionId")

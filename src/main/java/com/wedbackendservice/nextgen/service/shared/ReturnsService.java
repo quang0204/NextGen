@@ -235,9 +235,22 @@ public class ReturnsService {
                     .build();
         }).toList();
 
-        long totalPending = returnRequestRepository.countByStatusIn(List.of("PENDING", "INSPECTING"));
-        long totalApproved = returnRequestRepository.countByStatus("APPROVED");
-        long totalRejected = returnRequestRepository.countByStatus("REJECTED");
+        long totalPending = 0;
+        long totalApproved = 0;
+        long totalRejected = 0;
+        for (Object[] row : returnRequestRepository.countByStatusGrouped()) {
+            if (row[0] != null && row[1] != null) {
+                String st = ((String) row[0]).trim().toUpperCase();
+                long cnt = ((Number) row[1]).longValue();
+                if ("PENDING".equals(st) || "INSPECTING".equals(st)) {
+                    totalPending += cnt;
+                } else if ("APPROVED".equals(st)) {
+                    totalApproved += cnt;
+                } else if ("REJECTED".equals(st)) {
+                    totalRejected += cnt;
+                }
+            }
+        }
 
         return AdminReturnListResponse.builder()
                 .items(items)

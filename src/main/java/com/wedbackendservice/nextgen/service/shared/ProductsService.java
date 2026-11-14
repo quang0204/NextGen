@@ -61,6 +61,33 @@ public class ProductsService {
                 .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
     }
 
+    private ProductDetailResponse.VariantDetailResponse mapVariantDetailResponse(ProductVariant v, Inventory inv) {
+        int availableQty = inv != null ? inv.getAvailableQty() : 0;
+        boolean isActive = "ACTIVE".equalsIgnoreCase(v.getStatus());
+        BigDecimal curPrice = v.getPrice();
+        BigDecimal origPrice = v.getCompareAtPrice() != null && v.getCompareAtPrice().compareTo(BigDecimal.ZERO) > 0
+                ? v.getCompareAtPrice()
+                : curPrice;
+
+        return ProductDetailResponse.VariantDetailResponse.builder()
+                .variantId(v.getVariantId())
+                .sku(v.getSku())
+                .variantName(v.getVariantName())
+                .color(v.getColor())
+                .ramGb(v.getRamGb())
+                .romGb(v.getRomGb())
+                .connectionType(v.getConnectionType())
+                .attributes(v.getAttributes())
+                .listPrice(origPrice)
+                .salePrice(curPrice)
+                .compareAtPrice(origPrice)
+                .price(curPrice)
+                .imageUrl(v.getImageUrl())
+                .availableQty(availableQty)
+                .isActive(isActive)
+                .build();
+    }
+
     private static String stripAccents(String input) {
         if (input == null) return "";
         String normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD);
@@ -80,6 +107,30 @@ public class ProductsService {
             List<String> coreTokens
     ) {}
 
+    private Long resolveCategoryIdByKeyword(String keywordType, Long fallbackId) {
+        try {
+            List<Category> activeCategories = new ArrayList<>(categoryRepository.findAllActive());
+            activeCategories.sort(Comparator.comparing(c -> c.getParent() != null));
+            for (Category c : activeCategories) {
+                String haystack = stripAccents((c.getCategoryName() != null ? c.getCategoryName() : "") + " " + (c.getSlug() != null ? c.getSlug() : ""));
+                if ("phone".equals(keywordType) && !haystack.contains("phu kien") && (haystack.contains("dien thoai") || haystack.contains("phone"))) {
+                    return c.getCategoryId();
+                }
+                if ("tablet".equals(keywordType) && !haystack.contains("phu kien") && (haystack.contains("may tinh bang") || haystack.contains("tablet") || haystack.contains("ipad"))) {
+                    return c.getCategoryId();
+                }
+                if ("laptop".equals(keywordType) && !haystack.contains("phu kien") && (haystack.contains("laptop") || haystack.contains("may tinh xach tay") || haystack.contains("macbook"))) {
+                    return c.getCategoryId();
+                }
+                if ("accessory".equals(keywordType) && (haystack.contains("phu kien") || haystack.contains("am thanh") || haystack.contains("accessory"))) {
+                    return c.getCategoryId();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return fallbackId;
+    }
+
     private SmartSearchIntent parseSmartSearch(String rawSearch) {
         if (rawSearch == null || rawSearch.isBlank()) {
             return new SmartSearchIntent(null, null, null, null, null, null, List.of(), List.of());
@@ -95,18 +146,18 @@ public class ProductsService {
         String sort = null;
         List<String> reqKeywords = new ArrayList<>();
 
-        // 1. Nhận diện Danh mục
+        // 1. Nhận diện Danh mục (tra cứu động từ DB, fallback về ID chuẩn nếu chưa seed)
         if (ascii.contains("dien thoai") || ascii.contains("smartphone") || ascii.matches(".*\\bphone\\b.*")) {
-            catId = 1L;
+            catId = resolveCategoryIdByKeyword("phone", 1L);
             text = text.replaceAll("(?i)(điện thoại di động|điện thoại|dien thoai di dong|dien thoai|smartphone|\\bphone\\b)", " ");
         } else if (ascii.contains("may tinh bang") || ascii.contains("tablet")) {
-            catId = 2L;
+            catId = resolveCategoryIdByKeyword("tablet", 2L);
             text = text.replaceAll("(?i)(máy tính bảng|may tinh bang|tablet)", " ");
         } else if (ascii.contains("laptop") || ascii.contains("may tinh xach tay") || ascii.contains("macbook")) {
-            catId = 3L;
+            catId = resolveCategoryIdByKeyword("laptop", 3L);
             text = text.replaceAll("(?i)(máy tính xách tay|may tinh xach tay|laptop)", " ");
         } else if (ascii.contains("phu kien") || ascii.contains("tai nghe") || ascii.contains("cu sac") || ascii.contains("pin du phong") || ascii.contains("sac du phong") || ascii.contains("loa ")) {
-            catId = 4L;
+            catId = resolveCategoryIdByKeyword("accessory", 4L);
             text = text.replaceAll("(?i)(phụ kiện di động|phụ kiện|phu kien di dong|phu kien)", " ");
         }
 
@@ -425,6 +476,10 @@ public class ProductsService {
                             .map(ProductImage::getImageUrl)
                             .orElse(product.getThumbnailUrl()));
 
+            List<ProductDetailResponse.VariantDetailResponse> variantSummaries = pVariants.stream()
+                    .map(v -> mapVariantDetailResponse(v, inventoryByVariant.get(v.getVariantId())))
+                    .toList();
+
             items.add(ProductSummaryResponse.builder()
                     .productId(product.getProductId())
                     .name(product.getProductName())
@@ -443,6 +498,7 @@ public class ProductsService {
                     .soldCount(soldMap.getOrDefault(product.getProductId(), 0))
                     .availableColors(availableColors)
                     .isAvailable(isAvailable)
+                    .variants(variantSummaries)
                     .build());
         }
 
@@ -470,10 +526,7 @@ public class ProductsService {
             List<Promotion> activePromotions = promotionRepository.findActivePromotions(now);
             if (!activePromotions.isEmpty()) {
                 List<Long> promoIds = activePromotions.stream().map(Promotion::getPromotionId).toList();
-                List<PromotionVariant> promoVariants = new ArrayList<>();
-                for (Long pId : promoIds) {
-                    promoVariants.addAll(promotionVariantRepository.findByPromotion_PromotionId(pId));
-                }
+                List<PromotionVariant> promoVariants = promotionVariantRepository.findByPromotionIdInWithVariantAndProduct(promoIds);
 
                 // Filter active product & active variant
                 Map<Long, List<PromotionVariant>> promoVariantsByProduct = new HashMap<>();
@@ -688,33 +741,7 @@ public class ProductsService {
                 .collect(Collectors.toMap(inv -> inv.getVariant().getVariantId(), inv -> inv, (a, b) -> a));
 
         List<ProductDetailResponse.VariantDetailResponse> variantResponses = variants.stream()
-                .map(v -> {
-                    Inventory inv = invMap.get(v.getVariantId());
-                    int availableQty = inv != null ? inv.getAvailableQty() : 0;
-                    boolean isActive = "ACTIVE".equalsIgnoreCase(v.getStatus());
-                    BigDecimal curPrice = v.getPrice();
-                    BigDecimal origPrice = v.getCompareAtPrice() != null && v.getCompareAtPrice().compareTo(BigDecimal.ZERO) > 0
-                            ? v.getCompareAtPrice()
-                            : curPrice;
-
-                    return ProductDetailResponse.VariantDetailResponse.builder()
-                            .variantId(v.getVariantId())
-                            .sku(v.getSku())
-                            .variantName(v.getVariantName())
-                            .color(v.getColor())
-                            .ramGb(v.getRamGb())
-                            .romGb(v.getRomGb())
-                            .connectionType(v.getConnectionType())
-                            .attributes(v.getAttributes())
-                            .listPrice(origPrice)
-                            .salePrice(curPrice)
-                            .compareAtPrice(origPrice)
-                            .price(curPrice)
-                            .imageUrl(v.getImageUrl())
-                            .availableQty(availableQty)
-                            .isActive(isActive)
-                            .build();
-                })
+                .map(v -> mapVariantDetailResponse(v, invMap.get(v.getVariantId())))
                 .toList();
 
         return ProductDetailResponse.builder()

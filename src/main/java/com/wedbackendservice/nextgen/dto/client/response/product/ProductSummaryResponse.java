@@ -25,6 +25,7 @@ public class ProductSummaryResponse {
     Integer soldCount;
     List<String> availableColors;
     Boolean isAvailable;
+    List<ProductDetailResponse.VariantDetailResponse> variants;
 
     @Data
     @Builder

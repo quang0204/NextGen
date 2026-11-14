@@ -19,7 +19,7 @@ import java.util.Optional;
 public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long>, JpaSpecificationExecutor<ReturnRequest> {
 
     @Override
-    @EntityGraph(attributePaths = {"order", "requestedBy"})
+    @EntityGraph(attributePaths = {"order", "order.user", "requestedBy", "inspectedBy"})
     Page<ReturnRequest> findAll(Specification<ReturnRequest> spec, Pageable pageable);
 
     boolean existsByOrder_OrderIdAndStatusIn(Long orderId, Collection<String> statuses);
@@ -33,4 +33,7 @@ public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Lo
 
     @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status IN :statuses")
     long countByStatusIn(@Param("statuses") Collection<String> statuses);
+
+    @Query("SELECT r.status, COUNT(r) FROM ReturnRequest r GROUP BY r.status")
+    List<Object[]> countByStatusGrouped();
 }

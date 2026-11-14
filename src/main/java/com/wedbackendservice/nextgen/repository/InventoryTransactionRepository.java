@@ -15,6 +15,7 @@ import java.util.List;
 public interface InventoryTransactionRepository extends JpaRepository<InventoryTransaction, Long>, JpaSpecificationExecutor<InventoryTransaction> {
     List<InventoryTransaction> findByOrder_OrderId(Long orderId);
 
+    @EntityGraph(attributePaths = {"performedBy", "order"})
     List<InventoryTransaction> findTop5ByVariant_VariantIdOrderByTxnIdDesc(Long variantId);
 
     Page<InventoryTransaction> findByVariant_VariantIdOrderByTxnIdDesc(Long variantId, Pageable pageable);

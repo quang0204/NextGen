@@ -21,11 +21,11 @@ public class AuthenticationController {
     private final AuthenticationService authenticationService;
 
     /**
-     * API 1: Khởi tạo đăng nhập (Bước 1 Đăng nhập)
+     * API 1: Đăng nhập trực tiếp (Tài khoản + Mật khẩu)
      */
-    @PostMapping("/login-initiate")
-    public ApiResponse<LoginInitiateResponse> loginInitiate(@Valid @RequestBody LoginInitiateRequest request) {
-        return ApiResponse.ok("Thông tin hợp lệ. Mã xác thực OTP đã được gửi.", authenticationService.initiateLogin(request));
+    @PostMapping({"/login", "/login-initiate"})
+    public ApiResponse<LoginVerifyOtpResponse> loginInitiate(@Valid @RequestBody LoginInitiateRequest request) {
+        return ApiResponse.ok("Đăng nhập thành công!", authenticationService.initiateLogin(request));
     }
 
     /**
