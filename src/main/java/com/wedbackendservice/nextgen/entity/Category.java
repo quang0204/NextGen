@@ -34,7 +34,6 @@ public class Category {
     String categoryName;
     String description;
     String slug;
-    String iconUrl;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "variant_schema", columnDefinition = "json")

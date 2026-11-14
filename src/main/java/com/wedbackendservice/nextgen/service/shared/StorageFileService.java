@@ -7,7 +7,6 @@ import com.wedbackendservice.nextgen.dto.portal.response.storage.PresignedUpload
 import com.wedbackendservice.nextgen.dto.portal.response.storage.StorageFileResponse;
 import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import com.wedbackendservice.nextgen.entity.Brand;
-import com.wedbackendservice.nextgen.entity.Category;
 import com.wedbackendservice.nextgen.entity.Product;
 import com.wedbackendservice.nextgen.entity.ProductImage;
 import com.wedbackendservice.nextgen.entity.User;
@@ -16,7 +15,6 @@ import com.wedbackendservice.nextgen.enums.StorageType;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.BrandRepository;
-import com.wedbackendservice.nextgen.repository.CategoryRepository;
 import com.wedbackendservice.nextgen.repository.ProductImageRepository;
 import com.wedbackendservice.nextgen.repository.ProductRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
@@ -61,7 +59,6 @@ public class StorageFileService {
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
     private final BrandRepository brandRepository;
-    private final CategoryRepository categoryRepository;
 
     @Autowired
     public StorageFileService(
@@ -71,8 +68,7 @@ public class StorageFileService {
             SecurityHelper securityHelper,
             ProductRepository productRepository,
             ProductImageRepository productImageRepository,
-            @Autowired(required = false) BrandRepository brandRepository,
-            @Autowired(required = false) CategoryRepository categoryRepository) {
+            @Autowired(required = false) BrandRepository brandRepository) {
         this.minioStorageService = minioStorageService;
         this.tokenRedisService = tokenRedisService;
         this.minioProperties = (minioProperties != null) ? minioProperties : new MinioProperties();
@@ -80,7 +76,6 @@ public class StorageFileService {
         this.productRepository = productRepository;
         this.productImageRepository = productImageRepository;
         this.brandRepository = brandRepository;
-        this.categoryRepository = categoryRepository;
     }
 
     public StorageFileService(
@@ -90,7 +85,7 @@ public class StorageFileService {
             SecurityHelper securityHelper,
             ProductRepository productRepository,
             ProductImageRepository productImageRepository) {
-        this(minioStorageService, tokenRedisService, minioProperties, securityHelper, productRepository, productImageRepository, null, null);
+        this(minioStorageService, tokenRedisService, minioProperties, securityHelper, productRepository, productImageRepository, null);
     }
 
     public List<PresignedUploadItemResponse> createPresignedUploads(PresignedUploadRequest request) {
@@ -106,10 +101,11 @@ public class StorageFileService {
         }
 
         String rawType = request.getStorageType();
+        if (request.getCategoryId() != null || (rawType != null && (rawType.equalsIgnoreCase("CATEGORY") || rawType.equalsIgnoreCase("CATEGORIES")))) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Danh mục sản phẩm không còn sử dụng hình ảnh/icon.");
+        }
         boolean isBrand = (request.getBrandId() != null)
                 || (rawType != null && (rawType.equalsIgnoreCase("BRAND") || rawType.equalsIgnoreCase("BRANDS")));
-        boolean isCategory = (request.getCategoryId() != null)
-                || (rawType != null && (rawType.equalsIgnoreCase("CATEGORY") || rawType.equalsIgnoreCase("CATEGORIES")));
 
         String storageTypeStr;
         String bucket;
@@ -124,17 +120,6 @@ public class StorageFileService {
             if (request.getBrandId() != null && brandRepository != null) {
                 brandRepository.findById(request.getBrandId())
                         .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
-            }
-        } else if (isCategory) {
-            storageTypeStr = StorageType.CATEGORIES.name();
-            bucket = minioProperties.getCategoriesBucket();
-            if (files.size() > 1) {
-                throw new AppException(ErrorCode.STORAGE_LIMIT_EXCEEDED,
-                        "Mỗi lần chỉ được tải lên tối đa 1 biểu tượng danh mục");
-            }
-            if (request.getCategoryId() != null && categoryRepository != null) {
-                categoryRepository.findById(request.getCategoryId())
-                        .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
             }
         } else {
             storageTypeStr = StorageType.PRODUCTS.name();
@@ -175,10 +160,6 @@ public class StorageFileService {
                 folder = (request.getBrandId() != null)
                         ? "brands/" + request.getBrandId()
                         : "brands";
-            } else if (isCategory) {
-                folder = (request.getCategoryId() != null)
-                        ? "categories/" + request.getCategoryId()
-                        : "categories";
             } else {
                 folder = (request.getProductId() != null)
                         ? String.valueOf(request.getProductId())
@@ -330,39 +311,7 @@ public class StorageFileService {
                     .build();
         }
 
-        // Nhánh 2: Có categoryId (Attach thẳng vào Category)
-        if (session.getCategoryId() != null && categoryRepository != null) {
-            Category category = categoryRepository.findById(session.getCategoryId())
-                    .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-
-            String oldIconUrl = category.getIconUrl();
-            category.setIconUrl(canonicalUrl);
-            category.setUpdatedAt(LocalDateTime.now());
-            categoryRepository.save(category);
-
-            session.setStatus(UploadSessionData.STATUS_ATTACHED);
-            runAfterCommit(() -> {
-                tokenRedisService.deleteUploadSession(uploadId);
-                deleteReplacedUrlObjectAfterCommit(session.getBucket(), oldIconUrl, session.getObjectKey());
-            });
-
-            return StorageFileResponse.builder()
-                    .uploadId(uploadId)
-                    .categoryId(session.getCategoryId())
-                    .bucket(session.getBucket())
-                    .objectKey(session.getObjectKey())
-                    .originalFileName(session.getOriginalFileName())
-                    .contentType(session.getContentType())
-                    .fileSize(stat.size())
-                    .etag(stat.etag())
-                    .canonicalUrl(canonicalUrl)
-                    .accessUrl(accessUrl)
-                    .imageUrl(fileUrl)
-                    .status(UploadSessionData.STATUS_ATTACHED)
-                    .build();
-        }
-
-        // Nhánh 3: Có productId (Lưu ProductImage)
+        // Nhánh 2: Có productId (Lưu ProductImage)
         if (session.getProductId() != null) {
             Product product = productRepository.findById(session.getProductId())
                     .orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND,
@@ -473,55 +422,11 @@ public class StorageFileService {
         return canonicalUrl;
     }
 
-    public String reserveInputCategoryIcon(String iconUploadId, String oldIconUrl) {
-        if (iconUploadId == null || iconUploadId.isBlank()) {
-            return null;
-        }
-
-        UploadSessionData session = tokenRedisService.getUploadSession(iconUploadId.trim());
-        if (session == null) {
-            log.info("Phiên upload {} không còn trong Redis (đã được attach hoặc đã hoàn tất)", iconUploadId);
-            return null;
-        }
-
-        if (!UploadSessionData.STATUS_COMPLETED.equalsIgnoreCase(session.getStatus())) {
-            throw new AppException(ErrorCode.STORAGE_SESSION_INVALID, "Phiên tải lên ảnh danh mục chưa được xác nhận hoàn tất");
-        }
-
-        if (!StorageType.CATEGORIES.name().equalsIgnoreCase(session.getStorageType())) {
-            throw new AppException(ErrorCode.STORAGE_SESSION_INVALID, "Phiên tải lên không phải loại danh mục");
-        }
-
-        String bucket = minioProperties.getCategoriesBucket();
-        String canonicalUrl = session.getCanonicalUrl() != null
-                ? session.getCanonicalUrl()
-                : minioStorageService.buildCanonicalUrl(bucket, session.getObjectKey());
-
-        runAfterCommit(() -> {
-            tokenRedisService.deleteUploadSession(iconUploadId.trim());
-            deleteReplacedUrlObjectAfterCommit(bucket, oldIconUrl, session.getObjectKey());
-        });
-
-        return canonicalUrl;
-    }
-
     public String toCanonicalUrl(String url) {
         if (url == null || url.isBlank()) {
             return null;
         }
         String bucket = minioProperties.getBrandsBucket();
-        String objectKey = minioStorageService.extractObjectKey(bucket, url);
-        if (objectKey != null && !objectKey.isBlank()) {
-            return minioStorageService.buildCanonicalUrl(bucket, objectKey);
-        }
-        return url.trim();
-    }
-
-    public String toCanonicalCategoryUrl(String url) {
-        if (url == null || url.isBlank()) {
-            return null;
-        }
-        String bucket = minioProperties.getCategoriesBucket();
         String objectKey = minioStorageService.extractObjectKey(bucket, url);
         if (objectKey != null && !objectKey.isBlank()) {
             return minioStorageService.buildCanonicalUrl(bucket, objectKey);
@@ -540,17 +445,6 @@ public class StorageFileService {
         }
     }
 
-    public void deleteCategoryIconObjectAfterCommit(String iconUrl) {
-        if (iconUrl == null || iconUrl.isBlank()) {
-            return;
-        }
-        String bucket = minioProperties.getCategoriesBucket();
-        String objectKey = minioStorageService.extractObjectKey(bucket, iconUrl);
-        if (objectKey != null && !objectKey.isBlank()) {
-            runAfterCommit(() -> minioStorageService.deleteObject(bucket, objectKey));
-        }
-    }
-
     public String resolveAccessUrl(String logoUrl) {
         if (logoUrl == null || logoUrl.isBlank()) {
             return logoUrl;
@@ -561,18 +455,6 @@ public class StorageFileService {
             return minioStorageService.getAccessUrl(bucket, objectKey);
         }
         return logoUrl;
-    }
-
-    public String resolveCategoryAccessUrl(String iconUrl) {
-        if (iconUrl == null || iconUrl.isBlank()) {
-            return iconUrl;
-        }
-        String bucket = minioProperties.getCategoriesBucket();
-        String objectKey = minioStorageService.extractObjectKey(bucket, iconUrl);
-        if (objectKey != null && !objectKey.isBlank()) {
-            return minioStorageService.getAccessUrl(bucket, objectKey);
-        }
-        return iconUrl;
     }
 
     public int cleanupExpiredPendingUploads() {
