@@ -173,11 +173,19 @@ public class ShipmentsService {
         String currentStatusStr = shipment.getShippingStatus();
         String newStatusStr = request.getStatus().trim();
 
-        ShipmentStatus currentStatus = ShipmentStatus.fromString(currentStatusStr);
-        ShipmentStatus targetStatus = ShipmentStatus.fromString(newStatusStr);
-
-        if (targetStatus == null) {
+        ShipmentStatus targetStatus;
+        try {
+            targetStatus = ShipmentStatus.valueOf(newStatusStr.toUpperCase());
+        } catch (IllegalArgumentException ex) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Trạng thái vận chuyển không hợp lệ: " + newStatusStr);
+        }
+
+        ShipmentStatus currentStatus = null;
+        if (currentStatusStr != null && !currentStatusStr.isBlank()) {
+            try {
+                currentStatus = ShipmentStatus.valueOf(currentStatusStr.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+            }
         }
 
         if (currentStatus != null) {

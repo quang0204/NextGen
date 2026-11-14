@@ -18,26 +18,14 @@ public enum ShipmentStatus {
             PICKED, EnumSet.of(IN_TRANSIT, FAILED_DELIVERY, CANCELLED),
             IN_TRANSIT, EnumSet.of(DELIVERED, FAILED_DELIVERY),
             FAILED_DELIVERY, EnumSet.of(IN_TRANSIT, DELIVERED, CANCELLED),
-            DELIVERED, Collections.emptySet(), // Terminal state
-            CANCELLED, Collections.emptySet()  // Terminal state
+            DELIVERED, Collections.emptySet(),
+            CANCELLED, Collections.emptySet()
     );
 
     public boolean canTransitionTo(ShipmentStatus nextStatus) {
         if (this == nextStatus) {
             return false;
         }
-        Set<ShipmentStatus> allowed = VALID_TRANSITIONS.getOrDefault(this, Collections.emptySet());
-        return allowed.contains(nextStatus);
-    }
-
-    public static ShipmentStatus fromString(String statusStr) {
-        if (statusStr == null || statusStr.isBlank()) {
-            return null;
-        }
-        try {
-            return ShipmentStatus.valueOf(statusStr.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        return VALID_TRANSITIONS.getOrDefault(this, Collections.emptySet()).contains(nextStatus);
     }
 }

@@ -90,9 +90,8 @@ public class InventoriesService {
             }
 
             if (StringUtils.hasText(status) && !status.equalsIgnoreCase("ALL")) {
-                StockStatus parsedStatus = StockStatus.from(status);
-                if (parsedStatus != null) {
-                    switch (parsedStatus) {
+                try {
+                    switch (StockStatus.valueOf(status.trim().toUpperCase())) {
                         case IN_STOCK -> predicates.add(cb.greaterThan(availDiff, thresholdVal));
                         case LOW_STOCK -> {
                             predicates.add(cb.lessThanOrEqualTo(availDiff, thresholdVal));
@@ -100,6 +99,7 @@ public class InventoriesService {
                         }
                         case OUT_OF_STOCK -> predicates.add(cb.lessThanOrEqualTo(availDiff, 0));
                     }
+                } catch (IllegalArgumentException ignored) {
                 }
             }
 

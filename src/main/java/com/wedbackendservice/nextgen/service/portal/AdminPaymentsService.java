@@ -91,16 +91,14 @@ public class AdminPaymentsService {
             BigDecimal amount = row[3] != null ? (BigDecimal) row[3] : BigDecimal.ZERO;
 
             total += count;
-            PaymentStatus paymentStatus = PaymentStatus.from(status);
-
-            if (paymentStatus == PaymentStatus.SUCCESS) {
+            if (PaymentStatus.SUCCESS.name().equalsIgnoreCase(status)) {
                 success += count;
                 totalCollected = totalCollected.add(amount);
                 collectedByMethod.merge(method, amount, BigDecimal::add);
-            } else if (paymentStatus == PaymentStatus.PENDING) {
+            } else if (PaymentStatus.PENDING.name().equalsIgnoreCase(status)) {
                 pending += count;
                 totalPending = totalPending.add(amount);
-            } else if (paymentStatus == PaymentStatus.REFUNDED) {
+            } else if (PaymentStatus.REFUNDED.name().equalsIgnoreCase(status)) {
                 refunded += count;
                 totalRefunded = totalRefunded.add(amount);
             } else {
@@ -155,7 +153,12 @@ public class AdminPaymentsService {
     }
 
     private static void validateStatus(String status) {
-        if (status != null && !status.isBlank() && PaymentStatus.from(status) == null) {
+        if (status == null || status.isBlank()) {
+            return;
+        }
+        try {
+            PaymentStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Trạng thái thanh toán không hợp lệ.");
         }
     }

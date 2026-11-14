@@ -8,21 +8,5 @@ public enum OrderStatus {
     PICKED_UP,
     SHIPPING,
     COMPLETED,
-    CANCELLED;
-
-    public boolean isFinal() {
-        return this == COMPLETED || this == CANCELLED;
-    }
-
-    public static OrderStatus from(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        for (OrderStatus status : values()) {
-            if (status.name().equalsIgnoreCase(value.trim())) {
-                return status;
-            }
-        }
-        return null;
-    }
+    CANCELLED
 }

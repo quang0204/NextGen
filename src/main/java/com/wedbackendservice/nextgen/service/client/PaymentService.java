@@ -125,7 +125,7 @@ public class PaymentService {
         }
 
         boolean success = request.getSuccess() == null || request.getSuccess();
-        if (PaymentStatus.from(payment.getStatus()) != PaymentStatus.SUCCESS) {
+        if (!PaymentStatus.SUCCESS.name().equalsIgnoreCase(payment.getStatus())) {
             payment.setStatus(success ? PaymentStatus.SUCCESS.name() : PaymentStatus.FAILED.name());
             if (success) {
                 payment.setPaidAt(LocalDateTime.now());
@@ -152,7 +152,7 @@ public class PaymentService {
 
     private Payment findReusablePending(Order order, PaymentMethod method) {
         return paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId())
-                .filter(p -> PaymentStatus.from(p.getStatus()) == PaymentStatus.PENDING)
+                .filter(p -> PaymentStatus.PENDING.name().equalsIgnoreCase(p.getStatus()))
                 .filter(p -> method.name().equalsIgnoreCase(p.getPaymentMethod()))
                 .filter(p -> p.getCreatedAt() == null
                         || p.getCreatedAt().isAfter(LocalDateTime.now().minusMinutes(PENDING_REUSE_MINUTES)))

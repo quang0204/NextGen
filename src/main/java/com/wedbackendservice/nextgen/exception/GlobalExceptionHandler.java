@@ -87,6 +87,19 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(value = org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleMethodArgumentTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .statusCode(HttpStatus.BAD_REQUEST.value())
+                        .message("Giá trị tham số '" + exception.getName() + "' không hợp lệ.")
+                        .error("INVALID_REQUEST")
+                        .timestamp(Instant.now().toString())
+                        .build());
+    }
+
     @ExceptionHandler(value = org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
         log.error("Data integrity violation: ", exception);

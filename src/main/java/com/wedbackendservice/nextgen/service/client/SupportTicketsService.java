@@ -162,22 +162,32 @@ public class SupportTicketsService {
         if (priority == null || priority.isBlank()) {
             return TicketPriority.MEDIUM.name();
         }
-        TicketPriority parsed = TicketPriority.from(priority);
-        if (parsed == null) {
+        try {
+            return TicketPriority.valueOf(priority.trim().toUpperCase()).name();
+        } catch (IllegalArgumentException ex) {
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     "Mức ưu tiên không hợp lệ (LOW | MEDIUM | HIGH | URGENT).");
         }
-        return parsed.name();
     }
 
     private static void validateStatusFilter(String status) {
-        if (status != null && !status.isBlank() && TicketStatus.from(status) == null) {
+        if (status == null || status.isBlank()) {
+            return;
+        }
+        try {
+            TicketStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
             throw new AppException(ErrorCode.ERR_TICKET_INVALID_STATUS);
         }
     }
 
     private static void validatePriorityFilter(String priority) {
-        if (priority != null && !priority.isBlank() && TicketPriority.from(priority) == null) {
+        if (priority == null || priority.isBlank()) {
+            return;
+        }
+        try {
+            TicketPriority.valueOf(priority.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     "Mức ưu tiên không hợp lệ (LOW | MEDIUM | HIGH | URGENT).");
         }
