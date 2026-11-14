@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.dto.portal.response.shipment.*;
 import com.wedbackendservice.nextgen.dto.client.response.shipment.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
+import com.wedbackendservice.nextgen.enums.OrderStatus;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
@@ -199,6 +200,11 @@ public class ShipmentsService {
                 throw new AppException(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
             }
         }
+        if (targetStatus == ShipmentStatus.FAILED_DELIVERY
+                && (request.getNote() == null || request.getNote().trim().isBlank())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Bắt buộc ghi nhận nguyên nhân khi giao hàng thất bại (sai địa chỉ, không nghe máy...).");
+        }
 
         shipment.setShippingStatus(targetStatus.name());
         shipment.setUpdatedBy(operator);
@@ -295,7 +301,8 @@ public class ShipmentsService {
         User operator = securityHelper.authenticateStaffOrAdmin();
 
         if (request.getFailReason() == null || request.getFailReason().trim().isBlank()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Thiếu failReason");
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Bắt buộc ghi nhận nguyên nhân giao hàng thất bại (ví dụ: sai địa chỉ, không nghe máy).");
         }
 
         Shipment shipment = shipmentRepository.findById(id)
@@ -327,7 +334,7 @@ public class ShipmentsService {
 
         if (order != null) {
             String fromStatus = order.getStatus();
-            order.setStatus("CANCELLED");
+            order.setStatus(OrderStatus.RETURNING.name());
             order.setCancelReason("Giao hàng thất bại: " + reason);
 
             // Kiểm tra xử lý hoàn tiền nếu đơn hàng đã thanh toán online
@@ -341,8 +348,8 @@ public class ShipmentsService {
                     .order(order)
                     .changedBy(operator)
                     .previousStatus(fromStatus)
-                    .newStatus("CANCELLED")
-                    .note("Giao hàng thất bại: " + reason + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
+                    .newStatus(OrderStatus.RETURNING.name())
+                    .note("Giao hàng thất bại - Đang hoàn về: " + reason + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
                     .build());
 
             boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
@@ -385,8 +392,8 @@ public class ShipmentsService {
                 notificationRepository.save(Notification.builder()
                         .user(order.getUser())
                         .order(order)
-                        .title("Đơn hàng đã bị hủy")
-                        .content("Đơn hàng " + order.getOrderCode() + " đã bị hủy do giao hàng không thành công: " + reason)
+                        .title("Đơn hàng đang hoàn về")
+                        .content("Đơn hàng " + order.getOrderCode() + " giao không thành công (" + reason + ") và đang được hoàn về kho.")
                         .isRead(false)
                         .build());
             }
@@ -397,7 +404,7 @@ public class ShipmentsService {
                 .trackingCode(shipment.getTrackingNumber())
                 .shipmentStatus("FAILED_DELIVERY")
                 .failReason(reason)
-                .orderStatus("CANCELLED")
+                .orderStatus(OrderStatus.RETURNING.name())
                 .inventoryRestocked(restockedCount > 0)
                 .restockedItemsCount(restockedCount)
                 .build();

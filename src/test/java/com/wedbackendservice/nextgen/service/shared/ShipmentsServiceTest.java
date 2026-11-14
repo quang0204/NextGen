@@ -201,11 +201,11 @@ class ShipmentsServiceTest {
 
         assertThat(res).isNotNull();
         assertThat(res.getShipmentStatus()).isEqualTo("FAILED_DELIVERY");
-        assertThat(res.getOrderStatus()).isEqualTo("CANCELLED");
+        assertThat(res.getOrderStatus()).isEqualTo("RETURNING");
         assertThat(res.getInventoryRestocked()).isTrue();
         assertThat(res.getRestockedItemsCount()).isEqualTo(1);
 
-        assertThat(order.getStatus()).isEqualTo("CANCELLED");
+        assertThat(order.getStatus()).isEqualTo("RETURNING");
         verify(inventoryRepository).increaseQuantityAtomic(eq(50L), eq(2), any(LocalDateTime.class));
         verify(inventoryTransactionRepository).save(any(InventoryTransaction.class));
         verify(notificationRepository).save(any(Notification.class));
