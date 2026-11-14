@@ -14,8 +14,8 @@ public enum ShipmentStatus {
     CANCELLED;
 
     private static final Map<ShipmentStatus, Set<ShipmentStatus>> VALID_TRANSITIONS = Map.of(
-            READY_TO_PICK, EnumSet.of(PICKED, CANCELLED),
-            PICKED, EnumSet.of(IN_TRANSIT, FAILED_DELIVERY, CANCELLED),
+            READY_TO_PICK, EnumSet.of(PICKED, IN_TRANSIT, DELIVERED, FAILED_DELIVERY, CANCELLED),
+            PICKED, EnumSet.of(IN_TRANSIT, DELIVERED, FAILED_DELIVERY, CANCELLED),
             IN_TRANSIT, EnumSet.of(DELIVERED, FAILED_DELIVERY),
             FAILED_DELIVERY, EnumSet.of(IN_TRANSIT, DELIVERED, CANCELLED),
             DELIVERED, Collections.emptySet(),
