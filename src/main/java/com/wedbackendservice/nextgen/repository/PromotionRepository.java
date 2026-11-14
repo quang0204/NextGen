@@ -13,7 +13,7 @@ import java.util.List;
 @Repository
 public interface PromotionRepository extends JpaRepository<Promotion, Long>, JpaSpecificationExecutor<Promotion> {
 
-    @Query("SELECT p FROM Promotion p WHERE (p.isActive = true OR p.status = 'ACTIVE') " +
+    @Query("SELECT p FROM Promotion p WHERE p.isActive = true AND (p.status IS NULL OR UPPER(p.status) NOT IN ('PAUSED', 'ENDED')) " +
             "AND (p.startDate IS NULL OR p.startDate <= :now) " +
             "AND (p.endDate IS NULL OR p.endDate >= :now)")
     List<Promotion> findActivePromotions(@Param("now") LocalDateTime now);

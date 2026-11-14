@@ -29,7 +29,7 @@ public interface PromotionVariantRepository extends JpaRepository<PromotionVaria
     @Query("SELECT pv FROM PromotionVariant pv " +
            "JOIN pv.promotion p " +
            "WHERE pv.variant.variantId = :variantId " +
-           "AND p.isActive = true " +
+           "AND p.isActive = true AND (p.status IS NULL OR UPPER(p.status) NOT IN ('PAUSED', 'ENDED')) " +
            "AND (p.startDate IS NULL OR p.startDate <= :now) " +
            "AND (p.endDate IS NULL OR p.endDate >= :now) " +
            "ORDER BY pv.promotionalPrice ASC")
@@ -40,7 +40,7 @@ public interface PromotionVariantRepository extends JpaRepository<PromotionVaria
     @Query("SELECT pv FROM PromotionVariant pv " +
            "JOIN pv.promotion p " +
            "WHERE pv.variant.variantId IN :variantIds " +
-           "AND p.isActive = true " +
+           "AND p.isActive = true AND (p.status IS NULL OR UPPER(p.status) NOT IN ('PAUSED', 'ENDED')) " +
            "AND (p.startDate IS NULL OR p.startDate <= :now) " +
            "AND (p.endDate IS NULL OR p.endDate >= :now) " +
            "ORDER BY pv.promotionalPrice ASC")
