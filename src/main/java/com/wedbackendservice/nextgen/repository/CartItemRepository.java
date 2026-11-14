@@ -12,8 +12,11 @@ import java.util.Optional;
 
 @Repository
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
-    @Query("SELECT ci FROM CartItem ci WHERE ci.cart.cartId = :cartId ORDER BY ci.createdAt DESC")
+    @Query("SELECT ci FROM CartItem ci LEFT JOIN FETCH ci.variant v LEFT JOIN FETCH v.product WHERE ci.cart.cartId = :cartId ORDER BY ci.createdAt DESC")
     List<CartItem> findByCartId(@Param("cartId") Long cartId);
+
+    @Query("SELECT COALESCE(SUM(ci.quantity), 0) FROM CartItem ci WHERE ci.cart.cartId = :cartId")
+    int sumQuantityByCartId(@Param("cartId") Long cartId);
 
     @Query("SELECT ci FROM CartItem ci WHERE ci.cart.cartId = :cartId AND ci.variant.variantId = :variantId")
     Optional<CartItem> findByCartIdAndVariantId(@Param("cartId") Long cartId, @Param("variantId") Long variantId);

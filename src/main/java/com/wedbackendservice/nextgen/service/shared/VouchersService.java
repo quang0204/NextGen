@@ -62,27 +62,6 @@ public class VouchersService {
         return upper;
     }
 
-    private LocalDateTime parseIsoDateTime(String text, String fieldName, boolean isEndOfDay) {
-        if (!StringUtils.hasText(text)) {
-            return null;
-        }
-        String trimmed = text.trim();
-        try {
-            return LocalDateTime.ofInstant(Instant.parse(trimmed), ZoneId.systemDefault());
-        } catch (DateTimeParseException ex1) {
-            try {
-                return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (DateTimeParseException ex2) {
-                try {
-                    LocalDate date = LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE);
-                    return isEndOfDay ? date.atTime(23, 59, 59) : date.atStartOfDay();
-                } catch (Exception e) {
-                    throw new AppException(ErrorCode.INVALID_REQUEST, "Định dạng thời gian " + fieldName + " không hợp lệ (chuẩn ISO-8601)!");
-                }
-            }
-        }
-    }
-
     /**
      * API 6.5: [GET] /api/v1/vouchers/valid — Danh sách mã giảm giá còn hiệu lực (Public / Auth)
      */
@@ -259,11 +238,11 @@ public class VouchersService {
                     String.format("Mã voucher '%s' đã tồn tại trên hệ thống!", code));
         }
 
-        LocalDateTime startAt = parseIsoDateTime(request.getStartAt(), "startAt", false);
+        LocalDateTime startAt = DateTimeUtil.parseIsoDateTime(request.getStartAt(), "startAt", false);
         if (startAt == null) {
             startAt = LocalDateTime.now();
         }
-        LocalDateTime expiredAt = parseIsoDateTime(request.getExpiredAt(), "expiredAt", true);
+        LocalDateTime expiredAt = DateTimeUtil.parseIsoDateTime(request.getExpiredAt(), "expiredAt", true);
 
         if (expiredAt != null && !startAt.isBefore(expiredAt)) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Thời gian bắt đầu (startAt) phải trước thời gian hết hạn (expiredAt)!");

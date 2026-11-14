@@ -50,18 +50,7 @@ public class PromotionsService {
     private final AuditLogRepository auditLogRepository;
 
     private LocalDateTime parseIsoDateTime(String text, String fieldName) {
-        if (!StringUtils.hasText(text)) {
-            return null;
-        }
-        try {
-            return LocalDateTime.ofInstant(Instant.parse(text.trim()), ZoneId.systemDefault());
-        } catch (DateTimeParseException ex) {
-            try {
-                return LocalDateTime.parse(text.trim(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.INVALID_REQUEST, "Định dạng thời gian " + fieldName + " không hợp lệ (chuẩn ISO-8601 YYYY-MM-DDTHH:mm:ssZ)!");
-            }
-        }
+        return DateTimeUtil.parseIsoDateTime(text, fieldName, false);
     }
 
     private Map<Long, List<ActivePromotionVariantResponse>> mapVariantsByPromotionIds(List<Long> promoIds) {

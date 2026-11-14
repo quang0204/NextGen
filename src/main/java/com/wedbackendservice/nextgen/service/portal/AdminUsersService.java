@@ -136,13 +136,7 @@ public class AdminUsersService {
 
         List<UserAddressItemResponse> addresses = userAddressRepository
                 .findByUserIdOrderByIsDefaultDescAddressIdDesc(userId).stream()
-                .map(a -> UserAddressItemResponse.builder()
-                        .addressId(a.getAddressId())
-                        .recipientName(a.getRecipientName())
-                        .phone(a.getPhone())
-                        .addressLine(a.getAddressLine())
-                        .isDefault(a.getIsDefault())
-                        .build())
+                .map(usersMapper::toUserAddressItemResponse)
                 .toList();
 
         List<Object[]> summaryList = orderRepository.getUserShoppingSummary(userId);

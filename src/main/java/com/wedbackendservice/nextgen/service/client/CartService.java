@@ -159,9 +159,7 @@ public class CartService {
 
         touchCart(cart, now);
 
-        int totalCartItems = cartItemRepository.findByCartId(cart.getCartId()).stream()
-                .mapToInt(CartItem::getQuantity)
-                .sum();
+        int totalCartItems = cartItemRepository.sumQuantityByCartId(cart.getCartId());
 
         return CartItemAddResponse.builder()
                 .cartItemId(savedItem.getCartItemId())
