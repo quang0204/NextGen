@@ -61,6 +61,150 @@ public class ProductsService {
                 .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
     }
 
+    private static String stripAccents(String input) {
+        if (input == null) return "";
+        String normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD);
+        return normalized.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .replace('đ', 'd').replace('Đ', 'D')
+                .toLowerCase().trim();
+    }
+
+    private record SmartSearchIntent(
+            Long detectedCategoryId,
+            BigDecimal detectedMinPrice,
+            BigDecimal detectedMaxPrice,
+            Integer detectedRam,
+            Integer detectedRom,
+            String suggestedSort,
+            List<String> requirementKeywords,
+            List<String> coreTokens
+    ) {}
+
+    private SmartSearchIntent parseSmartSearch(String rawSearch) {
+        if (rawSearch == null || rawSearch.isBlank()) {
+            return new SmartSearchIntent(null, null, null, null, null, null, List.of(), List.of());
+        }
+        String text = rawSearch.toLowerCase().trim();
+        String ascii = stripAccents(text);
+
+        Long catId = null;
+        BigDecimal minP = null;
+        BigDecimal maxP = null;
+        Integer ram = null;
+        Integer rom = null;
+        String sort = null;
+        List<String> reqKeywords = new ArrayList<>();
+
+        // 1. Nhận diện Danh mục
+        if (ascii.contains("dien thoai") || ascii.contains("smartphone") || ascii.matches(".*\\bphone\\b.*")) {
+            catId = 1L;
+            text = text.replaceAll("(?i)(điện thoại di động|điện thoại|dien thoai di dong|dien thoai|smartphone|\\bphone\\b)", " ");
+        } else if (ascii.contains("may tinh bang") || ascii.contains("tablet")) {
+            catId = 2L;
+            text = text.replaceAll("(?i)(máy tính bảng|may tinh bang|tablet)", " ");
+        } else if (ascii.contains("laptop") || ascii.contains("may tinh xach tay") || ascii.contains("macbook")) {
+            catId = 3L;
+            text = text.replaceAll("(?i)(máy tính xách tay|may tinh xach tay|laptop)", " ");
+        } else if (ascii.contains("phu kien") || ascii.contains("tai nghe") || ascii.contains("cu sac") || ascii.contains("pin du phong") || ascii.contains("sac du phong") || ascii.contains("loa ")) {
+            catId = 4L;
+            text = text.replaceAll("(?i)(phụ kiện di động|phụ kiện|phu kien di dong|phu kien)", " ");
+        }
+
+        // 2. Nhận diện Khoảng giá cụ thể (từ X đến Y triệu, dưới X triệu, trên X triệu)
+        String asciiClean = stripAccents(text);
+        java.util.regex.Matcher rangeM = java.util.regex.Pattern
+                .compile("(?:tu\\s*)?(\\d+(?:[.,]\\d+)?)\\s*(?:trieu|tr|cu)?\\s*(?:den|-|toi)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu)")
+                .matcher(asciiClean);
+        if (rangeM.find()) {
+            minP = BigDecimal.valueOf(Double.parseDouble(rangeM.group(1).replace(',', '.')) * 1_000_000);
+            maxP = BigDecimal.valueOf(Double.parseDouble(rangeM.group(2).replace(',', '.')) * 1_000_000);
+            text = text.replaceAll("(?i)(từ|tu)?\\s*\\d+([.,]\\d+)?\\s*(triệu|trieu|tr|củ|cu)?\\s*(đến|den|-|tới|toi)\\s*\\d+([.,]\\d+)?\\s*(triệu|trieu|tr|củ|cu)", " ");
+        } else {
+            java.util.regex.Matcher underM = java.util.regex.Pattern
+                    .compile("(?:duoi|nho hon|<|<=)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu|k|nghin|ngan)")
+                    .matcher(asciiClean);
+            if (underM.find()) {
+                double val = Double.parseDouble(underM.group(1).replace(',', '.'));
+                String unit = underM.group(2);
+                double mult = (unit.startsWith("k") || unit.startsWith("ngh") || unit.startsWith("nga")) ? 1_000 : 1_000_000;
+                maxP = BigDecimal.valueOf(val * mult);
+                text = text.replaceAll("(?i)(dưới|duoi|nhỏ hơn|nho hon|<=|<)\\s*\\d+([.,]\\d+)?\\s*(triệu|trieu|tr|củ|cu|k|nghìn|nghin|ngàn|ngan)", " ");
+            }
+            java.util.regex.Matcher overM = java.util.regex.Pattern
+                    .compile("(?:tren|lon hon|>|>=|tu)\\s*(\\d+(?:[.,]\\d+)?)\\s*(trieu|tr|cu)")
+                    .matcher(asciiClean);
+            if (overM.find()) {
+                double val = Double.parseDouble(overM.group(1).replace(',', '.'));
+                minP = BigDecimal.valueOf(val * 1_000_000);
+                text = text.replaceAll("(?i)(trên|tren|lớn hơn|lon hon|>=|>|từ|tu)\\s*\\d+([.,]\\d+)?\\s*(triệu|trieu|tr|củ|cu)", " ");
+            }
+        }
+
+        // 3. Nhận diện Ý định Giá rẻ / Cao cấp
+        asciiClean = stripAccents(text);
+        if (asciiClean.matches(".*\\b(gia re|re nhat|binh dan|tiet kiem|gia tot|gia thap|sinh vien|re)\\b.*")) {
+            sort = "priceAsc";
+            text = text.replaceAll("(?i)(giá rẻ nhất|giá rẻ|rẻ nhất|bình dân|tiết kiệm|giá tốt|giá thấp|sinh viên|gia re nhat|gia re|re nhat|binh dan|tiet kiem|gia tot|gia thap|sinh vien|\\brẻ\\b|\\bre\\b)", " ");
+        } else if (asciiClean.matches(".*\\b(cao cap|flagship|dat nhat|gia cao|sang trong|hang sang)\\b.*")) {
+            sort = "priceDesc";
+            text = text.replaceAll("(?i)(cao cấp|cao cap|flagship|đắt nhất|dat nhat|giá cao|gia cao|sang trọng|sang trong|hạng sang|hang sang)", " ");
+        }
+
+        // 4. Nhận diện RAM / ROM
+        asciiClean = stripAccents(text);
+        java.util.regex.Matcher ramM = java.util.regex.Pattern.compile("ram\\s*(\\d{1,2})\\s*(?:gb|g)?").matcher(asciiClean);
+        if (ramM.find()) {
+            ram = Integer.parseInt(ramM.group(1));
+            text = text.replaceAll("(?i)ram\\s*\\d{1,2}\\s*(gb|g)?", " ");
+        }
+        java.util.regex.Matcher romM = java.util.regex.Pattern.compile("(?:rom|ssd|bo nho)?\\s*(64|128|256|512|1024)\\s*(?:gb|g)|\\b(1)\\s*tb\\b").matcher(asciiClean);
+        if (romM.find()) {
+            rom = romM.group(1) != null ? Integer.parseInt(romM.group(1)) : 1024;
+            text = text.replaceAll("(?i)(rom|ssd|bộ nhớ|bo nho)?\\s*(64|128|256|512|1024)\\s*(gb|g)|\\b1\\s*tb\\b", " ");
+        }
+
+        // 5. Nhận diện Nhu cầu sử dụng (Gaming, Văn phòng, Đồ họa, Camera, Pin trâu, Chống ồn, Màn gập)
+        asciiClean = stripAccents(text);
+        if (asciiClean.matches(".*\\b(gaming|choi game|chien game|cau hinh manh|game)\\b.*")) {
+            reqKeywords.addAll(List.of("gaming", "rog", "tuf", "legion", "rtx", "120hz", "144hz", "a17 pro", "a18 pro", "snapdragon 8", "m3 pro", "m3 max"));
+            text = text.replaceAll("(?i)(chơi game|choi game|chiến game|chien game|cấu hình mạnh|cau hinh manh|gaming|\\bgame\\b)", " ");
+        }
+        if (asciiClean.matches(".*\\b(van phong|mong nhe|hoc tap)\\b.*")) {
+            reqKeywords.addAll(List.of("văn phòng", "mỏng nhẹ", "air", "macbook", "ipad", "zenbook", "vivobook"));
+            text = text.replaceAll("(?i)(văn phòng|van phong|mỏng nhẹ|mong nhe|học tập|hoc tap)", " ");
+        }
+        if (asciiClean.matches(".*\\b(do hoa|ky thuat|render|thiet ke)\\b.*")) {
+            reqKeywords.addAll(List.of("đồ họa", "pro", "ultra", "m3", "rtx", "xdr", "amoled"));
+            text = text.replaceAll("(?i)(thiết kế đồ họa|đồ họa|do hoa|kỹ thuật|ky thuat|render)", " ");
+        }
+        if (asciiClean.matches(".*\\b(chup anh|camera|nhiep anh|zoom|quay phim)\\b.*")) {
+            reqKeywords.addAll(List.of("camera", "leica", "zoom", "48mp", "50mp", "200mp", "nhiếp ảnh", "ultra", "pro"));
+            text = text.replaceAll("(?i)(chụp ảnh đẹp|chụp ảnh|chup anh dep|chup anh|nhiếp ảnh|nhiep anh|camera đẹp|camera|zoom quang|zoom|quay phim)", " ");
+        }
+        if (asciiClean.matches(".*\\b(pin trau|pin khung|pin lau|sac nhanh)\\b.*")) {
+            reqKeywords.addAll(List.of("5000", "6000", "30 giờ", "sạc nhanh", "gan", "ultra", "pro max"));
+            text = text.replaceAll("(?i)(pin trâu|pin trau|pin khủng|pin khung|pin lâu|pin lau|sạc nhanh|sac nhanh)", " ");
+        }
+        if (asciiClean.matches(".*\\b(man hinh gap|gap)\\b.*")) {
+            reqKeywords.addAll(List.of("fold", "flip", "gập"));
+            text = text.replaceAll("(?i)(màn hình gập|man hinh gap|điện thoại gập|dien thoai gap|\\bgập\\b|\\bgap\\b)", " ");
+        }
+        if (asciiClean.matches(".*\\b(chong on|anc)\\b.*")) {
+            reqKeywords.addAll(List.of("chống ồn", "anc", "xm5", "airpods pro"));
+            text = text.replaceAll("(?i)(chống ồn chủ động|chống ồn|chong on|anc)", " ");
+        }
+        text = text.replaceAll("(?i)(giảm giá|giam gia|khuyến mãi|khuyen mai|flash sale|\\bsale\\b|trả góp 0%|trả góp|tra gop|chính hãng|chinh hang|mới nhất|moi nhat|tốt nhất|tot nhat|đẹp|dep)", " ");
+
+        // 6. Tách từ khóa gốc còn lại (bỏ stop-words tiếng Việt)
+        Set<String> stopWords = Set.of("cua", "cho", "loai", "dong", "may", "can", "mua", "tim", "co", "voi", "va", "hoac", "nhung", "cac", "chiec", "con");
+        List<String> tokens = Arrays.stream(text.trim().split("\\s+"))
+                .map(String::trim)
+                .filter(t -> t.length() >= 2 && !stopWords.contains(stripAccents(t)))
+                .toList();
+
+        return new SmartSearchIntent(catId, minP, maxP, ram, rom, sort, reqKeywords, tokens);
+    }
+
     // =========================================================================
     // 4.1 GET /api/v1/products - Danh sách sản phẩm cho khách hàng
     // =========================================================================
@@ -72,43 +216,122 @@ public class ProductsService {
         int pageNumber = Math.max(1, page);
         int pageSize = Math.min(50, Math.max(1, limit));
 
+        SmartSearchIntent parsed = parseSmartSearch(search);
+        Long effectiveCategoryId = categoryId != null ? categoryId : parsed.detectedCategoryId();
+        BigDecimal effectiveMinPrice = minPrice != null ? minPrice : parsed.detectedMinPrice();
+        BigDecimal effectiveMaxPrice = maxPrice != null ? maxPrice : parsed.detectedMaxPrice();
+        Integer effectiveRam = ram != null ? ram : parsed.detectedRam();
+        Integer effectiveRom = rom != null ? rom : parsed.detectedRom();
+        String effectiveSortBy = ((sortBy == null || "newest".equalsIgnoreCase(sortBy)) && parsed.suggestedSort() != null)
+                ? parsed.suggestedSort()
+                : sortBy;
+
         Specification<Product> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("status"), "ACTIVE"));
 
-            if (search != null && !search.isBlank()) {
-                predicates.add(cb.like(cb.lower(root.get("productName")), "%" + search.trim().toLowerCase() + "%"));
-            }
+            var categoryJoin = root.join("category", jakarta.persistence.criteria.JoinType.LEFT);
+            var parentCategoryJoin = categoryJoin.join("parent", jakarta.persistence.criteria.JoinType.LEFT);
+            var brandJoin = root.join("brand", jakarta.persistence.criteria.JoinType.LEFT);
+
             if (brandId != null) {
-                predicates.add(cb.equal(root.get("brand").get("brandId"), brandId));
+                predicates.add(cb.equal(brandJoin.get("brandId"), brandId));
             }
-            if (categoryId != null) {
-                var categoryJoin = root.join("category", jakarta.persistence.criteria.JoinType.LEFT);
-                var parentCategoryJoin = categoryJoin.join("parent", jakarta.persistence.criteria.JoinType.LEFT);
+            if (effectiveCategoryId != null) {
                 predicates.add(cb.or(
-                        cb.equal(categoryJoin.get("categoryId"), categoryId),
-                        cb.equal(parentCategoryJoin.get("categoryId"), categoryId)
+                        cb.equal(categoryJoin.get("categoryId"), effectiveCategoryId),
+                        cb.equal(parentCategoryJoin.get("categoryId"), effectiveCategoryId)
                 ));
             }
 
-            if (minPrice != null || maxPrice != null || ram != null || rom != null) {
+            // Nhu cầu sử dụng (Gaming, Văn phòng, Đồ họa, Camera, Pin...)
+            if (!parsed.requirementKeywords().isEmpty()) {
+                List<Predicate> reqOrPredicates = new ArrayList<>();
+                for (String kw : parsed.requirementKeywords()) {
+                    String pattern = "%" + kw.toLowerCase() + "%";
+                    reqOrPredicates.add(cb.like(cb.lower(root.get("productName")), pattern));
+                    reqOrPredicates.add(cb.like(cb.lower(cb.coalesce(root.get("description"), "")), pattern));
+                    reqOrPredicates.add(cb.like(cb.lower(cb.coalesce(categoryJoin.get("categoryName"), "")), pattern));
+
+                    Subquery<Long> specSub = query.subquery(Long.class);
+                    var specRoot = specSub.from(ProductSpec.class);
+                    specSub.select(specRoot.get("product").get("productId"))
+                            .where(
+                                    cb.equal(specRoot.get("product").get("productId"), root.get("productId")),
+                                    cb.or(
+                                            cb.like(cb.lower(cb.coalesce(specRoot.get("specName"), "")), pattern),
+                                            cb.like(cb.lower(cb.coalesce(specRoot.get("specValue"), "")), pattern)
+                                    )
+                            );
+                    reqOrPredicates.add(cb.exists(specSub));
+                }
+                predicates.add(cb.or(reqOrPredicates.toArray(new Predicate[0])));
+            }
+
+            // Tìm theo các từ khóa gốc còn lại (Tên SP, Slug, Mô tả, Hãng, Danh mục, SKU, Specs)
+            if (!parsed.coreTokens().isEmpty()) {
+                for (String token : parsed.coreTokens()) {
+                    String pattern = "%" + token.toLowerCase() + "%";
+                    String asciiPattern = "%" + stripAccents(token) + "%";
+
+                    Subquery<Long> varSub = query.subquery(Long.class);
+                    var varRoot = varSub.from(ProductVariant.class);
+                    varSub.select(varRoot.get("product").get("productId"))
+                            .where(
+                                    cb.equal(varRoot.get("product").get("productId"), root.get("productId")),
+                                    cb.or(
+                                            cb.like(cb.lower(cb.coalesce(varRoot.get("sku"), "")), pattern),
+                                            cb.like(cb.lower(cb.coalesce(varRoot.get("color"), "")), pattern),
+                                            cb.like(cb.lower(cb.coalesce(varRoot.get("variantName"), "")), pattern),
+                                            cb.like(cb.lower(cb.coalesce(varRoot.get("connectionType"), "")), pattern)
+                                    )
+                            );
+
+                    Subquery<Long> specSub = query.subquery(Long.class);
+                    var specRoot = specSub.from(ProductSpec.class);
+                    specSub.select(specRoot.get("product").get("productId"))
+                            .where(
+                                    cb.equal(specRoot.get("product").get("productId"), root.get("productId")),
+                                    cb.or(
+                                            cb.like(cb.lower(cb.coalesce(specRoot.get("specName"), "")), pattern),
+                                            cb.like(cb.lower(cb.coalesce(specRoot.get("specValue"), "")), pattern)
+                                    )
+                            );
+
+                    predicates.add(cb.or(
+                            cb.like(cb.lower(root.get("productName")), pattern),
+                            cb.like(cb.lower(cb.coalesce(root.get("slug"), "")), asciiPattern),
+                            cb.like(cb.lower(cb.coalesce(root.get("description"), "")), pattern),
+                            cb.like(cb.lower(cb.coalesce(brandJoin.get("brandName"), "")), pattern),
+                            cb.like(cb.lower(cb.coalesce(brandJoin.get("slug"), "")), asciiPattern),
+                            cb.like(cb.lower(cb.coalesce(categoryJoin.get("categoryName"), "")), pattern),
+                            cb.like(cb.lower(cb.coalesce(categoryJoin.get("slug"), "")), asciiPattern),
+                            cb.like(cb.lower(cb.coalesce(parentCategoryJoin.get("categoryName"), "")), pattern),
+                            cb.like(cb.lower(cb.coalesce(parentCategoryJoin.get("slug"), "")), asciiPattern),
+                            cb.exists(varSub),
+                            cb.exists(specSub)
+                    ));
+                }
+            }
+
+            if (effectiveMinPrice != null || effectiveMaxPrice != null || effectiveRam != null || effectiveRom != null) {
                 Subquery<Long> subquery = query.subquery(Long.class);
                 var variantRoot = subquery.from(ProductVariant.class);
                 List<Predicate> variantPredicates = new ArrayList<>();
                 variantPredicates.add(cb.equal(variantRoot.get("product").get("productId"), root.get("productId")));
                 variantPredicates.add(cb.equal(variantRoot.get("status"), "ACTIVE"));
 
-                if (minPrice != null) {
-                    variantPredicates.add(cb.greaterThanOrEqualTo(variantRoot.get("price"), minPrice));
+                if (effectiveMinPrice != null) {
+                    variantPredicates.add(cb.greaterThanOrEqualTo(variantRoot.get("price"), effectiveMinPrice));
                 }
-                if (maxPrice != null) {
-                    variantPredicates.add(cb.lessThanOrEqualTo(variantRoot.get("price"), maxPrice));
+                if (effectiveMaxPrice != null) {
+                    variantPredicates.add(cb.lessThanOrEqualTo(variantRoot.get("price"), effectiveMaxPrice));
                 }
-                if (ram != null) {
-                    variantPredicates.add(cb.equal(variantRoot.get("ramGb"), ram));
+                if (effectiveRam != null) {
+                    variantPredicates.add(cb.equal(variantRoot.get("ramGb"), effectiveRam));
                 }
-                if (rom != null) {
-                    variantPredicates.add(cb.equal(variantRoot.get("romGb"), rom));
+                if (effectiveRom != null) {
+                    variantPredicates.add(cb.equal(variantRoot.get("romGb"), effectiveRom));
                 }
 
                 subquery.select(variantRoot.get("product").get("productId"))
@@ -120,11 +343,11 @@ public class ProductsService {
         };
 
         Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        if ("priceAsc".equalsIgnoreCase(sortBy)) {
+        if ("priceAsc".equalsIgnoreCase(effectiveSortBy) || "price_asc".equalsIgnoreCase(effectiveSortBy)) {
             sort = Sort.by(Sort.Direction.ASC, "basePrice");
-        } else if ("priceDesc".equalsIgnoreCase(sortBy)) {
+        } else if ("priceDesc".equalsIgnoreCase(effectiveSortBy) || "price_desc".equalsIgnoreCase(effectiveSortBy)) {
             sort = Sort.by(Sort.Direction.DESC, "basePrice");
-        } else if ("newest".equalsIgnoreCase(sortBy)) {
+        } else if ("newest".equalsIgnoreCase(effectiveSortBy)) {
             sort = Sort.by(Sort.Direction.DESC, "createdAt");
         }
 

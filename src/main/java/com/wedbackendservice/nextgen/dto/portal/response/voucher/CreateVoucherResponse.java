@@ -16,8 +16,12 @@ public class CreateVoucherResponse {
     String code;
     String discountType;
     BigDecimal discountValue;
+    BigDecimal maxDiscount;
+    BigDecimal minOrderValue;
     Integer usageLimit;
     Integer usedCount;
+    String startAt;
+    String expiredAt;
     Boolean isActive;
     String createdAt;
 }

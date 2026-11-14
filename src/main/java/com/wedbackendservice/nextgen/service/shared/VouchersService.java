@@ -30,6 +30,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -47,17 +48,37 @@ public class VouchersService {
     private final AuditLogRepository auditLogRepository;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
 
-    private LocalDateTime parseIsoDateTime(String text, String fieldName) {
+    private String normalizeDiscountType(String rawType) {
+        if (!StringUtils.hasText(rawType)) {
+            return "FIXED";
+        }
+        String upper = rawType.trim().toUpperCase();
+        if ("PERCENT".equals(upper) || "PERCENTAGE".equals(upper)) {
+            return "PERCENT";
+        }
+        if ("FIXED".equals(upper) || "FIXED_AMOUNT".equals(upper) || "AMOUNT".equals(upper)) {
+            return "FIXED";
+        }
+        return upper;
+    }
+
+    private LocalDateTime parseIsoDateTime(String text, String fieldName, boolean isEndOfDay) {
         if (!StringUtils.hasText(text)) {
             return null;
         }
+        String trimmed = text.trim();
         try {
-            return LocalDateTime.ofInstant(Instant.parse(text.trim()), ZoneId.systemDefault());
-        } catch (DateTimeParseException ex) {
+            return LocalDateTime.ofInstant(Instant.parse(trimmed), ZoneId.systemDefault());
+        } catch (DateTimeParseException ex1) {
             try {
-                return LocalDateTime.parse(text.trim(), DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.INVALID_REQUEST, "Định dạng thời gian " + fieldName + " không hợp lệ (chuẩn ISO-8601)!");
+                return LocalDateTime.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (DateTimeParseException ex2) {
+                try {
+                    LocalDate date = LocalDate.parse(trimmed, DateTimeFormatter.ISO_LOCAL_DATE);
+                    return isEndOfDay ? date.atTime(23, 59, 59) : date.atStartOfDay();
+                } catch (Exception e) {
+                    throw new AppException(ErrorCode.INVALID_REQUEST, "Định dạng thời gian " + fieldName + " không hợp lệ (chuẩn ISO-8601)!");
+                }
             }
         }
     }
@@ -84,13 +105,14 @@ public class VouchersService {
             result.add(ValidVoucherResponse.builder()
                     .voucherId(v.getVoucherId())
                     .code(v.getCode())
-                    .discountType(v.getDiscountType() != null ? v.getDiscountType().toUpperCase() : "FIXED")
+                    .discountType(normalizeDiscountType(v.getDiscountType()))
                     .discountValue(v.getDiscountValue())
                     .maxDiscount(v.getMaxDiscount())
                     .minOrderValue(v.getMinOrderValue())
                     .usageLimit(v.getUsageLimit())
                     .usedCount(used)
                     .remainingCount(remaining)
+                    .startAt(DateTimeUtil.formatIsoInstant(v.getStartDate()))
                     .expiredAt(DateTimeUtil.formatIsoInstant(v.getEndDate()))
                     .build());
         }
@@ -134,7 +156,7 @@ public class VouchersService {
         }
 
         BigDecimal discountAmount = BigDecimal.ZERO;
-        String type = voucher.getDiscountType() != null ? voucher.getDiscountType().trim().toUpperCase() : "FIXED";
+        String type = normalizeDiscountType(voucher.getDiscountType());
 
         if ("PERCENT".equals(type)) {
             BigDecimal percent = voucher.getDiscountValue() != null ? voucher.getDiscountValue() : BigDecimal.ZERO;
@@ -142,6 +164,7 @@ public class VouchersService {
             if (voucher.getMaxDiscount() != null && voucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
                 discountAmount = discountAmount.min(voucher.getMaxDiscount());
             }
+            discountAmount = discountAmount.min(subtotal);
         } else {
             // FIXED
             BigDecimal fixedVal = voucher.getDiscountValue() != null ? voucher.getDiscountValue() : BigDecimal.ZERO;
@@ -202,7 +225,7 @@ public class VouchersService {
         List<AdminVoucherItemResponse> items = pageResult.getContent().stream().map(v -> AdminVoucherItemResponse.builder()
                 .voucherId(v.getVoucherId())
                 .code(v.getCode())
-                .discountType(v.getDiscountType() != null ? v.getDiscountType().toUpperCase() : "FIXED")
+                .discountType(normalizeDiscountType(v.getDiscountType()))
                 .discountValue(v.getDiscountValue())
                 .maxDiscount(v.getMaxDiscount())
                 .minOrderValue(v.getMinOrderValue())
@@ -236,16 +259,23 @@ public class VouchersService {
                     String.format("Mã voucher '%s' đã tồn tại trên hệ thống!", code));
         }
 
-        LocalDateTime startAt = parseIsoDateTime(request.getStartAt(), "startAt");
-        LocalDateTime expiredAt = parseIsoDateTime(request.getExpiredAt(), "expiredAt");
+        LocalDateTime startAt = parseIsoDateTime(request.getStartAt(), "startAt", false);
+        if (startAt == null) {
+            startAt = LocalDateTime.now();
+        }
+        LocalDateTime expiredAt = parseIsoDateTime(request.getExpiredAt(), "expiredAt", true);
 
-        if (startAt != null && expiredAt != null && !startAt.isBefore(expiredAt)) {
+        if (expiredAt != null && !startAt.isBefore(expiredAt)) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Thời gian bắt đầu (startAt) phải trước thời gian hết hạn (expiredAt)!");
         }
 
-        String type = request.getDiscountType().trim().toUpperCase();
+        String type = normalizeDiscountType(request.getDiscountType());
         if (!"FIXED".equals(type) && !"PERCENT".equals(type)) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Loại giảm giá không hợp lệ (chỉ chấp nhận FIXED hoặc PERCENT)!");
+        }
+
+        if ("PERCENT".equals(type) && (request.getDiscountValue().compareTo(BigDecimal.ZERO) <= 0 || request.getDiscountValue().compareTo(BigDecimal.valueOf(100)) > 0)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Mức giảm theo phần trăm (PERCENT) phải nằm trong khoảng từ 1% đến 100%!");
         }
 
         Voucher voucher = Voucher.builder()
@@ -253,7 +283,7 @@ public class VouchersService {
                 .voucherName("Voucher " + code)
                 .discountType(type)
                 .discountValue(request.getDiscountValue())
-                .maxDiscountAmount(request.getMaxDiscount())
+                .maxDiscountAmount("PERCENT".equals(type) ? request.getMaxDiscount() : null)
                 .minOrderValue(request.getMinOrderValue())
                 .usageLimit(request.getUsageLimit())
                 .usedCount(0)
@@ -273,8 +303,12 @@ public class VouchersService {
                 .code(savedVoucher.getCode())
                 .discountType(savedVoucher.getDiscountType())
                 .discountValue(savedVoucher.getDiscountValue())
+                .maxDiscount(savedVoucher.getMaxDiscount())
+                .minOrderValue(savedVoucher.getMinOrderValue())
                 .usageLimit(savedVoucher.getUsageLimit())
                 .usedCount(savedVoucher.getUsedCount())
+                .startAt(DateTimeUtil.formatIsoInstant(savedVoucher.getStartDate()))
+                .expiredAt(DateTimeUtil.formatIsoInstant(savedVoucher.getEndDate()))
                 .isActive(savedVoucher.getIsActive())
                 .createdAt(DateTimeUtil.formatIsoInstant(savedVoucher.getCreatedAt() != null ? savedVoucher.getCreatedAt() : LocalDateTime.now()))
                 .build();

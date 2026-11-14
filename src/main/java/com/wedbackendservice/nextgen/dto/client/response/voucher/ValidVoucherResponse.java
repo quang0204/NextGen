@@ -21,5 +21,6 @@ public class ValidVoucherResponse {
     Integer usageLimit;
     Integer usedCount;
     Integer remainingCount;
+    String startAt;
     String expiredAt;
 }
