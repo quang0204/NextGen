@@ -26,10 +26,6 @@ public class CategoryRequest {
 
     String slug;
     String description;
-    String iconUrl;
-
-    @JsonAlias({"iconUploadId", "imageUploadId", "logoUploadId", "uploadId"})
-    String iconUploadId;
 
     List<VariantSchemaField> variantSchema;
 

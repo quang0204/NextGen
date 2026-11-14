@@ -151,19 +151,11 @@ public class CategoriesAndBrandsService {
 
         Boolean isVisible = request.getIsVisible() != null ? request.getIsVisible() : true;
 
-        String iconUrl = request.getIconUrl();
-        if (request.getIconUploadId() != null && !request.getIconUploadId().isBlank()) {
-            iconUrl = storageFileService.reserveInputCategoryIcon(request.getIconUploadId(), null);
-        } else if (iconUrl != null) {
-            iconUrl = storageFileService.toCanonicalCategoryUrl(iconUrl);
-        }
-
         Category category = Category.builder()
                 .categoryName(categoryName)
                 .parent(parent)
                 .slug(slug)
                 .description(request.getDescription())
-                .iconUrl(iconUrl)
                 .variantSchema(request.getVariantSchema())
                 .isActive(isVisible)
                 .build();
@@ -225,16 +217,6 @@ public class CategoriesAndBrandsService {
 
         if (categoryRepository.existsBySlugIgnoreCaseAndCategoryIdNot(slug, id)) {
             throw new AppException(ErrorCode.CATEGORY_SLUG_ALREADY_EXISTS);
-        }
-
-        if (request.getIconUploadId() != null && !request.getIconUploadId().isBlank()) {
-            String canonicalIconUrl = storageFileService.reserveInputCategoryIcon(request.getIconUploadId(), category.getIconUrl());
-            if (canonicalIconUrl != null) {
-                category.setIconUrl(canonicalIconUrl);
-            }
-        } else if (request.getIconUrl() != null) {
-            String canonicalIconUrl = storageFileService.toCanonicalCategoryUrl(request.getIconUrl());
-            category.setIconUrl(canonicalIconUrl);
         }
 
         category.setParent(parent);
@@ -305,39 +287,14 @@ public class CategoriesAndBrandsService {
                     "Hệ thống chặn hoàn toàn: Không thể xóa danh mục \"" + category.getCategoryName() + "\" vì đang có " + childProductsCount + " sản phẩm liên kết! Vui lòng chuyển sản phẩm sang danh mục khác trước khi xóa.");
         }
 
-        String oldIconUrl = category.getIconUrl();
         categoryRepository.delete(category);
-        storageFileService.deleteCategoryIconObjectAfterCommit(oldIconUrl);
 
         auditLogRepository.log(operator, "DELETE_CATEGORY", "Category", id, category.getCategoryName(), null);
     }
 
-    /**
-     * API Xóa riêng Icon danh mục (STAFF / ADMIN)
-     */
-    @Transactional
-    public void deleteCategoryIcon(Long id) {
-        User operator = securityHelper.authenticateStaffOrAdmin();
-
-        Category category = categoryRepository.findById(id)
-                .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
-
-        String oldIconUrl = category.getIconUrl();
-        category.setIconUrl(null);
-        category.setUpdatedAt(LocalDateTime.now());
-        categoryRepository.save(category);
-
-        storageFileService.deleteCategoryIconObjectAfterCommit(oldIconUrl);
-        auditLogRepository.log(operator, "DELETE_CATEGORY_ICON", "Category", id, oldIconUrl, null);
-    }
-
     private CategoryResponse toCategoryResponse(Category cat) {
         if (cat == null) return null;
-        CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
-        if (resp != null) {
-            resp.setIconUrl(storageFileService.resolveCategoryAccessUrl(cat.getIconUrl()));
-        }
-        return resp;
+        return categoryMapper.tocategoryResponse(cat);
     }
 
     // =========================================================================

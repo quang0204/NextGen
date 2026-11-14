@@ -25,7 +25,6 @@ public class CategoryResponse {
 
     String slug;
     String description;
-    String iconUrl;
 
     @JsonProperty("isVisible")
     Boolean isVisible;

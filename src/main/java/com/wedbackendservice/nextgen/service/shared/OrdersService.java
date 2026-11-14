@@ -210,13 +210,14 @@ public class OrdersService {
                                 CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()), appliedVoucher.getCode()));
             }
 
-            String discType = appliedVoucher.getDiscountType() != null ? appliedVoucher.getDiscountType().toUpperCase() : "FIXED";
-            if ("PERCENT".equals(discType)) {
+            String discType = appliedVoucher.getDiscountType() != null ? appliedVoucher.getDiscountType().trim().toUpperCase() : "FIXED";
+            if ("PERCENT".equals(discType) || "PERCENTAGE".equals(discType)) {
                 BigDecimal pct = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
                 voucherDiscount = subtotal.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
                 if (appliedVoucher.getMaxDiscount() != null && appliedVoucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
                     voucherDiscount = voucherDiscount.min(appliedVoucher.getMaxDiscount());
                 }
+                voucherDiscount = voucherDiscount.min(subtotal);
             } else {
                 BigDecimal fixedVal = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
                 voucherDiscount = fixedVal.min(subtotal);
