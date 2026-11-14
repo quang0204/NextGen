@@ -14,7 +14,10 @@ import com.wedbackendservice.nextgen.security.SecurityHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.wedbackendservice.nextgen.mapper.ShipmentMapper;
+import org.mapstruct.factory.Mappers;
 import org.mockito.InjectMocks;
+import org.mockito.Spy;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -59,6 +62,9 @@ class ShipmentsServiceTest {
 
     @Mock
     private NotificationRepository notificationRepository;
+
+    @Spy
+    private ShipmentMapper shipmentMapper = Mappers.getMapper(ShipmentMapper.class);
 
     @InjectMocks
     private ShipmentsService shipmentsService;

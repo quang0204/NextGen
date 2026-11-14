@@ -7,8 +7,11 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -20,7 +23,8 @@ public interface InventoryTransactionRepository extends JpaRepository<InventoryT
 
     Page<InventoryTransaction> findByVariant_VariantIdOrderByTxnIdDesc(Long variantId, Pageable pageable);
 
-    boolean existsByVariant_VariantId(Long variantId);
+    @Query("SELECT DISTINCT t.variant.variantId FROM InventoryTransaction t WHERE t.variant.variantId IN :variantIds")
+    List<Long> findVariantIdsHavingTransactions(@Param("variantIds") Collection<Long> variantIds);
 
     @Override
     @EntityGraph(attributePaths = {"variant", "variant.product", "performedBy", "order"})

@@ -9,6 +9,7 @@ import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.ShipmentMapper;
 import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import com.wedbackendservice.nextgen.util.PaginationUtil;
@@ -40,6 +41,7 @@ public class ShipmentsService {
     private final InventoryRepository inventoryRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final NotificationRepository notificationRepository;
+    private final ShipmentMapper shipmentMapper;
 
     /**
      * API 9.1: Khách hàng tra cứu hành trình vận chuyển (Public)
@@ -153,7 +155,8 @@ public class ShipmentsService {
             }
         }
 
-        return PageResponse.from(shipmentPage, s -> mapToAdminShipmentItem(s, paymentMethodMap));
+        return PageResponse.from(shipmentPage, s -> shipmentMapper.toAdminShipmentItem(s,
+                s.getOrder() != null ? paymentMethodMap.getOrDefault(s.getOrder().getOrderId(), "COD") : "COD"));
     }
 
     /**
@@ -366,35 +369,6 @@ public class ShipmentsService {
     // =========================================================================
     // PRIVATE HELPERS
     // =========================================================================
-
-    private AdminShipmentItemResponse mapToAdminShipmentItem(Shipment shipment, Map<Long, String> paymentMethodMap) {
-        Order order = shipment.getOrder();
-        String paymentMethod = "COD";
-        if (order != null && paymentMethodMap != null) {
-            paymentMethod = paymentMethodMap.getOrDefault(order.getOrderId(), "COD");
-        }
-
-        String updatedByName = shipment.getUpdatedBy() != null
-                ? shipment.getUpdatedBy().getFullName() + " (" + shipment.getUpdatedBy().getRole() + ")"
-                : null;
-
-        return AdminShipmentItemResponse.builder()
-                .shipmentId(shipment.getShipmentId())
-                .orderId(order != null ? order.getOrderId() : null)
-                .orderCode(order != null ? order.getOrderCode() : null)
-                .carrier(shipment.getCarrierName())
-                .trackingCode(shipment.getTrackingNumber())
-                .status(shipment.getShippingStatus())
-                .failReason(shipment.getFailReason())
-                .recipientName(order != null ? order.getRecipientName() : null)
-                .recipientPhone(order != null ? order.getRecipientPhone() : null)
-                .shippingAddress(order != null ? order.getShippingAddress() : null)
-                .orderTotalAmount(order != null ? order.getFinalAmount() : null)
-                .paymentMethod(paymentMethod)
-                .updatedBy(updatedByName)
-                .updatedAt(shipment.getUpdatedAt())
-                .build();
-    }
 
     private List<ShipmentTimelineItem> buildTimeline(Shipment shipment, Order order) {
         List<ShipmentTimelineItem> list = new ArrayList<>();

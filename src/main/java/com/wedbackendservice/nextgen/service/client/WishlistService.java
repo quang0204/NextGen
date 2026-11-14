@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.entity.Wishlist;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.WishlistMapper;
 import com.wedbackendservice.nextgen.repository.ProductImageRepository;
 import com.wedbackendservice.nextgen.repository.ProductRepository;
 import com.wedbackendservice.nextgen.repository.ProductSpecRepository;
@@ -42,6 +43,7 @@ public class WishlistService {
     private final ProductSpecRepository productSpecRepository;
     private final ProductVariantRepository productVariantRepository;
     private final SecurityHelper securityHelper;
+    private final WishlistMapper wishlistMapper;
 
     /**
      * API 13.1: danh sách sản phẩm yêu thích.
@@ -83,7 +85,13 @@ public class WishlistService {
                         .collect(Collectors.groupingBy(v -> v.getProduct().getProductId()));
 
         return WishlistListResponse.builder()
-                .items(wishlists.stream().map(w -> toResponse(w, imagesByProduct, specsByProduct, variantsByProduct)).toList())
+                .items(wishlists.stream().map(w -> {
+                    Long pid = w.getProduct() != null ? w.getProduct().getProductId() : null;
+                    return wishlistMapper.toResponse(w,
+                            pid != null ? imagesByProduct.getOrDefault(pid, List.of()) : List.of(),
+                            pid != null ? specsByProduct.getOrDefault(pid, List.of()) : List.of(),
+                            pid != null ? variantsByProduct.getOrDefault(pid, List.of()) : List.of());
+                }).toList())
                 .total(result.getTotalElements())
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
@@ -118,45 +126,5 @@ public class WishlistService {
                             .message("Đã thêm sản phẩm vào danh sách yêu thích.")
                             .build();
                 });
-    }
-
-    private WishlistProductResponse toResponse(
-            Wishlist wishlist,
-            Map<Long, List<String>> imagesByProduct,
-            Map<Long, List<String>> specsByProduct,
-            Map<Long, List<ProductVariant>> variantsByProduct) {
-        Product product = wishlist.getProduct();
-        if (product == null) {
-            return WishlistProductResponse.builder()
-                    .wishlistId(wishlist.getWishlistId())
-                    .addedAt(wishlist.getCreatedAt())
-                    .build();
-        }
-
-        Long productId = product.getProductId();
-        List<String> images = imagesByProduct.getOrDefault(productId, List.of());
-        List<String> specs = specsByProduct.getOrDefault(productId, List.of());
-        List<ProductVariant> variants = variantsByProduct.getOrDefault(productId, List.of());
-
-        BigDecimal priceFrom = variants.stream()
-                .map(ProductVariant::getPrice)
-                .filter(Objects::nonNull)
-                .min(BigDecimal::compareTo)
-                .orElse(product.getBasePrice());
-
-        return WishlistProductResponse.builder()
-                .wishlistId(wishlist.getWishlistId())
-                .productId(product.getProductId())
-                .productName(product.getProductName())
-                .slug(product.getSlug())
-                .thumbnailUrl(product.getThumbnailUrl())
-                .basePrice(product.getBasePrice())
-                .priceFrom(priceFrom)
-                .status(product.getStatus())
-                .images(images)
-                .specs(specs)
-                .variantCount(variants.size())
-                .addedAt(wishlist.getCreatedAt())
-                .build();
     }
 }

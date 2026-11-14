@@ -23,5 +23,7 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
            "GROUP BY oi.variant.product.productId")
     List<Object[]> countSoldByProductIds(@Param("productIds") Collection<Long> productIds);
 
-    boolean existsByVariant_VariantId(Long variantId);
+
+    @Query("SELECT DISTINCT oi.variant.variantId FROM OrderItem oi WHERE oi.variant.variantId IN :variantIds")
+    List<Long> findVariantIdsHavingItems(@Param("variantIds") Collection<Long> variantIds);
 }

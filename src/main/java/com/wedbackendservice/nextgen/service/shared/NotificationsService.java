@@ -8,6 +8,7 @@ import com.wedbackendservice.nextgen.entity.Notification;
 import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.NotificationMapper;
 import com.wedbackendservice.nextgen.repository.NotificationRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class NotificationsService {
 
     private final NotificationRepository notificationRepository;
     private final SecurityHelper securityHelper;
+    private final NotificationMapper notificationMapper;
 
     /**
      * API 13.3: danh sách thông báo của tôi.
@@ -41,7 +43,7 @@ public class NotificationsService {
         long unread = notificationRepository.countByUser_UserIdAndIsReadFalse(user.getUserId());
 
         return NotificationListResponse.builder()
-                .items(result.getContent().stream().map(this::toResponse).toList())
+                .items(result.getContent().stream().map(notificationMapper::toResponse).toList())
                 .unreadCount(unread)
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
@@ -95,16 +97,5 @@ public class NotificationsService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
         return notification;
-    }
-
-    private NotificationResponse toResponse(Notification notification) {
-        return NotificationResponse.builder()
-                .notificationId(notification.getNotificationId())
-                .orderId(notification.getOrder() != null ? notification.getOrder().getOrderId() : null)
-                .title(notification.getTitle())
-                .content(notification.getContent())
-                .isRead(notification.getIsRead())
-                .createdAt(notification.getCreatedAt())
-                .build();
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,4 +25,8 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     @Modifying
     @Query("DELETE FROM CartItem ci WHERE ci.cart.cartId = :cartId")
     void deleteAllByCartId(@Param("cartId") Long cartId);
+
+    @Modifying
+    @Query("DELETE FROM CartItem ci WHERE ci.cart.cartId = :cartId AND ci.variant.variantId IN :variantIds")
+    void deleteByCartIdAndVariantIdIn(@Param("cartId") Long cartId, @Param("variantIds") Collection<Long> variantIds);
 }

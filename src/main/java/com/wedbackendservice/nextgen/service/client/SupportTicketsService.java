@@ -10,6 +10,7 @@ import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.enums.TicketStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.SupportTicketMapper;
 import com.wedbackendservice.nextgen.repository.SupportTicketRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Join;
@@ -41,6 +42,7 @@ public class SupportTicketsService {
 
     private final SupportTicketRepository supportTicketRepository;
     private final SecurityHelper securityHelper;
+    private final SupportTicketMapper supportTicketMapper;
 
     /**
      * API 12.4: gửi phiếu hỗ trợ.
@@ -56,7 +58,7 @@ public class SupportTicketsService {
                 .priority(normalizePriority(request.getPriority()))
                 .status(TicketStatus.OPEN.name())
                 .build();
-        return toResponse(supportTicketRepository.save(ticket));
+        return supportTicketMapper.toResponse(supportTicketRepository.save(ticket));
     }
 
     /**
@@ -72,7 +74,7 @@ public class SupportTicketsService {
         } else {
             tickets = supportTicketRepository.findByUserOrderByCreatedAtDesc(currentUser);
         }
-        return tickets.stream().map(this::toResponse).toList();
+        return tickets.stream().map(supportTicketMapper::toResponse).toList();
     }
 
     /**
@@ -101,7 +103,7 @@ public class SupportTicketsService {
         }
 
         return AdminSupportTicketListResponse.builder()
-                .items(result.getContent().stream().map(this::toResponse).toList())
+                .items(result.getContent().stream().map(supportTicketMapper::toResponse).toList())
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .statusCounts(statusCounts)
                 .build();
@@ -127,7 +129,7 @@ public class SupportTicketsService {
             ticket.setResolutionNote(request.getResolutionNote().trim());
         }
         log.info("Staff {} updated ticket {}", staff.getUserId(), ticketId);
-        return toResponse(supportTicketRepository.save(ticket));
+        return supportTicketMapper.toResponse(supportTicketRepository.save(ticket));
     }
 
     private Specification<SupportTicket> buildSpecification(String status, String priority, String search) {
@@ -181,27 +183,5 @@ public class SupportTicketsService {
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     "Mức ưu tiên không hợp lệ (LOW | MEDIUM | HIGH | URGENT).");
         }
-    }
-
-    private SupportTicketResponse toResponse(SupportTicket ticket) {
-        User customer = ticket.getUser();
-        User handledBy = ticket.getHandledBy();
-        return SupportTicketResponse.builder()
-                .ticketId(ticket.getTicketId())
-                .userId(customer != null ? customer.getUserId() : null)
-                .customerName(customer != null ? customer.getFullName() : null)
-                .customerEmail(customer != null ? customer.getEmail() : null)
-                .customerPhone(customer != null ? customer.getPhone() : null)
-                .subject(ticket.getSubject())
-                .description(ticket.getDescription())
-                .priority(ticket.getPriority())
-                .status(ticket.getStatus())
-                .handledById(handledBy != null ? handledBy.getUserId() : null)
-                .handledByName(handledBy != null ? handledBy.getFullName() : null)
-                .resolutionNote(ticket.getResolutionNote())
-                .resolvedAt(ticket.getResolvedAt())
-                .createdAt(ticket.getCreatedAt())
-                .updatedAt(ticket.getUpdatedAt())
-                .build();
     }
 }

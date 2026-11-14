@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.AdminPaymentMapper;
 import com.wedbackendservice.nextgen.repository.PaymentRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Join;
@@ -42,6 +43,7 @@ public class AdminPaymentsService {
 
     private final PaymentRepository paymentRepository;
     private final SecurityHelper securityHelper;
+    private final AdminPaymentMapper adminPaymentMapper;
 
     /**
      * API 10.3: sổ cái thu chi và đối soát thanh toán.
@@ -59,7 +61,7 @@ public class AdminPaymentsService {
                 buildSpecification(status, method, search, fromDate, toDate), pageable);
 
         return AdminPaymentListResponse.builder()
-                .items(result.getContent().stream().map(this::toItem).toList())
+                .items(result.getContent().stream().map(adminPaymentMapper::toItem).toList())
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
@@ -150,24 +152,6 @@ public class AdminPaymentsService {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-    }
-
-    private AdminPaymentItemResponse toItem(Payment payment) {
-        Order order = payment.getOrder();
-        User customer = order != null ? order.getUser() : null;
-        return AdminPaymentItemResponse.builder()
-                .paymentId(payment.getPaymentId())
-                .orderId(order != null ? order.getOrderId() : null)
-                .orderCode(order != null ? order.getOrderCode() : null)
-                .customerName(customer != null ? customer.getFullName() : null)
-                .customerPhone(customer != null ? customer.getPhone() : null)
-                .paymentMethod(payment.getPaymentMethod())
-                .amount(payment.getAmount())
-                .status(payment.getStatus())
-                .transactionRef(payment.getTransactionRef())
-                .paidAt(payment.getPaidAt())
-                .createdAt(payment.getCreatedAt())
-                .build();
     }
 
     private static void validateStatus(String status) {

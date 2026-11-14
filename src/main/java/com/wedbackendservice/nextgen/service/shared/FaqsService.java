@@ -6,6 +6,7 @@ import com.wedbackendservice.nextgen.dto.client.response.faq.FaqResponse;
 import com.wedbackendservice.nextgen.entity.FAQ;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.FaqMapper;
 import com.wedbackendservice.nextgen.repository.FAQRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class FaqsService {
 
     private final FAQRepository faqRepository;
     private final SecurityHelper securityHelper;
+    private final FaqMapper faqMapper;
 
     /**
      * API 12.6: xem câu hỏi thường gặp, nhóm theo danh mục.
@@ -39,7 +41,7 @@ public class FaqsService {
         for (FAQ faq : faqs) {
             String key = faq.getCategory() == null || faq.getCategory().isBlank()
                     ? "Khác" : faq.getCategory();
-            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(toResponse(faq));
+            grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(faqMapper.toResponse(faq));
         }
 
         return grouped.entrySet().stream()
@@ -68,19 +70,6 @@ public class FaqsService {
                 .displayOrder(request.getDisplayOrder() == null ? 0 : request.getDisplayOrder())
                 .isActive(request.getIsActive() == null || request.getIsActive())
                 .build();
-        return toResponse(faqRepository.save(faq));
-    }
-
-    private FaqResponse toResponse(FAQ faq) {
-        return FaqResponse.builder()
-                .faqId(faq.getFaqId())
-                .question(faq.getQuestion())
-                .answer(faq.getAnswer())
-                .category(faq.getCategory())
-                .displayOrder(faq.getDisplayOrder())
-                .isActive(faq.getIsActive())
-                .createdAt(faq.getCreatedAt())
-                .updatedAt(faq.getUpdatedAt())
-                .build();
+        return faqMapper.toResponse(faqRepository.save(faq));
     }
 }

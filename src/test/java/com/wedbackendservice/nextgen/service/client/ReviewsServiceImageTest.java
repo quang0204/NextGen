@@ -42,6 +42,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
+import com.wedbackendservice.nextgen.mapper.ReviewMapper;
+import org.mapstruct.factory.Mappers;
+import org.mockito.Spy;
 import static org.mockito.Mockito.*;
 
 /** API 12.1 / 12.2 / 12.3 với ảnh lưu ở bảng review_images. */
@@ -58,6 +61,7 @@ class ReviewsServiceImageTest {
     @Mock private TokenRedisService tokenRedisService;
     @Mock private MinioStorageService minioStorageService;
     @Mock private RedisTemplate<String, String> redisTemplate;
+    @Spy private ReviewMapper reviewMapper = Mappers.getMapper(ReviewMapper.class);
 
     @InjectMocks
     private ReviewsService reviewsService;

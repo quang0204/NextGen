@@ -9,7 +9,10 @@ import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.wedbackendservice.nextgen.mapper.OrderMapper;
+import org.mapstruct.factory.Mappers;
 import org.mockito.InjectMocks;
+import org.mockito.Spy;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -56,6 +59,8 @@ class OrdersServiceTest {
     private TokenRedisService tokenRedisService;
     @Mock
     private PaymentRepository paymentRepository;
+    @Spy
+    private OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
     @InjectMocks
     private OrdersService ordersService;

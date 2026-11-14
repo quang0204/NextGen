@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.BrandMapper;
 import com.wedbackendservice.nextgen.mapper.CategoryMapper;
 import com.wedbackendservice.nextgen.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.repository.BrandRepository;
@@ -38,6 +39,7 @@ public class CategoriesAndBrandsService {
     private final ProductRepository productRepository;
     private final AuditLogRepository auditLogRepository;
     private final CategoryMapper  categoryMapper;
+    private final BrandMapper brandMapper;
     private final StorageFileService storageFileService;
 
     // =========================================================================
@@ -62,7 +64,7 @@ public class CategoriesAndBrandsService {
 
         for (Category cat : allCategories) {
             int count = productCountMap.getOrDefault(cat.getCategoryId(), 0);
-            CategoryResponse resp = toCategoryResponse(cat);
+            CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
             resp.setProductCount(count);
             resp.setChildren(new ArrayList<>());
             resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
@@ -110,7 +112,7 @@ public class CategoriesAndBrandsService {
         }
 
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
-        CategoryResponse resp = toCategoryResponse(cat);
+        CategoryResponse resp = categoryMapper.tocategoryResponse(cat);
         resp.setProductCount(productCount);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(cat));
         return resp;
@@ -163,7 +165,7 @@ public class CategoriesAndBrandsService {
         Category saved = categoryRepository.save(category);
 
         auditLogRepository.log(operator, "CREATE_CATEGORY", "Category", saved.getCategoryId(), null, saved.getCategoryName());
-        CategoryResponse resp = toCategoryResponse(saved);
+        CategoryResponse resp = categoryMapper.tocategoryResponse(saved);
         resp.setProductCount(0);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(saved));
         return resp;
@@ -236,7 +238,7 @@ public class CategoriesAndBrandsService {
         auditLogRepository.log(operator, "UPDATE_CATEGORY", "Category", id, oldValue, updated.getCategoryName());
 
         int productCount = (int) productRepository.countByCategory_CategoryId(id);
-        CategoryResponse resp = toCategoryResponse(updated);
+        CategoryResponse resp = categoryMapper.tocategoryResponse(updated);
         resp.setProductCount(productCount);
         resp.setEffectiveVariantSchema(resolveEffectiveVariantSchema(updated));
         return resp;
@@ -292,11 +294,6 @@ public class CategoriesAndBrandsService {
         auditLogRepository.log(operator, "DELETE_CATEGORY", "Category", id, category.getCategoryName(), null);
     }
 
-    private CategoryResponse toCategoryResponse(Category cat) {
-        if (cat == null) return null;
-        return categoryMapper.tocategoryResponse(cat);
-    }
-
     // =========================================================================
     // BRANDS
     // =========================================================================
@@ -315,7 +312,7 @@ public class CategoriesAndBrandsService {
         Map<Long, Integer> productCountMap = getBrandProductCounts();
 
         return brands.stream()
-                .map(b -> toBrandResponse(b, productCountMap.getOrDefault(b.getBrandId(), 0)))
+                .map(b -> brandMapper.toBrandResponse(b, storageFileService.resolveAccessUrl(b.getLogoUrl()), productCountMap.getOrDefault(b.getBrandId(), 0)))
                 .toList();
     }
     /**
@@ -331,7 +328,7 @@ public class CategoriesAndBrandsService {
         }
 
         int totalProducts = (int) productRepository.countByBrand_BrandId(id);
-        return toBrandResponse(brand, totalProducts);
+        return brandMapper.toBrandResponse(brand, storageFileService.resolveAccessUrl(brand.getLogoUrl()), totalProducts);
     }
     /**
      * API 3.8: Thêm mới thương hiệu đối tác (STAFF / ADMIN)
@@ -378,7 +375,7 @@ public class CategoriesAndBrandsService {
 
         auditLogRepository.log(operator, "CREATE_BRAND", "Brand", saved.getBrandId(), null, saved.getBrandName());
 
-        return toBrandResponse(saved, 0);
+        return brandMapper.toBrandResponse(saved, storageFileService.resolveAccessUrl(saved.getLogoUrl()), 0);
     }
 
     /**
@@ -433,7 +430,7 @@ public class CategoriesAndBrandsService {
         auditLogRepository.log(operator, "UPDATE_BRAND", "Brand", id, oldValue, updated.getBrandName());
 
         int totalProducts = (int) productRepository.countByBrand_BrandId(id);
-        return toBrandResponse(updated, totalProducts);
+        return brandMapper.toBrandResponse(updated, storageFileService.resolveAccessUrl(updated.getLogoUrl()), totalProducts);
     }
 
     /**
@@ -484,21 +481,6 @@ public class CategoriesAndBrandsService {
     // =========================================================================
     // PRIVATE HELPERS
     // =========================================================================
-
-
-    private BrandResponse toBrandResponse(Brand brand, int totalProducts) {
-        return BrandResponse.builder()
-                .brandId(brand.getBrandId())
-                .name(brand.getBrandName())
-                .slug(brand.getSlug())
-                .logoUrl(storageFileService.resolveAccessUrl(brand.getLogoUrl()))
-                .description(brand.getDescription())
-                .isVisible(brand.getIsActive())
-                .totalProducts(totalProducts)
-                .createdAt(brand.getCreatedAt())
-                .updatedAt(brand.getUpdatedAt())
-                .build();
-    }
 
     private boolean isStaffOrAdmin() {
         try {

@@ -206,9 +206,15 @@ public class PromotionsService {
         List<ProductVariant> variants = new ArrayList<>();
         List<BigDecimal> promoPrices = new ArrayList<>();
 
+        Map<Long, ProductVariant> variantById = productVariantRepository.findAllById(
+                        request.getVariants().stream().map(PromotionVariantItemRequest::getVariantId).toList())
+                .stream().collect(Collectors.toMap(ProductVariant::getVariantId, v -> v));
+
         for (PromotionVariantItemRequest item : request.getVariants()) {
-            ProductVariant pv = productVariantRepository.findById(item.getVariantId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + item.getVariantId() + "!"));
+            ProductVariant pv = variantById.get(item.getVariantId());
+            if (pv == null) {
+                throw new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + item.getVariantId() + "!");
+            }
 
             BigDecimal listPrice = pv.getPrice() != null ? pv.getPrice() : BigDecimal.ZERO;
             if (item.getPromoPrice().compareTo(listPrice) >= 0) {

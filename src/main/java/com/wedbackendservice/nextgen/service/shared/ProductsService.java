@@ -8,6 +8,7 @@ import com.wedbackendservice.nextgen.dto.session.UploadSessionData;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.ProductVariantMapper;
 import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Predicate;
@@ -51,6 +52,7 @@ public class ProductsService {
     private final SecurityHelper securityHelper;
     private final TokenRedisService tokenRedisService;
     private final MinioStorageService minioStorageService;
+    private final ProductVariantMapper productVariantMapper;
 
     private static final DateTimeFormatter ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME;
 
@@ -59,33 +61,6 @@ public class ProductsService {
         return orderItemRepository.countSoldByProductIds(productIds).stream()
                 .filter(r -> r != null && r[0] != null && r[1] != null)
                 .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
-    }
-
-    private ProductDetailResponse.VariantDetailResponse mapVariantDetailResponse(ProductVariant v, Inventory inv) {
-        int availableQty = inv != null ? inv.getAvailableQty() : 0;
-        boolean isActive = "ACTIVE".equalsIgnoreCase(v.getStatus());
-        BigDecimal curPrice = v.getPrice();
-        BigDecimal origPrice = v.getCompareAtPrice() != null && v.getCompareAtPrice().compareTo(BigDecimal.ZERO) > 0
-                ? v.getCompareAtPrice()
-                : curPrice;
-
-        return ProductDetailResponse.VariantDetailResponse.builder()
-                .variantId(v.getVariantId())
-                .sku(v.getSku())
-                .variantName(v.getVariantName())
-                .color(v.getColor())
-                .ramGb(v.getRamGb())
-                .romGb(v.getRomGb())
-                .connectionType(v.getConnectionType())
-                .attributes(v.getAttributes())
-                .listPrice(origPrice)
-                .salePrice(curPrice)
-                .compareAtPrice(origPrice)
-                .price(curPrice)
-                .imageUrl(v.getImageUrl())
-                .availableQty(availableQty)
-                .isActive(isActive)
-                .build();
     }
 
     private static String stripAccents(String input) {
@@ -477,7 +452,7 @@ public class ProductsService {
                             .orElse(product.getThumbnailUrl()));
 
             List<ProductDetailResponse.VariantDetailResponse> variantSummaries = pVariants.stream()
-                    .map(v -> mapVariantDetailResponse(v, inventoryByVariant.get(v.getVariantId())))
+                    .map(v -> productVariantMapper.toVariantDetailResponse(v, inventoryByVariant.get(v.getVariantId())))
                     .toList();
 
             items.add(ProductSummaryResponse.builder()
@@ -539,6 +514,11 @@ public class ProductsService {
                 }
 
                 List<ProductFeaturedResponse> featured = new ArrayList<>();
+                List<Long> promoVariantIds = promoVariantsByProduct.values().stream()
+                        .flatMap(List::stream).map(pv -> pv.getVariant().getVariantId()).distinct().toList();
+                Map<Long, Inventory> promoInventoryMap = promoVariantIds.isEmpty() ? Map.of() :
+                        inventoryRepository.findByVariant_VariantIdIn(promoVariantIds).stream()
+                                .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
                 for (Map.Entry<Long, List<PromotionVariant>> entry : promoVariantsByProduct.entrySet()) {
                     if (featured.size() >= maxItems) break;
 
@@ -565,7 +545,7 @@ public class ProductsService {
                                 .intValue();
                     }
 
-                    Inventory inv = inventoryRepository.findByVariant_VariantId(variant.getVariantId()).orElse(null);
+                    Inventory inv = promoInventoryMap.get(variant.getVariantId());
                     boolean inStock = inv != null && inv.getAvailableQty() > 0;
 
                     String image = variant.getImageUrl() != null && !variant.getImageUrl().isBlank()
@@ -741,7 +721,7 @@ public class ProductsService {
                 .collect(Collectors.toMap(inv -> inv.getVariant().getVariantId(), inv -> inv, (a, b) -> a));
 
         List<ProductDetailResponse.VariantDetailResponse> variantResponses = variants.stream()
-                .map(v -> mapVariantDetailResponse(v, invMap.get(v.getVariantId())))
+                .map(v -> productVariantMapper.toVariantDetailResponse(v, invMap.get(v.getVariantId())))
                 .toList();
 
         return ProductDetailResponse.builder()
@@ -785,6 +765,11 @@ public class ProductsService {
                 inventoryRepository.findByVariant_VariantIdIn(varIds).stream()
                         .filter(i -> i.getVariant() != null)
                         .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
+        Set<Long> variantIdsWithHistory = new HashSet<>();
+        if (!varIds.isEmpty()) {
+            variantIdsWithHistory.addAll(orderItemRepository.findVariantIdsHavingItems(varIds));
+            variantIdsWithHistory.addAll(inventoryTransactionRepository.findVariantIdsHavingTransactions(varIds));
+        }
 
         List<AdminProductDetailResponse.AdminProductImageResponse> imageResponses = images.stream().map(img -> {
             String url = img.getImageUrl() != null ? img.getImageUrl() : "";
@@ -824,8 +809,7 @@ public class ProductsService {
 
         List<AdminProductDetailResponse.AdminProductVariantResponse> variantResponses = variants.stream().map(v -> {
             Inventory inv = inventoryMap.get(v.getVariantId());
-            boolean hasTx = orderItemRepository.existsByVariant_VariantId(v.getVariantId())
-                    || inventoryTransactionRepository.existsByVariant_VariantId(v.getVariantId());
+            boolean hasTx = variantIdsWithHistory.contains(v.getVariantId());
 
             AdminProductDetailResponse.AdminVariantInventoryResponse invResp = null;
             if (inv != null) {

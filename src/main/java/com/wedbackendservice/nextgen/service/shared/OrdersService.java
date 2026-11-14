@@ -13,6 +13,7 @@ import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.OrderMapper;
 import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Predicate;
@@ -59,6 +60,7 @@ public class OrdersService {
     private final AuditLogRepository auditLogRepository;
     private final TokenRedisService tokenRedisService;
     private final PaymentRepository paymentRepository;
+    private final OrderMapper orderMapper;
     @org.springframework.beans.factory.annotation.Value("${payment.bank-transfer.expire-minutes:30}")
     private int paymentExpireMinutes = 30;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
@@ -317,12 +319,9 @@ public class OrdersService {
 
         // 7. Xóa món đã mua khỏi giỏ hàng
         try {
-            cartRepository.findByUserId(currentUser.getUserId()).ifPresent(cart -> {
-                for (ProductVariant v : itemMap.keySet()) {
-                    cartItemRepository.findByCartIdAndVariantId(cart.getCartId(), v.getVariantId())
-                            .ifPresent(cartItemRepository::delete);
-                }
-            });
+            cartRepository.findByUserId(currentUser.getUserId()).ifPresent(cart ->
+                    cartItemRepository.deleteByCartIdAndVariantIdIn(cart.getCartId(),
+                            itemMap.keySet().stream().map(ProductVariant::getVariantId).toList()));
         } catch (Exception ex) {
             log.warn("Không thể dọn giỏ hàng sau khi đặt hàng: {}", ex.getMessage());
         }
@@ -371,13 +370,13 @@ public class OrdersService {
                 orderItemRepository.findByOrderIdIn(orderIds).stream()
                         .collect(Collectors.groupingBy(
                                 oi -> oi.getOrder().getOrderId(),
-                                Collectors.mapping(this::mapOrderItemResponse, Collectors.toList())
+                                Collectors.mapping(orderMapper::toOrderItemResponse, Collectors.toList())
                         ));
         Map<Long, List<OrderStatusHistoryResponse>> historiesByOrderId = orderIds.isEmpty() ? Map.of() :
                 orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
                         .collect(Collectors.groupingBy(
                                 h -> h.getOrder().getOrderId(),
-                                Collectors.mapping(this::mapOrderStatusHistoryResponse, Collectors.toList())
+                                Collectors.mapping(orderMapper::toOrderStatusHistoryResponse, Collectors.toList())
                         ));
         Map<Long, Shipment> myShipmentMap = orderIds.isEmpty() ? Map.of() :
                 shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
@@ -446,11 +445,11 @@ public class OrdersService {
         }
 
         List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
-        List<OrderItemResponse> itemResponses = orderItems.stream().map(this::mapOrderItemResponse).toList();
+        List<OrderItemResponse> itemResponses = orderItems.stream().map(orderMapper::toOrderItemResponse).toList();
 
         List<OrderStatusHistoryResponse> historyResponses = orderStatusHistoryRepository
                 .findByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).stream()
-                .map(this::mapOrderStatusHistoryResponse)
+                .map(orderMapper::toOrderStatusHistoryResponse)
                 .toList();
 
         Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
@@ -590,7 +589,7 @@ public class OrdersService {
                 orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
                         .collect(Collectors.groupingBy(
                                 h -> h.getOrder().getOrderId(),
-                                Collectors.mapping(this::mapOrderStatusHistoryResponse, Collectors.toList())
+                                Collectors.mapping(orderMapper::toOrderStatusHistoryResponse, Collectors.toList())
                         ));
 
         Map<Long, ReturnRequest> adminReturnMap = orderIds.isEmpty() ? Map.of() :
@@ -629,7 +628,7 @@ public class OrdersService {
                     .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
                     .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
                     .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
-                    .items(orderItems.stream().map(this::mapOrderItemResponse).toList())
+                    .items(orderItems.stream().map(orderMapper::toOrderItemResponse).toList())
                     .statusHistory(historiesMap.getOrDefault(order.getOrderId(), List.of()))
                     .build();
         }).toList();
@@ -852,41 +851,6 @@ public class OrdersService {
                 .build();
     }
 
-    private OrderStatusHistoryResponse mapOrderStatusHistoryResponse(OrderStatusHistory h) {
-        String changedByName = "Hệ thống";
-        if (h.getChangedBy() != null) {
-            changedByName = h.getChangedBy().getFullName() != null
-                    ? h.getChangedBy().getFullName() + " (" + (h.getChangedBy().getRole() != null ? h.getChangedBy().getRole().name() : "Người dùng") + ")"
-                    : "Người dùng";
-        }
-        return OrderStatusHistoryResponse.builder()
-                .historyId(h.getHistoryId())
-                .status(h.getToStatus())
-                .changedBy(changedByName)
-                .note(h.getReason())
-                .changedAt(DateTimeUtil.formatIsoInstant(h.getCreatedAt()))
-                .build();
-    }
-
-    private OrderItemResponse mapOrderItemResponse(OrderItem oi) {
-        ProductVariant v = oi.getVariant();
-        Product p = v != null ? v.getProduct() : null;
-
-        return OrderItemResponse.builder()
-                .orderItemId(oi.getOrderItemId())
-                .variantId(v != null ? v.getVariantId() : null)
-                .productId(p != null ? p.getProductId() : null)
-                .productNameSnapshot(oi.getProductNameSnapshot())
-                .skuSnapshot(oi.getSkuSnapshot())
-                .colorSnapshot(oi.getColorSnapshot())
-                .romSnapshot(oi.getRomSnapshot())
-                .unitPrice(oi.getUnitPrice())
-                .quantity(oi.getQuantity())
-                .lineTotal(oi.getLineTotal())
-                .imageUrl(oi.getImageUrl())
-                .build();
-    }
-
     private String buildItemsSummary(List<OrderItem> items) {
         if (items == null || items.isEmpty()) {
             return "Không có sản phẩm";
@@ -999,12 +963,14 @@ public class OrdersService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        int count = 0;
+        List<Long> expiredOrderIds = expiredOrders.stream().map(Order::getOrderId).toList();
+        Map<Long, List<OrderItem>> itemsByOrderId = orderItemRepository.findByOrderIdIn(expiredOrderIds).stream()
+                .collect(Collectors.groupingBy(oi -> oi.getOrder().getOrderId()));
+        List<OrderStatusHistory> historiesToSave = new ArrayList<>(expiredOrders.size());
 
         for (Order order : expiredOrders) {
             // 1. Rollback giải phóng tồn giữ chỗ (reserved_qty -= quantity)
-            List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-            for (OrderItem item : items) {
+            for (OrderItem item : itemsByOrderId.getOrDefault(order.getOrderId(), List.of())) {
                 ProductVariant v = item.getVariant();
                 if (v != null) {
                     inventoryRepository.releaseStockAtomic(v.getVariantId(), item.getQuantity(), now);
@@ -1020,19 +986,18 @@ public class OrdersService {
             order.setStatus("CANCELLED");
             order.setCancelReason("Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ " + expireMins + " phút) - Hệ thống tự động hủy đơn và giải phóng tồn kho");
             order.setUpdatedAt(now);
-            orderRepository.save(order);
 
             // 4. Ghi lịch sử OrderStatusHistory
-            orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+            historiesToSave.add(OrderStatusHistory.builder()
                     .order(order)
                     .changedBy(null)
                     .previousStatus("PENDING_PAYMENT")
                     .newStatus("CANCELLED")
                     .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR " + expireMins + " phút và đã nhả toàn bộ tồn kho giữ chỗ.")
                     .build());
-
-            count++;
         }
-        return count;
+        orderRepository.saveAll(expiredOrders);
+        orderStatusHistoryRepository.saveAll(historiesToSave);
+        return expiredOrders.size();
     }
 }

@@ -15,6 +15,7 @@ import com.wedbackendservice.nextgen.entity.User;
 import com.wedbackendservice.nextgen.enums.StorageType;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.ReviewMapper;
 import com.wedbackendservice.nextgen.repository.OrderItemRepository;
 import com.wedbackendservice.nextgen.repository.ReviewImageRepository;
 import com.wedbackendservice.nextgen.repository.ReviewRepository;
@@ -63,6 +64,7 @@ public class ReviewsService {
     private final TokenRedisService tokenRedisService;
     private final MinioStorageService minioStorageService;
     private final RedisTemplate<String, String> redisTemplate;
+    private final ReviewMapper reviewMapper;
 
     /** Thời gian tối đa giữ chỗ ảnh trong lúc lưu đánh giá (bình thường được nhả ngay khi lưu xong). */
     private static final Duration CLAIM_TTL = Duration.ofMinutes(5);
@@ -82,7 +84,7 @@ public class ReviewsService {
 
         Map<Long, List<String>> images = loadImageUrls(result.getContent());
         return ProductReviewListResponse.builder()
-                .items(result.getContent().stream().map(r -> toResponse(r, images)).toList())
+                .items(result.getContent().stream().map(r -> reviewMapper.toResponse(r, images.getOrDefault(r.getReviewId(), List.of()))).toList())
                 .totalReviews(result.getTotalElements())
                 .averageRating(average == null ? 0d : Math.round(average * 10.0) / 10.0)
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
@@ -154,8 +156,7 @@ public class ReviewsService {
             deleteUploadSessionsAfterCommit(uploads);
         }
 
-        return toResponse(saved, Map.of(saved.getReviewId() == null ? -1L : saved.getReviewId(),
-                images.stream().map(this::toViewUrl).toList()));
+        return reviewMapper.toResponse(saved, images.stream().map(this::toViewUrl).toList());
     }
 
     /**
@@ -174,7 +175,7 @@ public class ReviewsService {
 
         Map<Long, List<String>> images = loadImageUrls(result.getContent());
         return AdminReviewListResponse.builder()
-                .items(result.getContent().stream().map(r -> toResponse(r, images)).toList())
+                .items(result.getContent().stream().map(r -> reviewMapper.toResponse(r, images.getOrDefault(r.getReviewId(), List.of()))).toList())
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
@@ -192,7 +193,7 @@ public class ReviewsService {
         review.setRepliedAt(LocalDateTime.now());
         log.info("User {} replied review {}", admin.getUserId(), reviewId);
         Review saved = reviewRepository.save(review);
-        return toResponse(saved, loadImageUrls(List.of(saved)));
+        return reviewMapper.toResponse(saved, loadImageUrls(List.of(saved)).getOrDefault(saved.getReviewId(), List.of()));
     }
 
     /**
@@ -213,7 +214,7 @@ public class ReviewsService {
         review.setStatus(nextStatus);
         log.info("User {} updated review {} status to {}", admin.getUserId(), reviewId, nextStatus);
         Review saved = reviewRepository.save(review);
-        return toResponse(saved, loadImageUrls(List.of(saved)));
+        return reviewMapper.toResponse(saved, loadImageUrls(List.of(saved)).getOrDefault(saved.getReviewId(), List.of()));
     }
 
     private Specification<Review> buildSpecification(String status, Integer rating, String search) {
@@ -376,30 +377,5 @@ public class ReviewsService {
             }
         }
         return image.getImageUrl();
-    }
-
-    private ReviewResponse toResponse(Review review, Map<Long, List<String>> imagesByReview) {
-        OrderItem item = review.getOrderItem();
-        Order order = item != null ? item.getOrder() : null;
-        User customer = order != null ? order.getUser() : null;
-
-        return ReviewResponse.builder()
-                .reviewId(review.getReviewId())
-                .orderItemId(item != null ? item.getOrderItemId() : null)
-                .productId(item != null && item.getVariant() != null && item.getVariant().getProduct() != null
-                        ? item.getVariant().getProduct().getProductId() : null)
-                .productName(item != null ? item.getProductNameSnapshot() : null)
-                .variantName(item != null && item.getVariant() != null ? item.getVariant().getVariantName() : null)
-                .customerName(customer != null ? customer.getFullName() : null)
-                .rating(review.getRating())
-                .comment(review.getComment())
-                .imageUrls(imagesByReview.getOrDefault(review.getReviewId(), List.of()))
-                .isVerifiedPurchase(review.getIsVerifiedPurchase())
-                .status(review.getStatus())
-                .reply(review.getReply())
-                .repliedAt(review.getRepliedAt())
-                .createdAt(review.getCreatedAt())
-                .updatedAt(review.getUpdatedAt())
-                .build();
     }
 }

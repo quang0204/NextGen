@@ -4,6 +4,7 @@ import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogResponse;
 import com.wedbackendservice.nextgen.entity.AuditLog;
+import com.wedbackendservice.nextgen.mapper.AuditLogMapper;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -31,6 +32,7 @@ public class AdminAuditLogsService {
 
     private final com.wedbackendservice.nextgen.repository.AuditLogRepository auditLogRepository;
     private final SecurityHelper securityHelper;
+    private final AuditLogMapper auditLogMapper;
 
     /**
      * API 13.5: nhật ký kiểm toán (chỉ đọc, ADMIN).
@@ -48,7 +50,7 @@ public class AdminAuditLogsService {
                 buildSpecification(userId, action, entityName, fromDate, toDate), pageable);
 
         return AuditLogListResponse.builder()
-                .items(result.getContent().stream().map(this::toResponse).toList())
+                .items(result.getContent().stream().map(auditLogMapper::toResponse).toList())
                 .pageInfo(PageResponse.of(safePage, safeSize, result))
                 .build();
     }
@@ -80,19 +82,5 @@ public class AdminAuditLogsService {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-    }
-
-    private AuditLogResponse toResponse(AuditLog log) {
-        return AuditLogResponse.builder()
-                .logId(log.getLogId())
-                .userId(log.getUser() != null ? log.getUser().getUserId() : null)
-                .userName(log.getUser() != null ? log.getUser().getFullName() : null)
-                .action(log.getAction())
-                .entityName(log.getEntityName())
-                .entityId(log.getEntityId())
-                .oldValue(log.getOldValue())
-                .newValue(log.getNewValue())
-                .createdAt(log.getCreatedAt())
-                .build();
     }
 }
