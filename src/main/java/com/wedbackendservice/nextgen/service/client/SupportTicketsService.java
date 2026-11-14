@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.dto.portal.response.ticket.AdminSupportTick
 import com.wedbackendservice.nextgen.dto.client.response.ticket.SupportTicketResponse;
 import com.wedbackendservice.nextgen.entity.SupportTicket;
 import com.wedbackendservice.nextgen.entity.User;
+import com.wedbackendservice.nextgen.enums.TicketPriority;
 import com.wedbackendservice.nextgen.enums.TicketStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
@@ -37,8 +38,6 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class SupportTicketsService {
-
-    private static final Set<String> PRIORITIES = Set.of("LOW", "MEDIUM", "HIGH", "URGENT");
 
     private final SupportTicketRepository supportTicketRepository;
     private final SecurityHelper securityHelper;
@@ -161,14 +160,14 @@ public class SupportTicketsService {
 
     private static String normalizePriority(String priority) {
         if (priority == null || priority.isBlank()) {
-            return "MEDIUM";
+            return TicketPriority.MEDIUM.name();
         }
-        String value = priority.trim().toUpperCase();
-        if (!PRIORITIES.contains(value)) {
+        TicketPriority parsed = TicketPriority.from(priority);
+        if (parsed == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     "Mức ưu tiên không hợp lệ (LOW | MEDIUM | HIGH | URGENT).");
         }
-        return value;
+        return parsed.name();
     }
 
     private static void validateStatusFilter(String status) {
@@ -178,8 +177,7 @@ public class SupportTicketsService {
     }
 
     private static void validatePriorityFilter(String priority) {
-        if (priority != null && !priority.isBlank()
-                && !PRIORITIES.contains(priority.trim().toUpperCase())) {
+        if (priority != null && !priority.isBlank() && TicketPriority.from(priority) == null) {
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     "Mức ưu tiên không hợp lệ (LOW | MEDIUM | HIGH | URGENT).");
         }

@@ -9,6 +9,7 @@ import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.promotion.*;
 import com.wedbackendservice.nextgen.dto.client.response.promotion.*;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.PromotionStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
@@ -227,7 +228,7 @@ public class PromotionsService {
             promoPrices.add(item.getPromoPrice());
         }
 
-        String initialStatus = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase() : "UPCOMING";
+        String initialStatus = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase() : PromotionStatus.UPCOMING.name();
 
         Promotion promotion = Promotion.builder()
                 .promotionName(request.getName().trim())
@@ -235,7 +236,8 @@ public class PromotionsService {
                 .startDate(startAt)
                 .endDate(endAt)
                 .status(initialStatus)
-                .isActive(!"PAUSED".equalsIgnoreCase(initialStatus) && !"ENDED".equalsIgnoreCase(initialStatus))
+                .isActive(!PromotionStatus.PAUSED.name().equalsIgnoreCase(initialStatus)
+                        && !PromotionStatus.ENDED.name().equalsIgnoreCase(initialStatus))
                 .createdBy(currentUser)
                 .build();
 
@@ -279,9 +281,9 @@ public class PromotionsService {
         String newStatus = request.getStatus().trim().toUpperCase();
 
         promotion.setStatus(newStatus);
-        if ("PAUSED".equalsIgnoreCase(newStatus) || "ENDED".equalsIgnoreCase(newStatus)) {
+        if (PromotionStatus.PAUSED.name().equalsIgnoreCase(newStatus) || PromotionStatus.ENDED.name().equalsIgnoreCase(newStatus)) {
             promotion.setIsActive(false);
-        } else if ("ACTIVE".equalsIgnoreCase(newStatus)) {
+        } else if (PromotionStatus.ACTIVE.name().equalsIgnoreCase(newStatus)) {
             promotion.setIsActive(true);
         }
         promotion.setUpdatedAt(LocalDateTime.now());

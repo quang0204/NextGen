@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.entity.OrderItem;
 import com.wedbackendservice.nextgen.entity.Review;
 import com.wedbackendservice.nextgen.entity.ReviewImage;
 import com.wedbackendservice.nextgen.entity.User;
+import com.wedbackendservice.nextgen.enums.ReviewStatus;
 import com.wedbackendservice.nextgen.enums.StorageType;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
@@ -55,7 +56,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewsService {
 
-    private static final String VISIBLE = "VISIBLE";
+    private static final String VISIBLE = ReviewStatus.VISIBLE.name();
 
     private final ReviewRepository reviewRepository;
     private final OrderItemRepository orderItemRepository;
@@ -207,9 +208,11 @@ public class ReviewsService {
 
         String nextStatus;
         if (requestedStatus != null && !requestedStatus.isBlank()) {
-            nextStatus = "HIDDEN".equalsIgnoreCase(requestedStatus.trim()) ? "HIDDEN" : VISIBLE;
+            nextStatus = ReviewStatus.HIDDEN.name().equalsIgnoreCase(requestedStatus.trim())
+                    ? ReviewStatus.HIDDEN.name() : ReviewStatus.VISIBLE.name();
         } else {
-            nextStatus = "HIDDEN".equalsIgnoreCase(review.getStatus()) ? VISIBLE : "HIDDEN";
+            nextStatus = ReviewStatus.HIDDEN.name().equalsIgnoreCase(review.getStatus())
+                    ? ReviewStatus.VISIBLE.name() : ReviewStatus.HIDDEN.name();
         }
         review.setStatus(nextStatus);
         log.info("User {} updated review {} status to {}", admin.getUserId(), reviewId, nextStatus);

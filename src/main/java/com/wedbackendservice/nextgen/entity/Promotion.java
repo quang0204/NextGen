@@ -73,14 +73,14 @@ public class Promotion {
             return status;
         }
         if (Boolean.FALSE.equals(isActive)) {
-            return "PAUSED";
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.PAUSED.name();
         }
         if (startDate != null && now.isBefore(startDate)) {
-            return "UPCOMING";
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.UPCOMING.name();
         }
         if (endDate != null && now.isAfter(endDate)) {
-            return "ENDED";
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.ENDED.name();
         }
-        return "ACTIVE";
+        return com.wedbackendservice.nextgen.enums.PromotionStatus.ACTIVE.name();
     }
 }

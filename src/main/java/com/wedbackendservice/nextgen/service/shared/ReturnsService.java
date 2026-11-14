@@ -10,8 +10,11 @@ import com.wedbackendservice.nextgen.dto.portal.request.returnrequest.InspectRet
 import com.wedbackendservice.nextgen.dto.portal.request.returnrequest.RestockItemRequest;
 import com.wedbackendservice.nextgen.dto.portal.response.returnrequest.*;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
+import com.wedbackendservice.nextgen.enums.OrderStatus;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
+import com.wedbackendservice.nextgen.enums.ReturnStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.*;
@@ -70,7 +73,7 @@ public class ReturnsService {
         }
 
         // 2. Đơn hàng ở trạng thái COMPLETED
-        if (!"COMPLETED".equalsIgnoreCase(order.getStatus())) {
+        if (!OrderStatus.COMPLETED.name().equalsIgnoreCase(order.getStatus())) {
             throw new AppException(ErrorCode.RETURN_ORDER_NOT_COMPLETED);
         }
 
@@ -86,7 +89,7 @@ public class ReturnsService {
         // 4. Chưa có yêu cầu đổi trả nào đang chờ duyệt (PENDING) hoặc đã được duyệt (APPROVED)
         boolean hasExistingReturn = returnRequestRepository.existsByOrder_OrderIdAndStatusIn(
                 order.getOrderId(),
-                List.of("PENDING", "INSPECTING", "APPROVED")
+                List.of(ReturnStatus.PENDING.name(), ReturnStatus.INSPECTING.name(), ReturnStatus.APPROVED.name())
         );
         if (hasExistingReturn) {
             throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST);
@@ -119,7 +122,7 @@ public class ReturnsService {
                 .requestedBy(currentUser)
                 .reason(request.getReason())
                 .evidenceImages(evidenceJson)
-                .status("PENDING")
+                .status(ReturnStatus.PENDING.name())
                 .bankName(request.getBankInfo() != null ? request.getBankInfo().getBankName() : null)
                 .bankAccountNumber(request.getBankInfo() != null ? request.getBankInfo().getAccountNumber() : null)
                 .bankAccountHolder(request.getBankInfo() != null ? request.getBankInfo().getAccountHolder() : null)
@@ -135,7 +138,7 @@ public class ReturnsService {
                 .orderId(order.getOrderId())
                 .orderCode(order.getOrderCode())
                 .requestedBy(currentUser.getUserId())
-                .status("PENDING")
+                .status(ReturnStatus.PENDING.name())
                 .reason(returnRequest.getReason())
                 .evidenceImages(request.getEvidenceImages())
                 .createdAt(DateTimeUtil.formatIsoInstant(returnRequest.getCreatedAt()))
@@ -340,7 +343,7 @@ public class ReturnsService {
             return InspectReturnResponse.builder()
                     .returnId(returnRequest.getReturnId())
                     .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
-                    .status("REJECTED")
+                    .status(ReturnStatus.REJECTED.name())
                     .inspectionResult(returnRequest.getInspectionResult())
                     .rejectReason(returnRequest.getRejectReason())
                     .inspectedBy(inspector)
@@ -386,7 +389,7 @@ public class ReturnsService {
             }
         }
 
-        returnRequest.setStatus("APPROVED");
+        returnRequest.setStatus(ReturnStatus.APPROVED.name());
         returnRequest.setInspectionResult(request.getInspectionResult());
         returnRequest.setRefundAmount(request.getRefundAmount());
         returnRequest.setInspectedBy(currentUser);
@@ -420,7 +423,7 @@ public class ReturnsService {
                     .variant(variant)
                     .order(returnRequest.getOrder())
                     .performedBy(currentUser)
-                    .transactionType("RETURN")
+                    .transactionType(InventoryTransactionType.RETURN.name())
                     .formCode("MB04")
                     .quantity(qtyRestock)
                     .qtyBefore(qtyBefore)
@@ -477,7 +480,7 @@ public class ReturnsService {
                 .returnId(returnRequest.getReturnId())
                 .orderId(order != null ? order.getOrderId() : null)
                 .orderCode(order != null ? order.getOrderCode() : null)
-                .status("APPROVED")
+                .status(ReturnStatus.APPROVED.name())
                 .inspectionResult(returnRequest.getInspectionResult())
                 .refundAmount(returnRequest.getRefundAmount())
                 .inspectedBy(inspector)
@@ -485,7 +488,7 @@ public class ReturnsService {
                 .approvedAt(DateTimeUtil.formatIsoInstant(returnRequest.getApprovedAt()))
                 .inventoryRestock(InventoryRestockResponse.builder()
                         .formCode("MB04")
-                        .txnType("RETURN")
+                        .txnType(InventoryTransactionType.RETURN.name())
                         .restockedItems(restockedList)
                         .build())
                 .build();

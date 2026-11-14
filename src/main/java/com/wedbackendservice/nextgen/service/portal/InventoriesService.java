@@ -6,6 +6,8 @@ import com.wedbackendservice.nextgen.dto.portal.request.inventory.InventoryAdjus
 import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.inventory.*;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
+import com.wedbackendservice.nextgen.enums.StockStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.AuditLogRepository;
@@ -46,12 +48,12 @@ public class InventoriesService {
 
     private String determineStatus(int availableQty, int minThreshold) {
         if (availableQty <= 0) {
-            return "OUT_OF_STOCK";
+            return StockStatus.OUT_OF_STOCK.name();
         }
         if (availableQty <= minThreshold) {
-            return "LOW_STOCK";
+            return StockStatus.LOW_STOCK.name();
         }
-        return "IN_STOCK";
+        return StockStatus.IN_STOCK.name();
     }
 
     /**
@@ -88,15 +90,16 @@ public class InventoriesService {
             }
 
             if (StringUtils.hasText(status) && !status.equalsIgnoreCase("ALL")) {
-                String st = status.trim().toUpperCase();
-                switch (st) {
-                    case "IN_STOCK" -> predicates.add(cb.greaterThan(availDiff, thresholdVal));
-                    case "LOW_STOCK" -> {
-                        predicates.add(cb.lessThanOrEqualTo(availDiff, thresholdVal));
-                        predicates.add(cb.greaterThan(availDiff, 0));
+                StockStatus parsedStatus = StockStatus.from(status);
+                if (parsedStatus != null) {
+                    switch (parsedStatus) {
+                        case IN_STOCK -> predicates.add(cb.greaterThan(availDiff, thresholdVal));
+                        case LOW_STOCK -> {
+                            predicates.add(cb.lessThanOrEqualTo(availDiff, thresholdVal));
+                            predicates.add(cb.greaterThan(availDiff, 0));
+                        }
+                        case OUT_OF_STOCK -> predicates.add(cb.lessThanOrEqualTo(availDiff, 0));
                     }
-                    case "OUT_OF_STOCK" -> predicates.add(cb.lessThanOrEqualTo(availDiff, 0));
-                    default -> {}
                 }
             }
 
