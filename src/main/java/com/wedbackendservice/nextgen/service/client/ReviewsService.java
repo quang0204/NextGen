@@ -195,6 +195,27 @@ public class ReviewsService {
         return toResponse(saved, loadImageUrls(List.of(saved)));
     }
 
+    /**
+     * API 12.3 phụ: Ẩn / Hiện đánh giá (VISIBLE <-> HIDDEN).
+     */
+    @Transactional
+    public ReviewResponse updateReviewStatus(Long reviewId, String requestedStatus) {
+        User admin = securityHelper.authenticateStaffOrAdmin();
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_REVIEW_NOT_FOUND));
+
+        String nextStatus;
+        if (requestedStatus != null && !requestedStatus.isBlank()) {
+            nextStatus = "HIDDEN".equalsIgnoreCase(requestedStatus.trim()) ? "HIDDEN" : VISIBLE;
+        } else {
+            nextStatus = "HIDDEN".equalsIgnoreCase(review.getStatus()) ? VISIBLE : "HIDDEN";
+        }
+        review.setStatus(nextStatus);
+        log.info("User {} updated review {} status to {}", admin.getUserId(), reviewId, nextStatus);
+        Review saved = reviewRepository.save(review);
+        return toResponse(saved, loadImageUrls(List.of(saved)));
+    }
+
     private Specification<Review> buildSpecification(String status, Integer rating, String search) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();

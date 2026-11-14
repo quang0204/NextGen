@@ -64,6 +64,65 @@ public class PromotionsService {
         }
     }
 
+    private Map<Long, List<ActivePromotionVariantResponse>> mapVariantsByPromotionIds(List<Long> promoIds) {
+        if (promoIds == null || promoIds.isEmpty()) {
+            return Map.of();
+        }
+        List<PromotionVariant> allPvs = promotionVariantRepository.findByPromotionIdInWithVariantAndProduct(promoIds);
+        if (allPvs.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> variantIds = allPvs.stream()
+                .map(PromotionVariant::getVariant)
+                .filter(v -> v != null && v.getVariantId() != null)
+                .map(ProductVariant::getVariantId)
+                .distinct()
+                .toList();
+        Map<Long, Integer> availByVariantId = variantIds.isEmpty() ? Map.of() :
+                inventoryRepository.findByVariant_VariantIdIn(variantIds).stream()
+                        .filter(inv -> inv.getVariant() != null)
+                        .collect(Collectors.toMap(
+                                inv -> inv.getVariant().getVariantId(),
+                                Inventory::getAvailableQty,
+                                (a, b) -> a
+                        ));
+
+        Map<Long, List<ActivePromotionVariantResponse>> result = new java.util.HashMap<>();
+        for (PromotionVariant pv : allPvs) {
+            ProductVariant v = pv.getVariant();
+            if (v == null || pv.getPromotion() == null) continue;
+            Product prod = v.getProduct();
+
+            BigDecimal listPrice = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
+            BigDecimal promoPrice = pv.getPromoPrice() != null ? pv.getPromoPrice() : listPrice;
+
+            int discountPercent = 0;
+            if (listPrice.compareTo(BigDecimal.ZERO) > 0 && promoPrice.compareTo(listPrice) < 0) {
+                discountPercent = listPrice.subtract(promoPrice)
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(listPrice, 0, RoundingMode.HALF_UP)
+                        .intValue();
+            }
+
+            ActivePromotionVariantResponse item = ActivePromotionVariantResponse.builder()
+                    .promoVariantId(pv.getPromoVariantId())
+                    .variantId(v.getVariantId())
+                    .productId(prod != null ? prod.getProductId() : null)
+                    .productName(prod != null ? prod.getProductName() : null)
+                    .sku(v.getSku())
+                    .color(v.getColor())
+                    .romGb(v.getRomGb())
+                    .listPrice(listPrice)
+                    .promoPrice(promoPrice)
+                    .discountPercent(discountPercent)
+                    .availableQty(availByVariantId.getOrDefault(v.getVariantId(), 0))
+                    .build();
+
+            result.computeIfAbsent(pv.getPromotion().getPromotionId(), k -> new ArrayList<>()).add(item);
+        }
+        return result;
+    }
+
     /**
      * API 6.1: [GET] /api/v1/promotions/active — Danh sách Flash Sale đang diễn ra (Public)
      */
@@ -71,59 +130,18 @@ public class PromotionsService {
     public List<ActivePromotionResponse> getActivePromotions() {
         LocalDateTime now = LocalDateTime.now();
         List<Promotion> promotions = promotionRepository.findActivePromotions(now);
+        List<Long> promoIds = promotions.stream().map(Promotion::getPromotionId).toList();
+        Map<Long, List<ActivePromotionVariantResponse>> variantsByPromoId = mapVariantsByPromotionIds(promoIds);
 
-        List<ActivePromotionResponse> result = new ArrayList<>();
-        for (Promotion p : promotions) {
-            List<PromotionVariant> pvs = promotionVariantRepository.findByPromotion_PromotionId(p.getPromotionId());
-            List<ActivePromotionVariantResponse> variantResponses = new ArrayList<>();
-
-            for (PromotionVariant pv : pvs) {
-                ProductVariant v = pv.getVariant();
-                if (v == null) continue;
-                Product prod = v.getProduct();
-
-                BigDecimal listPrice = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
-                BigDecimal promoPrice = pv.getPromoPrice() != null ? pv.getPromoPrice() : listPrice;
-
-                int discountPercent = 0;
-                if (listPrice.compareTo(BigDecimal.ZERO) > 0 && promoPrice.compareTo(listPrice) < 0) {
-                    discountPercent = listPrice.subtract(promoPrice)
-                            .multiply(BigDecimal.valueOf(100))
-                            .divide(listPrice, 0, RoundingMode.HALF_UP)
-                            .intValue();
-                }
-
-                int availableQty = inventoryRepository.findByVariant_VariantId(v.getVariantId())
-                        .map(Inventory::getAvailableQty)
-                        .orElse(0);
-
-                variantResponses.add(ActivePromotionVariantResponse.builder()
-                        .promoVariantId(pv.getPromoVariantId())
-                        .variantId(v.getVariantId())
-                        .productId(prod != null ? prod.getProductId() : null)
-                        .productName(prod != null ? prod.getProductName() : null)
-                        .sku(v.getSku())
-                        .color(v.getColor())
-                        .romGb(v.getRomGb())
-                        .listPrice(listPrice)
-                        .promoPrice(promoPrice)
-                        .discountPercent(discountPercent)
-                        .availableQty(availableQty)
-                        .build());
-            }
-
-            result.add(ActivePromotionResponse.builder()
-                    .promotionId(p.getPromotionId())
-                    .name(p.getName())
-                    .description(p.getDescription())
-                    .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
-                    .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
-                    .status(p.resolveStatus(now))
-                    .variants(variantResponses)
-                    .build());
-        }
-
-        return result;
+        return promotions.stream().map(p -> ActivePromotionResponse.builder()
+                .promotionId(p.getPromotionId())
+                .name(p.getName())
+                .description(p.getDescription())
+                .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
+                .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
+                .status(p.resolveStatus(now))
+                .variants(variantsByPromoId.getOrDefault(p.getPromotionId(), List.of()))
+                .build()).toList();
     }
 
     /**
@@ -148,57 +166,17 @@ public class PromotionsService {
         Page<Promotion> pageResult = promotionRepository.findAll(spec, pageable);
         List<Promotion> promotions = pageResult.getContent();
         List<Long> promoIds = promotions.stream().map(Promotion::getPromotionId).toList();
-        Map<Long, Integer> variantsCountMap = promoIds.isEmpty() ? Map.of() :
-                promotionVariantRepository.countByPromotionIds(promoIds).stream()
-                        .filter(r -> r != null && r[0] != null && r[1] != null)
-                        .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
+        Map<Long, List<ActivePromotionVariantResponse>> variantsByPromoId = mapVariantsByPromotionIds(promoIds);
 
         LocalDateTime now = LocalDateTime.now();
 
         List<AdminPromotionItemResponse> items = promotions.stream().map(p -> {
-            int appliedVariantsCount = variantsCountMap.getOrDefault(p.getPromotionId(), 0);
+            List<ActivePromotionVariantResponse> variantResponses = variantsByPromoId.getOrDefault(p.getPromotionId(), List.of());
             String createdByName = "Admin";
             if (p.getCreatedBy() != null) {
                 createdByName = p.getCreatedBy().getFullName() != null
                         ? p.getCreatedBy().getFullName() + " (" + (p.getCreatedBy().getRole() != null ? p.getCreatedBy().getRole().name() : "Admin") + ")"
                         : "Admin";
-            }
-
-            List<PromotionVariant> pvs = promotionVariantRepository.findByPromotion_PromotionId(p.getPromotionId());
-            List<ActivePromotionVariantResponse> variantResponses = new ArrayList<>();
-            for (PromotionVariant pv : pvs) {
-                ProductVariant v = pv.getVariant();
-                if (v == null) continue;
-                Product prod = v.getProduct();
-
-                BigDecimal listPrice = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
-                BigDecimal promoPrice = pv.getPromoPrice() != null ? pv.getPromoPrice() : listPrice;
-
-                int discountPercent = 0;
-                if (listPrice.compareTo(BigDecimal.ZERO) > 0 && promoPrice.compareTo(listPrice) < 0) {
-                    discountPercent = listPrice.subtract(promoPrice)
-                            .multiply(BigDecimal.valueOf(100))
-                            .divide(listPrice, 0, RoundingMode.HALF_UP)
-                            .intValue();
-                }
-
-                int availableQty = inventoryRepository.findByVariant_VariantId(v.getVariantId())
-                        .map(Inventory::getAvailableQty)
-                        .orElse(0);
-
-                variantResponses.add(ActivePromotionVariantResponse.builder()
-                        .promoVariantId(pv.getPromoVariantId())
-                        .variantId(v.getVariantId())
-                        .productId(prod != null ? prod.getProductId() : null)
-                        .productName(prod != null ? prod.getProductName() : null)
-                        .sku(v.getSku())
-                        .color(v.getColor())
-                        .romGb(v.getRomGb())
-                        .listPrice(listPrice)
-                        .promoPrice(promoPrice)
-                        .discountPercent(discountPercent)
-                        .availableQty(availableQty)
-                        .build());
             }
 
             return AdminPromotionItemResponse.builder()
@@ -208,7 +186,7 @@ public class PromotionsService {
                     .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
                     .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
                     .status(p.resolveStatus(now))
-                    .appliedVariantsCount(appliedVariantsCount > 0 ? appliedVariantsCount : variantResponses.size())
+                    .appliedVariantsCount(variantResponses.size())
                     .createdBy(createdByName)
                     .createdAt(DateTimeUtil.formatIsoInstant(p.getCreatedAt()))
                     .variants(variantResponses)

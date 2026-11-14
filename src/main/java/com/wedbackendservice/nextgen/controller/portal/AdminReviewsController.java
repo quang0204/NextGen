@@ -38,4 +38,16 @@ public class AdminReviewsController {
                                                    @Valid @RequestBody ReviewReplyRequest request) {
         return ApiResponse.ok("Phản hồi đánh giá thành công", reviewsService.replyReview(id, request));
     }
+
+    /**
+     * API 12.3 phụ: Ẩn / Hiện đánh giá sản phẩm trên trang người dùng.
+     */
+    @RequestMapping(value = "/{id}/status", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    public ApiResponse<ReviewResponse> updateReviewStatus(
+            @PathVariable Long id,
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+        String requestedStatus = body != null ? body.get("status") : null;
+        return ApiResponse.ok("Cập nhật trạng thái hiển thị đánh giá thành công",
+                reviewsService.updateReviewStatus(id, requestedStatus));
+    }
 }

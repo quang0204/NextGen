@@ -123,7 +123,6 @@ public class StorageFileService {
             return generateReviewPresignedUrls(currentUser, files);
         }
 
-        String rawType = request.getStorageType();
         if (request.getCategoryId() != null || (rawType != null && (rawType.equalsIgnoreCase("CATEGORY") || rawType.equalsIgnoreCase("CATEGORIES")))) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Danh mục sản phẩm không còn sử dụng hình ảnh/icon.");
         }

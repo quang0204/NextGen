@@ -211,4 +211,21 @@ class ReviewsServiceImageTest {
         AdminReviewListResponse adminList = reviewsService.getAdminReviews(1, 10, null, null, null);
         assertThat(adminList.getItems().get(0).getImageUrls()).containsExactly(BASE + "users/7/u1-anh.jpg");
     }
+
+    @Test
+    void updateReviewStatus_togglesBetweenHiddenAndVisible() {
+        User admin = User.builder().userId(1L).fullName("Admin").role(Role.ADMIN).build();
+        when(securityHelper.authenticateStaffOrAdmin()).thenReturn(admin);
+
+        Review review = Review.builder().reviewId(99L).orderItem(orderItem).rating(4).comment("Tốt").status("VISIBLE").build();
+        when(reviewRepository.findById(99L)).thenReturn(Optional.of(review));
+
+        ReviewResponse hiddenRes = reviewsService.updateReviewStatus(99L, "HIDDEN");
+        assertThat(hiddenRes.getStatus()).isEqualTo("HIDDEN");
+        assertThat(review.getStatus()).isEqualTo("HIDDEN");
+
+        ReviewResponse restoredRes = reviewsService.updateReviewStatus(99L, null);
+        assertThat(restoredRes.getStatus()).isEqualTo("VISIBLE");
+        assertThat(review.getStatus()).isEqualTo("VISIBLE");
+    }
 }

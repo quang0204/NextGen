@@ -41,10 +41,10 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long>, Jpa
             "i.updatedAt = :now WHERE i.variant.variantId = :variantId")
     int releaseStockAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
-    @Modifying(flushAutomatically = true)
-    @Query("UPDATE Inventory i SET i.quantity = CASE WHEN i.quantity >= :qty THEN i.quantity - :qty ELSE 0 END, " +
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("UPDATE Inventory i SET i.quantity = i.quantity - :qty, " +
             "i.reservedQuantity = CASE WHEN i.reservedQuantity >= :qty THEN i.reservedQuantity - :qty ELSE 0 END, " +
-            "i.updatedAt = :now WHERE i.variant.variantId = :variantId")
+            "i.updatedAt = :now WHERE i.variant.variantId = :variantId AND i.quantity >= :qty")
     int deductStockAndReservedAtomic(@Param("variantId") Long variantId, @Param("qty") int qty, @Param("now") LocalDateTime now);
 
     @Query("SELECT COALESCE(SUM(i.quantity), 0), COALESCE(SUM(i.reservedQuantity), 0), " +

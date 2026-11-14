@@ -91,8 +91,8 @@ public class AuthenticationService {
     // LOGIN
     // =====================================================================
 
-    /** API 1: Đăng nhập bước 1 - kiểm tra mật khẩu, sinh và gửi OTP. */
-    public LoginInitiateResponse initiateLogin(LoginInitiateRequest request) {
+    /** API 1: Đăng nhập trực tiếp bằng tài khoản + mật khẩu (bỏ xác thực OTP), cấp JWT ngay. */
+    public LoginVerifyOtpResponse initiateLogin(LoginInitiateRequest request) {
         String identity = request.getIdentity().trim();
 
         if (tokenRedisService.isLoginBlocked(identity)) {
@@ -110,32 +110,12 @@ public class AuthenticationService {
         assertNotLocked(user);
         tokenRedisService.clearFailedLoginAttempts(identity);
 
-        OtpChannel channel = resolveChannel(identity);
-        String target = resolveTarget(channel, user, identity);
-
-        String clientIp = ClientIpHelper.getClientIp();
-        assertOtpSendingAllowed(clientIp, target);
-
-        String otpCode = generateOtp();
-        String sessionToken = UUID.randomUUID().toString().replace("-", "");
-
-        tokenRedisService.saveOtpSession(sessionToken, OtpSessionData.builder()
-                .userId(user.getUserId())
-                .channel(channel)
-                .target(target)
-                .otpCode(otpCode)
-                .createdAt(LocalDateTime.now())
-                .build(), OTP_EXPIRE_SECONDS);
-
-        recordOtpSendAttempt(clientIp, target);
-        otpNotificationService.sendOtp(channel, target, otpCode);
-
-        return LoginInitiateResponse.builder()
-                .channel(channel)
-                .targetMasked(maskTarget(channel, target))
-                .sessionToken(sessionToken)
-                .expiresInSeconds(OTP_EXPIRE_SECONDS)
-                .cooldownSeconds(OTP_COOLDOWN_SECONDS)
+        AuthenticationResponse auth = generateToken(user);
+        return LoginVerifyOtpResponse.builder()
+                .user(usersMapper.usersResponse(user))
+                .accessToken(auth.getAccessToken())
+                .refreshToken(auth.getRefreshToken())
+                .expiresIn(accessExpiration)
                 .build();
     }
 

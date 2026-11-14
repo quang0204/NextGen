@@ -33,7 +33,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final String[] PUBLIC_POST_ENDPOINTS = {
-            "/api/v1/auth/login-initiate", "/api/v1/auth/login-verify-otp", "/api/v1/auth/login-resend-otp",
+            "/api/v1/auth/login", "/api/v1/auth/login-initiate", "/api/v1/auth/login-verify-otp", "/api/v1/auth/login-resend-otp",
             "/api/v1/auth/register-initiate", "/api/v1/auth/register-verify-otp", "/api/v1/auth/register-resend-otp",
             "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password", "/api/v1/auth/forgot-resend-otp",
             "/api/v1/auth/refresh-token", "/api/v1/auth/logout"
@@ -54,7 +54,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/categories", "/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/brands", "/api/v1/brands/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/products", "/api/v1/products/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/reviews/products/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/reviews/product/**", "/api/v1/reviews/products/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/faqs", "/api/v1/faqs/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/shipments/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/promotions/**").permitAll()
