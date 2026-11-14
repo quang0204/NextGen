@@ -60,6 +60,22 @@ public class SupportTicketsService {
     }
 
     /**
+     * Lấy danh sách phiếu hỗ trợ của khách hàng hiện tại hoặc theo targetUserId.
+     */
+    @Transactional(readOnly = true)
+    public List<SupportTicketResponse> getMyTickets(Long targetUserId) {
+        User currentUser = securityHelper.getCurrentUser();
+        List<SupportTicket> tickets;
+        if (targetUserId != null && (currentUser.getRole() == com.wedbackendservice.nextgen.enums.Role.ADMIN 
+                || currentUser.getRole() == com.wedbackendservice.nextgen.enums.Role.STAFF)) {
+            tickets = supportTicketRepository.findByUser_UserIdOrderByCreatedAtDesc(targetUserId);
+        } else {
+            tickets = supportTicketRepository.findByUserOrderByCreatedAtDesc(currentUser);
+        }
+        return tickets.stream().map(this::toResponse).toList();
+    }
+
+    /**
      * API 12.5: quản lý phiếu hỗ trợ (STAFF / ADMIN).
      */
     @Transactional(readOnly = true)
