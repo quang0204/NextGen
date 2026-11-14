@@ -10,15 +10,18 @@ import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
+import com.wedbackendservice.nextgen.mapper.ProductVariantMapper;
 import com.wedbackendservice.nextgen.repository.*;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
@@ -48,6 +51,7 @@ class ProductsServiceImageTest {
     @Mock private SecurityHelper securityHelper;
     @Mock private TokenRedisService tokenRedisService;
     @Mock private MinioStorageService minioStorageService;
+    @Spy private ProductVariantMapper productVariantMapper = Mappers.getMapper(ProductVariantMapper.class);
 
     @InjectMocks
     private ProductsService productsService;

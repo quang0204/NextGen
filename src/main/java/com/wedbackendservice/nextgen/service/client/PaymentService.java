@@ -6,14 +6,17 @@ import com.wedbackendservice.nextgen.dto.client.request.payment.SimulateCallback
 import com.wedbackendservice.nextgen.dto.client.response.payment.PaymentIntentResponse;
 import com.wedbackendservice.nextgen.dto.client.response.payment.SimulateCallbackResponse;
 import com.wedbackendservice.nextgen.entity.Order;
+import com.wedbackendservice.nextgen.entity.OrderStatusHistory;
 import com.wedbackendservice.nextgen.entity.Payment;
 import com.wedbackendservice.nextgen.entity.User;
+import com.wedbackendservice.nextgen.enums.OrderStatus;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.OrderRepository;
+import com.wedbackendservice.nextgen.repository.OrderStatusHistoryRepository;
 import com.wedbackendservice.nextgen.repository.PaymentRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,7 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
+    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final SecurityHelper securityHelper;
     private final BankTransferConfig bankTransferConfig;
 
@@ -134,6 +138,16 @@ public class PaymentService {
 
             if (order != null) {
                 order.setPaymentStatus(success ? ORDER_PAID : PaymentStatus.FAILED.name());
+                if (success && OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus())) {
+                    String prevStatus = order.getStatus();
+                    order.setStatus(OrderStatus.WAITING_CONFIRMATION.name());
+                    orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                            .order(order)
+                            .previousStatus(prevStatus)
+                            .newStatus(OrderStatus.WAITING_CONFIRMATION.name())
+                            .note("Thanh toán chuyển khoản thành công qua callback (" + payment.getTransactionRef() + ")")
+                            .build());
+                }
                 orderRepository.save(order);
             }
         }

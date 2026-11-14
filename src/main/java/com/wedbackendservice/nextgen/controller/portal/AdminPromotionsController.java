@@ -56,4 +56,11 @@ public class AdminPromotionsController {
         return ApiResponse.ok("Cập nhật trạng thái chiến dịch khuyến mãi thành công!",
                 promotionsService.updatePromotionStatus(id, request));
     }
+
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @DeleteMapping("/{id:[0-9]+}")
+    public ApiResponse<Void> deletePromotion(@PathVariable Long id) {
+        promotionsService.deletePromotion(id);
+        return ApiResponse.ok("Xóa chiến dịch khuyến mãi thành công!", null);
+    }
 }

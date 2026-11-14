@@ -72,4 +72,40 @@ public class FaqsService {
                 .build();
         return faqMapper.toResponse(faqRepository.save(faq));
     }
+
+    @Transactional(readOnly = true)
+    public List<FaqResponse> getAdminFaqs() {
+        securityHelper.authenticateStaffOrAdmin();
+        return faqRepository.findAll(org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.ASC, "displayOrder"))
+                .stream()
+                .map(faqMapper::toResponse)
+                .toList();
+    }
+
+    @Transactional
+    public FaqResponse updateFaq(Long id, FaqRequest request) {
+        securityHelper.authenticateStaffOrAdmin();
+        FAQ faq = faqRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_REQUEST, "Không tìm thấy FAQ ID " + id));
+        faq.setQuestion(request.getQuestion().trim());
+        faq.setAnswer(request.getAnswer().trim());
+        faq.setCategory(request.getCategory());
+        if (request.getDisplayOrder() != null) {
+            faq.setDisplayOrder(request.getDisplayOrder());
+        }
+        if (request.getIsActive() != null) {
+            faq.setIsActive(request.getIsActive());
+        }
+        return faqMapper.toResponse(faqRepository.save(faq));
+    }
+
+    @Transactional
+    public void deleteFaq(Long id) {
+        securityHelper.authenticateStaffOrAdmin();
+        if (!faqRepository.existsById(id)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Không tìm thấy FAQ ID " + id);
+        }
+        faqRepository.deleteById(id);
+    }
 }

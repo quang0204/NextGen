@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotEmpty;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Getter
@@ -26,6 +27,11 @@ public class CreateOrderRequest {
 
     @Builder.Default
     String paymentMethod = "COD";
+
+    @Builder.Default
+    String shippingMethod = "standard";
+
+    BigDecimal expectedTotalAmount;
 
     String voucherCode;
 

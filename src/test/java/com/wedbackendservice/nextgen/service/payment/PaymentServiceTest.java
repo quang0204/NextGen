@@ -14,6 +14,7 @@ import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.repository.OrderRepository;
+import com.wedbackendservice.nextgen.repository.OrderStatusHistoryRepository;
 import com.wedbackendservice.nextgen.repository.PaymentRepository;
 import com.wedbackendservice.nextgen.security.SecurityHelper;
 import com.wedbackendservice.nextgen.service.client.PaymentService;
@@ -40,6 +41,9 @@ class PaymentServiceTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private OrderStatusHistoryRepository orderStatusHistoryRepository;
 
     @Mock
     private SecurityHelper securityHelper;

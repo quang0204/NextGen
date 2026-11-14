@@ -275,7 +275,7 @@ class ReturnsServiceTest {
                 .reservedQuantity(5)
                 .minThreshold(5)
                 .build();
-        when(inventoryRepository.findByVariant_VariantId(101L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.findWithLockByVariantId(101L)).thenReturn(Optional.of(inventory));
         when(inventoryRepository.increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class))).thenReturn(1);
 
         InspectReturnRequest request = InspectReturnRequest.builder()

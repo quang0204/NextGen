@@ -360,6 +360,11 @@ public class ReturnsService {
         if (order != null && order.getFinalAmount() != null && request.getRefundAmount().compareTo(order.getFinalAmount()) > 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không được vượt quá giá trị đơn hàng (" + order.getFinalAmount() + " VND).");
         }
+        if (order != null && request.getRefundAmount().compareTo(BigDecimal.ZERO) > 0
+                && !"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Đơn hàng chưa được thanh toán (" + order.getPaymentStatus() + "), không thể hoàn tiền!");
+        }
         if (request.getRestockItems() == null || request.getRestockItems().isEmpty()) {
             throw new AppException(ErrorCode.RETURN_RESTOCK_ITEMS_REQUIRED);
         }
@@ -404,7 +409,7 @@ public class ReturnsService {
             ProductVariant variant = productVariantRepository.findById(item.getVariantId())
                     .orElseThrow(() -> new AppException(ErrorCode.VARIANT_NOT_FOUND));
 
-            Inventory inventory = inventoryRepository.findByVariant_VariantId(variant.getVariantId())
+            Inventory inventory = inventoryRepository.findWithLockByVariantId(variant.getVariantId())
                     .orElseGet(() -> inventoryRepository.save(Inventory.builder()
                             .variant(variant)
                             .quantity(0)

@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
+import com.wedbackendservice.nextgen.enums.ShipmentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.mapper.OrderMapper;
@@ -234,10 +235,17 @@ public class OrdersService {
             }
         }
 
-        BigDecimal shippingFee = BigDecimal.ZERO;
+        BigDecimal shippingFee = "EXPRESS".equalsIgnoreCase(
+                request.getShippingMethod() != null ? request.getShippingMethod().trim() : "")
+                ? BigDecimal.valueOf(30000)
+                : BigDecimal.ZERO;
         BigDecimal totalAmount = subtotal.subtract(voucherDiscount).add(shippingFee);
         if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
             totalAmount = BigDecimal.ZERO;
+        }
+        if (request.getExpectedTotalAmount() != null && totalAmount.compareTo(request.getExpectedTotalAmount()) > 0) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Giá sản phẩm hoặc khuyến mãi vừa thay đổi (Tổng mới: " + CURRENCY_FORMATTER.format(totalAmount) + "đ). Vui lòng tải lại trang và xác nhận lại đơn hàng!");
         }
 
         // 4. Sinh mã đơn hàng an toàn chống trùng lặp (#DH-YYYYMMDD-XXXXXX - Phiếu MB01)
@@ -526,7 +534,11 @@ public class OrdersService {
         }
 
         // Cập nhật đơn hàng
+        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus());
         order.setStatus("CANCELLED");
+        if (needRefund) {
+            order.setPaymentStatus("REFUND_PENDING");
+        }
         order.setCancelReason(request.getReason().trim());
         order.setUpdatedAt(now);
         orderRepository.save(order);
@@ -537,7 +549,7 @@ public class OrdersService {
                 .changedBy(currentUser)
                 .previousStatus(currentStatus)
                 .newStatus("CANCELLED")
-                .note("Hủy đơn hàng: " + request.getReason().trim())
+                .note("Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
                 .build());
 
         return CancelOrderResponse.builder()
@@ -669,9 +681,13 @@ public class OrdersService {
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
-        if (!"WAITING_CONFIRMATION".equalsIgnoreCase(currentStatus) && !"PENDING_PAYMENT".equalsIgnoreCase(currentStatus)) {
+        boolean isWaitingConfirmation = "WAITING_CONFIRMATION".equalsIgnoreCase(currentStatus);
+        boolean isPaidPending = "PENDING_PAYMENT".equalsIgnoreCase(currentStatus) && "PAID".equalsIgnoreCase(order.getPaymentStatus());
+        if (!isWaitingConfirmation && !isPaidPending) {
             throw new AppException(ErrorCode.ERR_ORDER_INVALID_STATE,
-                    "Chỉ có thể xác nhận đơn hàng đang ở trạng thái Chờ xác nhận hoặc Chờ thanh toán!");
+                    "PENDING_PAYMENT".equalsIgnoreCase(currentStatus)
+                            ? "Đơn hàng chuyển khoản chưa được thanh toán, không thể xác nhận giao hàng!"
+                            : "Chỉ có thể xác nhận đơn hàng đang ở trạng thái Chờ xác nhận!");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -690,7 +706,7 @@ public class OrdersService {
                 .order(order)
                 .carrierName(request.getCarrier().trim())
                 .trackingNumber(trackingCode)
-                .shippingStatus("PREPARING")
+                .shippingStatus(ShipmentStatus.READY_TO_PICK.name())
                 .recipientName(order.getRecipientName())
                 .recipientPhone(order.getRecipientPhone())
                 .shippingAddress(order.getShippingAddress())

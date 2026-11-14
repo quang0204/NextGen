@@ -299,4 +299,16 @@ public class PromotionsService {
                 .updatedAt(DateTimeUtil.formatIsoInstant(promotion.getUpdatedAt()))
                 .build();
     }
+
+    @Transactional
+    public void deletePromotion(Long id) {
+        User currentUser = securityHelper.authenticateStaffOrAdmin();
+        Promotion promotion = promotionRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_PROMOTION_NOT_FOUND,
+                        "Không tìm thấy chiến dịch khuyến mãi có ID " + id + "!"));
+        promotionVariantRepository.deleteByPromotion_PromotionId(id);
+        promotionRepository.delete(promotion);
+        auditLogRepository.log(currentUser, "DELETE_PROMOTION", "Promotions", id,
+                promotion.getName(), "DELETED");
+    }
 }

@@ -6,6 +6,8 @@ import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.shipment.*;
 import com.wedbackendservice.nextgen.dto.client.response.shipment.*;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
+import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
@@ -220,6 +222,10 @@ public class ShipmentsService {
         if (order != null) {
             String fromStatus = order.getStatus();
 
+            if (targetStatus == ShipmentStatus.PICKED || targetStatus == ShipmentStatus.IN_TRANSIT || targetStatus == ShipmentStatus.DELIVERED) {
+                exportOrderStockIfNotExported(order, operator);
+            }
+
             if (targetStatus == ShipmentStatus.PICKED || targetStatus == ShipmentStatus.IN_TRANSIT) {
                 synchronizedOrderStatus = "SHIPPING";
                 order.setStatus("SHIPPING");
@@ -233,12 +239,23 @@ public class ShipmentsService {
                 }
                 order.setUpdatedAt(LocalDateTime.now());
 
+                LocalDateTime paidNow = LocalDateTime.now();
                 Optional<Payment> paymentOpt = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
                 if (paymentOpt.isPresent()) {
                     Payment payment = paymentOpt.get();
-                    payment.setStatus("PAID");
-                    payment.setPaidAt(LocalDateTime.now());
+                    payment.setStatus(PaymentStatus.SUCCESS.name());
+                    payment.setPaidAt(paidNow);
                     paymentRepository.save(payment);
+                } else {
+                    paymentRepository.save(Payment.builder()
+                            .order(order)
+                            .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
+                            .paymentProvider("COD_SHIPPER")
+                            .amount(order.getFinalTotal())
+                            .status(PaymentStatus.SUCCESS.name())
+                            .transactionRef("COD-" + order.getOrderCode())
+                            .paidAt(paidNow)
+                            .build());
                 }
                 order.setPaymentStatus("PAID");
                 isPaymentCompleted = true;
@@ -328,27 +345,39 @@ public class ShipmentsService {
                     .note("Giao hàng thất bại: " + reason + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
                     .build());
 
+            boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
+                    order.getOrderId(), InventoryTransactionType.EXPORT.name());
+            LocalDateTime restockNow = LocalDateTime.now();
             List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
             for (OrderItem item : orderItems) {
                 ProductVariant variant = item.getVariant();
                 if (variant != null) {
-                    // Cập nhật kho bằng câu atomic update tránh race conditions
-                    int updatedRows = inventoryRepository.increaseQuantityAtomic(
-                            variant.getVariantId(), item.getQuantity(), LocalDateTime.now());
-
-                    if (updatedRows > 0) {
-                        restockedCount++;
+                    if (wasExported) {
+                        Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
+                        int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
+                        int updatedRows = inventoryRepository.increaseQuantityAtomic(
+                                variant.getVariantId(), item.getQuantity(), restockNow);
+                        if (updatedRows > 0) {
+                            restockedCount++;
+                        }
+                        inventoryTransactionRepository.save(InventoryTransaction.builder()
+                                .variant(variant)
+                                .order(order)
+                                .performedBy(operator)
+                                .transactionType(InventoryTransactionType.RETURN.name())
+                                .formCode("MB04")
+                                .quantity(item.getQuantity())
+                                .qtyBefore(qtyBefore)
+                                .qtyAfter(qtyBefore + item.getQuantity())
+                                .reason("Nhập hoàn kho do bưu tá giao hàng thất bại")
+                                .build());
+                    } else {
+                        int released = inventoryRepository.releaseStockAtomic(
+                                variant.getVariantId(), item.getQuantity(), restockNow);
+                        if (released > 0) {
+                            restockedCount++;
+                        }
                     }
-
-                    inventoryTransactionRepository.save(InventoryTransaction.builder()
-                            .variant(variant)
-                            .order(order)
-                            .performedBy(operator)
-                            .transactionType("IMPORT_RETURN")
-                            .formCode("MB04")
-                            .quantity(item.getQuantity())
-                            .reason("Nhập hoàn kho do bưu tá giao hàng thất bại")
-                            .build());
                 }
             }
 
@@ -480,5 +509,37 @@ public class ShipmentsService {
             case "CANCELLED" -> "Đã hủy";
             default -> status;
         };
+    }
+
+    private void exportOrderStockIfNotExported(Order order, User operator) {
+        if (inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
+                order.getOrderId(), InventoryTransactionType.EXPORT.name())) {
+            return;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        for (OrderItem item : orderItemRepository.findByOrderId(order.getOrderId())) {
+            ProductVariant v = item.getVariant();
+            if (v == null) continue;
+            Inventory inv = inventoryRepository.findWithLockByVariantId(v.getVariantId())
+                    .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                            "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
+            int onHandBefore = inv.getOnHandQty();
+            int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
+            if (updatedRows == 0) {
+                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                        "Tồn kho vật lý của SKU " + v.getSku() + " không đủ để xuất kho!");
+            }
+            inventoryTransactionRepository.save(InventoryTransaction.builder()
+                    .variant(v)
+                    .order(order)
+                    .performedBy(operator)
+                    .transactionType(InventoryTransactionType.EXPORT.name())
+                    .formCode("MB03")
+                    .quantity(-item.getQuantity())
+                    .qtyBefore(onHandBefore)
+                    .qtyAfter(onHandBefore - item.getQuantity())
+                    .reason("Xuất kho tự động khi bàn giao vận chuyển đơn #" + order.getOrderCode())
+                    .build());
+        }
     }
 }

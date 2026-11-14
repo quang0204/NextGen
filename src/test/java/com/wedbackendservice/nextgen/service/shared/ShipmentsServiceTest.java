@@ -156,6 +156,7 @@ class ShipmentsServiceTest {
     void updateShipmentStatus_Delivered_CompletesOrderAndPayment() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
         when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+        when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(100L, "EXPORT")).thenReturn(true);
 
         Payment payment = Payment.builder()
                 .paymentId(1L)
@@ -177,7 +178,7 @@ class ShipmentsServiceTest {
         assertThat(res.getIsPaymentCompleted()).isTrue();
 
         assertThat(order.getStatus()).isEqualTo("COMPLETED");
-        assertThat(payment.getStatus()).isEqualTo("PAID");
+        assertThat(payment.getStatus()).isEqualTo("SUCCESS");
         verify(shipmentRepository).save(shipment);
         verify(orderRepository, atLeastOnce()).save(order);
         verify(paymentRepository).save(payment);
@@ -188,6 +189,7 @@ class ShipmentsServiceTest {
     void failDelivery_Success_RestocksInventory() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
         when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+        when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(100L, "EXPORT")).thenReturn(true);
         when(orderItemRepository.findByOrderId(100L)).thenReturn(List.of(orderItem));
         when(inventoryRepository.increaseQuantityAtomic(eq(50L), eq(2), any(LocalDateTime.class))).thenReturn(1);
 
