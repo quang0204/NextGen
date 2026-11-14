@@ -64,6 +64,7 @@ public class MinioStorageService {
             ensureBucketReady(minioProperties.getBucket().getProducts());
             ensureBucketReady(minioProperties.getBrandsBucket());
             ensureBucketReady(minioProperties.getCategoriesBucket());
+            ensureBucketReady(minioProperties.getBucket().getReviews());
         } catch (Exception e) {
             log.warn("MinIO chưa sẵn sàng khi khởi động ({}). Sẽ tự khởi tạo bucket ở lần upload đầu tiên.", e.getMessage());
         }

@@ -43,6 +43,20 @@ public class StorageFileService {
             "image/svg+xml"
     );
 
+    /** Mỗi đánh giá tối đa 5 ảnh (API 12.2). */
+    public static final int MAX_REVIEW_IMAGES = 5;
+
+    /** Khóa Redis đánh dấu ảnh đánh giá đang được gửi kèm một đánh giá (chống dùng 1 ảnh cho 2 đánh giá). */
+    public static final String REVIEW_CLAIM_PREFIX = "storage:review-claim:";
+
+    /** Ảnh đánh giá không nhận SVG (có thể chứa script). */
+    private static final Set<String> REVIEW_MIME_TYPES = Set.of(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif"
+    );
+
     private static final Map<String, String> MIME_TO_EXT = Map.of(
             "image/jpeg", "jpg",
             "image/jpg", "jpg",
@@ -93,11 +107,20 @@ public class StorageFileService {
     }
 
     public List<PresignedUploadItemResponse> generatePresignedUrls(PresignedUploadRequest request) {
-        User currentUser = securityHelper.authenticateStaffOrAdmin();
+        String rawType = request.getStorageType();
+        boolean isReview = rawType != null
+                && (rawType.trim().equalsIgnoreCase("REVIEW") || rawType.trim().equalsIgnoreCase("REVIEWS"));
+
+        // Ảnh đánh giá: khách đã đăng nhập tự tải lên. Các loại còn lại: chỉ STAFF / ADMIN.
+        User currentUser = isReview ? securityHelper.getCurrentUser() : securityHelper.authenticateStaffOrAdmin();
 
         List<PresignedUploadRequest.FileItem> files = request.getFiles();
         if (files == null || files.isEmpty()) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Danh sách tệp tải lên không được để trống.");
+        }
+
+        if (isReview) {
+            return generateReviewPresignedUrls(currentUser, files);
         }
 
         String rawType = request.getStorageType();
@@ -211,7 +234,6 @@ public class StorageFileService {
 
     @Transactional(rollbackFor = Exception.class)
     public StorageFileResponse confirmUpload(ConfirmUploadRequest request) {
-        User currentUser = securityHelper.authenticateStaffOrAdmin();
         String uploadId = request.getUploadId().trim();
         String requestedObjectKey = request.getObjectKey().trim();
 
@@ -220,6 +242,10 @@ public class StorageFileService {
             throw new AppException(ErrorCode.STORAGE_SESSION_NOT_FOUND,
                     "Phiên tải ảnh '" + uploadId + "' không tồn tại hoặc đã hết hạn.");
         }
+
+        // Ảnh đánh giá: khách đã đăng nhập tự xác nhận (kiểm tra đúng chủ ở dưới). Loại khác: chỉ STAFF / ADMIN.
+        boolean isReviewSession = StorageType.REVIEWS.name().equalsIgnoreCase(session.getStorageType());
+        User currentUser = isReviewSession ? securityHelper.getCurrentUser() : securityHelper.authenticateStaffOrAdmin();
 
         if (!UploadSessionData.STATUS_PENDING.equals(session.getStatus())) {
             throw new AppException(ErrorCode.STORAGE_SESSION_INVALID,
@@ -370,7 +396,15 @@ public class StorageFileService {
         // Nhánh 4: Upload trước (brandId == null && categoryId == null && productId == null)
         session.setStatus(UploadSessionData.STATUS_COMPLETED);
         long ttlHours = Math.max(1, minioProperties.getCompletedSessionTtlHours());
-        tokenRedisService.saveUploadSession(uploadId, session, Duration.ofHours(ttlHours));
+        if (isReviewSession) {
+            // Ảnh đánh giá: hết hạn mà khách chưa gửi đánh giá thì job dọn dẹp xóa ảnh khỏi MinIO.
+            // Phiên giữ thêm 30 phút để job còn đọc được bucket / objectKey khi đến hạn.
+            tokenRedisService.saveUploadSession(uploadId, session, Duration.ofHours(ttlHours).plusMinutes(30));
+            tokenRedisService.addPendingUpload(uploadId,
+                    System.currentTimeMillis() + Duration.ofHours(ttlHours).toMillis());
+        } else {
+            tokenRedisService.saveUploadSession(uploadId, session, Duration.ofHours(ttlHours));
+        }
 
         boolean isPrimary = Boolean.TRUE.equals(request.getIsPrimary());
         return StorageFileResponse.builder()
@@ -388,6 +422,75 @@ public class StorageFileService {
                 .sortOrder(request.getSortOrder())
                 .status(UploadSessionData.STATUS_COMPLETED)
                 .build();
+    }
+
+    /**
+     * Ảnh đánh giá: tối đa 5 ảnh, không gắn sản phẩm / thương hiệu / danh mục.
+     * Sau khi confirm, phiên được giữ trạng thái COMPLETED để API 12.2 lấy link lưu vào bảng review_images.
+     */
+    private List<PresignedUploadItemResponse> generateReviewPresignedUrls(
+            User currentUser, List<PresignedUploadRequest.FileItem> files) {
+        if (files.size() > MAX_REVIEW_IMAGES) {
+            throw new AppException(ErrorCode.STORAGE_MAX_FILES_EXCEEDED,
+                    "Mỗi đánh giá chỉ được tải lên tối đa " + MAX_REVIEW_IMAGES + " ảnh.");
+        }
+
+        String bucket = minioProperties.getBucket().getReviews();
+        int expirySeconds = Math.max(60, minioProperties.getPresignedUploadExpiryMinutes() * 60);
+        long now = System.currentTimeMillis();
+        long expiresAt = now + expirySeconds * 1000L;
+        long maxBytes = minioProperties.getMaxFileSizeBytes();
+
+        List<PresignedUploadItemResponse> responses = new ArrayList<>(files.size());
+        for (PresignedUploadRequest.FileItem file : files) {
+            String contentType = normalizeMimeType(file.getContentType());
+            if (!REVIEW_MIME_TYPES.contains(contentType)) {
+                throw new AppException(ErrorCode.STORAGE_INVALID_FILE,
+                        "Định dạng ảnh không hợp lệ (" + file.getContentType() + "). Ảnh đánh giá chỉ nhận JPEG, PNG, WEBP, GIF.");
+            }
+            if (file.getFileSize() == null || file.getFileSize() <= 0 || file.getFileSize() > maxBytes) {
+                throw new AppException(ErrorCode.STORAGE_FILE_TOO_LARGE,
+                        "Kích thước tệp '" + file.getFileName() + "' vượt quá giới hạn " + (maxBytes / (1024 * 1024)) + "MB.");
+            }
+
+            String uploadId = UUID.randomUUID().toString();
+            String objectKey = "users/" + currentUser.getUserId() + "/" + uploadId + "-"
+                    + sanitizeFileName(file.getFileName(), contentType);
+            String uploadUrl = minioStorageService.generatePresignedUploadUrl(bucket, objectKey, contentType, expirySeconds);
+
+            UploadSessionData sessionData = UploadSessionData.builder()
+                    .uploadId(uploadId)
+                    .ownerId(currentUser.getUserId())
+                    .storageType(StorageType.REVIEWS.name())
+                    .bucket(bucket)
+                    .objectKey(objectKey)
+                    .originalFileName(file.getFileName().trim())
+                    .contentType(contentType)
+                    .expectedSize(file.getFileSize())
+                    .canonicalUrl(minioStorageService.buildCanonicalUrl(bucket, objectKey))
+                    .status(UploadSessionData.STATUS_PENDING)
+                    .presignedExpiresAtMillis(expiresAt)
+                    .createdAtMillis(now)
+                    .build();
+
+            tokenRedisService.saveUploadSession(uploadId, sessionData, Duration.ofSeconds(expirySeconds + 60L));
+            tokenRedisService.addPendingUpload(uploadId, expiresAt);
+
+            responses.add(PresignedUploadItemResponse.builder()
+                    .uploadId(uploadId)
+                    .uploadUrl(uploadUrl)
+                    .bucket(bucket)
+                    .objectKey(objectKey)
+                    .originalFileName(file.getFileName().trim())
+                    .contentType(contentType)
+                    .fileSize(file.getFileSize())
+                    .expiresAt(Instant.ofEpochMilli(expiresAt))
+                    .expiresAtEpochMs(expiresAt)
+                    .expiresInSeconds(expirySeconds)
+                    .requiredHeaders(Map.of("Content-Type", contentType))
+                    .build());
+        }
+        return responses;
     }
 
     public String reserveInputBrandLogo(String logoUploadId, String oldLogoUrl) {
@@ -471,7 +574,13 @@ public class StorageFileService {
                     cleaned++;
                     continue;
                 }
-                if (UploadSessionData.STATUS_PENDING.equals(session.getStatus())) {
+                // Ảnh đánh giá đã confirm nhưng quá hạn mà không được gắn vào đánh giá nào
+                boolean unusedReviewImage = StorageType.REVIEWS.name().equalsIgnoreCase(session.getStorageType())
+                        && UploadSessionData.STATUS_COMPLETED.equals(session.getStatus());
+                if (unusedReviewImage && tokenRedisService.getValue(REVIEW_CLAIM_PREFIX + uploadId) != null) {
+                    continue; // khách đang gửi đánh giá với ảnh này, để lần dọn sau
+                }
+                if (UploadSessionData.STATUS_PENDING.equals(session.getStatus()) || unusedReviewImage) {
                     minioStorageService.deleteObject(session.getBucket(), session.getObjectKey());
                     tokenRedisService.deleteUploadSession(uploadId);
                 }
