@@ -4,10 +4,11 @@ public enum TicketStatus {
     OPEN,
     IN_PROGRESS,
     RESOLVED,
-    CLOSED;
+    CLOSED,
+    REJECTED;
 
     public boolean isFinal() {
-        return this == RESOLVED || this == CLOSED;
+        return this == RESOLVED || this == CLOSED || this == REJECTED;
     }
 
     public static TicketStatus from(String value) {

@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.repository;
 
 import com.wedbackendservice.nextgen.entity.SupportTicket;
+import com.wedbackendservice.nextgen.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -24,4 +25,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
 
     @Query("SELECT t.status, COUNT(t) FROM SupportTicket t GROUP BY t.status")
     List<Object[]> countByStatusGrouped();
+
+    List<SupportTicket> findByUserOrderByCreatedAtDesc(User user);
+
+    List<SupportTicket> findByUser_UserIdOrderByCreatedAtDesc(Long userId);
 }
