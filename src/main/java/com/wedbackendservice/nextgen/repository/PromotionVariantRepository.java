@@ -47,4 +47,20 @@ public interface PromotionVariantRepository extends JpaRepository<PromotionVaria
     List<PromotionVariant> findActivePromotionsForVariantIds(
             @Param("variantIds") Collection<Long> variantIds,
             @Param("now") LocalDateTime now);
+    @Query("SELECT pv FROM PromotionVariant pv " +
+           "JOIN FETCH pv.promotion p " +
+           "JOIN FETCH pv.variant v " +
+           "LEFT JOIN FETCH v.product prod " +
+           "WHERE (v.variantId IN :variantIds OR prod.productId IN :productIds) " +
+           "AND (p.status IS NULL OR UPPER(p.status) <> 'ENDED') " +
+           "AND (:excludePromoId IS NULL OR p.promotionId <> :excludePromoId) " +
+           "AND (p.endDate IS NULL OR (p.endDate > :now AND (:newStartAt IS NULL OR p.endDate > :newStartAt))) " +
+           "AND (p.startDate IS NULL OR :newEndAt IS NULL OR p.startDate < :newEndAt)")
+    List<PromotionVariant> findConflictingPromotionVariants(
+            @Param("variantIds") Collection<Long> variantIds,
+            @Param("productIds") Collection<Long> productIds,
+            @Param("excludePromoId") Long excludePromoId,
+            @Param("now") LocalDateTime now,
+            @Param("newStartAt") LocalDateTime newStartAt,
+            @Param("newEndAt") LocalDateTime newEndAt);
 }

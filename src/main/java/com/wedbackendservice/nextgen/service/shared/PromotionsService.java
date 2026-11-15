@@ -30,8 +30,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -206,12 +209,17 @@ public class PromotionsService {
         // Validate variants & prices
         List<ProductVariant> variants = new ArrayList<>();
         List<BigDecimal> promoPrices = new ArrayList<>();
+        Set<Long> seenVariantIds = new HashSet<>();
 
         Map<Long, ProductVariant> variantById = productVariantRepository.findAllById(
                         request.getVariants().stream().map(PromotionVariantItemRequest::getVariantId).toList())
                 .stream().collect(Collectors.toMap(ProductVariant::getVariantId, v -> v));
 
         for (PromotionVariantItemRequest item : request.getVariants()) {
+            if (!seenVariantIds.add(item.getVariantId())) {
+                throw new AppException(ErrorCode.INVALID_REQUEST,
+                        "Biến thể ID " + item.getVariantId() + " bị trùng lặp trong cùng chiến dịch!");
+            }
             ProductVariant pv = variantById.get(item.getVariantId());
             if (pv == null) {
                 throw new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + item.getVariantId() + "!");
@@ -229,6 +237,9 @@ public class PromotionsService {
         }
 
         String initialStatus = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase() : PromotionStatus.UPCOMING.name();
+        if (!PromotionStatus.ENDED.name().equalsIgnoreCase(initialStatus)) {
+            validateNoOverlappingPromotion(variants, startAt, endAt, null);
+        }
 
         Promotion promotion = Promotion.builder()
                 .promotionName(request.getName().trim())
@@ -284,6 +295,11 @@ public class PromotionsService {
         if (PromotionStatus.PAUSED.name().equalsIgnoreCase(newStatus) || PromotionStatus.ENDED.name().equalsIgnoreCase(newStatus)) {
             promotion.setIsActive(false);
         } else if (PromotionStatus.ACTIVE.name().equalsIgnoreCase(newStatus)) {
+            List<ProductVariant> promoVariants = promotionVariantRepository.findByPromotion_PromotionId(id)
+                    .stream().map(PromotionVariant::getVariant).filter(Objects::nonNull).toList();
+            if (!promoVariants.isEmpty()) {
+                validateNoOverlappingPromotion(promoVariants, promotion.getStartDate(), promotion.getEndDate(), id);
+            }
             promotion.setIsActive(true);
         }
         promotion.setUpdatedAt(LocalDateTime.now());
@@ -310,5 +326,38 @@ public class PromotionsService {
         promotionRepository.delete(promotion);
         auditLogRepository.log(currentUser, "DELETE_PROMOTION", "Promotions", id,
                 promotion.getName(), "DELETED");
+    }
+
+    private void validateNoOverlappingPromotion(
+            List<ProductVariant> variants,
+            LocalDateTime startAt,
+            LocalDateTime endAt,
+            Long excludePromoId) {
+        if (variants.isEmpty()) {
+            return;
+        }
+        List<Long> variantIds = variants.stream().map(ProductVariant::getVariantId).toList();
+        List<Long> productIds = variants.stream()
+                .map(ProductVariant::getProduct)
+                .filter(Objects::nonNull)
+                .map(Product::getProductId)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            productIds = List.of(-1L);
+        }
+
+        List<PromotionVariant> conflicts = promotionVariantRepository.findConflictingPromotionVariants(
+                variantIds, productIds, excludePromoId, LocalDateTime.now(), startAt, endAt);
+        if (!conflicts.isEmpty()) {
+            PromotionVariant conflict = conflicts.get(0);
+            ProductVariant cv = conflict.getVariant();
+            String prodName = cv.getProduct() != null ? cv.getProduct().getProductName() : cv.getSku();
+            Promotion cp = conflict.getPromotion();
+            String endStr = cp.getEndDate() != null ? DateTimeUtil.formatIsoInstant(cp.getEndDate()) : "không giới hạn";
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    String.format("Sản phẩm '%s' đang tham gia chiến dịch '%s' (kết thúc: %s). Không thể cộng dồn 2 chiến dịch khuyến mãi cùng lúc!",
+                            prodName, cp.getName(), endStr));
+        }
     }
 }
