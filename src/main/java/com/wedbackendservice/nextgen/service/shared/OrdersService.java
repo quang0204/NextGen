@@ -61,6 +61,7 @@ public class OrdersService {
     private final AuditLogRepository auditLogRepository;
     private final TokenRedisService tokenRedisService;
     private final PaymentRepository paymentRepository;
+    private final NotificationRepository notificationRepository;
     private final OrderMapper orderMapper;
     @org.springframework.beans.factory.annotation.Value("${payment.bank-transfer.expire-minutes:30}")
     private int paymentExpireMinutes = 30;
@@ -325,6 +326,21 @@ public class OrdersService {
                 .note("Khởi tạo đơn hàng " + payMethod + " thành công (Phiếu MB01). Tồn kho đã được giữ chỗ.")
                 .build());
 
+        // Gửi thông báo nội bộ cho khách hàng về tiến trình đơn hàng
+        if (savedOrder.getUser() != null) {
+            String notifTitle = isTransfer ? "Đơn hàng đang chờ thanh toán" : "Đặt hàng thành công";
+            String notifContent = isTransfer
+                    ? "Đơn hàng " + savedOrder.getOrderCode() + " đã được tạo. Vui lòng hoàn tất thanh toán chuyển khoản."
+                    : "Đơn hàng " + savedOrder.getOrderCode() + " đã được tạo thành công và đang chờ xác nhận.";
+            notificationRepository.save(Notification.builder()
+                    .user(savedOrder.getUser())
+                    .order(savedOrder)
+                    .title(notifTitle)
+                    .content(notifContent)
+                    .isRead(false)
+                    .build());
+        }
+
         // 7. Xóa món đã mua khỏi giỏ hàng
         try {
             cartRepository.findByUserId(currentUser.getUserId()).ifPresent(cart ->
@@ -552,6 +568,17 @@ public class OrdersService {
                 .note("Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
                 .build());
 
+        // Gửi thông báo hủy đơn cho khách hàng
+        if (order.getUser() != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(order.getUser())
+                    .order(order)
+                    .title("Đơn hàng đã bị hủy")
+                    .content("Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + request.getReason().trim())
+                    .isRead(false)
+                    .build());
+        }
+
         return CancelOrderResponse.builder()
                 .orderCode(order.getOrderCode())
                 .status("CANCELLED")
@@ -729,6 +756,17 @@ public class OrdersService {
         auditLogRepository.log(operator, "CONFIRM_ORDER", "Orders", order.getOrderId(),
                 "status: " + currentStatus, "status: CONFIRMED, tracking: " + trackingCode);
 
+        // Gửi thông báo xác nhận đơn hàng cho khách hàng
+        if (order.getUser() != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(order.getUser())
+                    .order(order)
+                    .title("Đơn hàng đã được xác nhận")
+                    .content("Đơn hàng " + order.getOrderCode() + " đã được xác nhận (MB02) và đang được chuẩn bị để giao cho " + request.getCarrier().trim() + ".")
+                    .isRead(false)
+                    .build());
+        }
+
         String confirmedByName = operator.getFullName() != null
                 ? operator.getFullName() + " (" + (operator.getRole() != null ? operator.getRole().name() : "Nhân viên") + ")"
                 : "Nhân viên";
@@ -840,6 +878,17 @@ public class OrdersService {
         auditLogRepository.log(operator, "PACK_EXPORT_ORDER", "Orders", order.getOrderId(),
                 "status: " + currentStatus, "status: SHIPPING, form: MB03");
 
+        // Gửi thông báo đóng gói & xuất kho cho khách hàng
+        if (order.getUser() != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(order.getUser())
+                    .order(order)
+                    .title("Đơn hàng đang được giao")
+                    .content("Kiện hàng " + order.getOrderCode() + " đã xuất kho (MB03) và đang trên đường giao đến bạn.")
+                    .isRead(false)
+                    .build());
+        }
+
         String exportedByName = operator.getFullName() != null
                 ? operator.getFullName() + " (" + (operator.getRole() != null ? operator.getRole().name() : "Thủ kho") + ")"
                 : "Thủ kho";
@@ -931,6 +980,17 @@ public class OrdersService {
             log.warn("Không thể ghi audit log confirmOrderPayment: {}", e.getMessage());
         }
 
+        // Gửi thông báo xác nhận thanh toán cho khách hàng
+        if (updated.getUser() != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(updated.getUser())
+                    .order(updated)
+                    .title("Xác nhận thanh toán thành công")
+                    .content("Đơn hàng " + updated.getOrderCode() + " đã được xác nhận thanh toán thành công và chuyển sang trạng thái chờ chuẩn bị.")
+                    .isRead(false)
+                    .build());
+        }
+
         return getOrderDetail(updated.getOrderCode());
     }
 
@@ -1011,6 +1071,17 @@ public class OrdersService {
                     .newStatus("CANCELLED")
                     .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR " + expireMins + " phút và đã nhả toàn bộ tồn kho giữ chỗ.")
                     .build());
+
+            // 5. Gửi thông báo hết hạn cho khách hàng
+            if (order.getUser() != null) {
+                notificationRepository.save(Notification.builder()
+                        .user(order.getUser())
+                        .order(order)
+                        .title("Đơn hàng đã tự động bị hủy")
+                        .content("Đơn hàng " + order.getOrderCode() + " đã tự động hủy do quá thời hạn thanh toán " + expireMins + " phút.")
+                        .isRead(false)
+                        .build());
+            }
         }
         orderRepository.saveAll(expiredOrders);
         orderStatusHistoryRepository.saveAll(historiesToSave);

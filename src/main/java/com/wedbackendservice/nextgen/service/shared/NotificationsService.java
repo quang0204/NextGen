@@ -33,6 +33,12 @@ public class NotificationsService {
      * API 13.3: danh sách thông báo của tôi.
      */
     @Transactional(readOnly = true)
+    public long getUnreadCount() {
+        User user = securityHelper.getCurrentUser();
+        return notificationRepository.countByUser_UserIdAndIsReadFalse(user.getUserId());
+    }
+
+    @Transactional(readOnly = true)
     public NotificationListResponse getMyNotifications(int page, int size) {
         User user = securityHelper.getCurrentUser();
         int safePage = Math.max(page, 1);

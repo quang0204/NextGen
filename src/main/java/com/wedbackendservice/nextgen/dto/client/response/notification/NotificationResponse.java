@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class NotificationResponse {
     Long notificationId;
     Long orderId;
+    String orderCode;
     String title;
     String content;
     Boolean isRead;

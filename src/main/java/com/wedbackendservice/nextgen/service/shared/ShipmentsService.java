@@ -278,6 +278,32 @@ public class ShipmentsService {
                                 (request.getNote() != null ? " (" + request.getNote() + ")" : ""))
                         .build());
             }
+
+            // Gửi thông báo cập nhật tiến trình vận chuyển cho khách hàng
+            if (order.getUser() != null) {
+                String notifTitle = null;
+                String notifContent = null;
+                if (targetStatus == ShipmentStatus.PICKED) {
+                    notifTitle = "Đơn vị vận chuyển đã lấy hàng";
+                    notifContent = "Đơn hàng " + order.getOrderCode() + " đã được đơn vị vận chuyển tiếp nhận và chuẩn bị trung chuyển.";
+                } else if (targetStatus == ShipmentStatus.IN_TRANSIT) {
+                    notifTitle = "Đơn hàng đang trên đường giao";
+                    notifContent = "Đơn hàng " + order.getOrderCode() + " đang được nhân viên giao hàng vận chuyển đến bạn.";
+                } else if (targetStatus == ShipmentStatus.DELIVERED) {
+                    notifTitle = "Giao hàng thành công";
+                    notifContent = "Đơn hàng " + order.getOrderCode() + " đã được giao thành công. Cảm ơn bạn đã mua sắm tại NextGen!";
+                }
+
+                if (notifTitle != null) {
+                    notificationRepository.save(Notification.builder()
+                            .user(order.getUser())
+                            .order(order)
+                            .title(notifTitle)
+                            .content(notifContent)
+                            .isRead(false)
+                            .build());
+                }
+            }
         }
 
         return ShipmentStatusSyncResponse.builder()

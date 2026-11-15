@@ -17,6 +17,11 @@ public class NotificationsController {
     /**
      * API 13.3: Danh sách thông báo.
      */
+    @GetMapping("/unread-count")
+    public ApiResponse<Long> getUnreadCount() {
+        return ApiResponse.ok(notificationsService.getUnreadCount());
+    }
+
     @GetMapping
     public ApiResponse<NotificationListResponse> getNotifications(
             @RequestParam(defaultValue = "1") int page,
