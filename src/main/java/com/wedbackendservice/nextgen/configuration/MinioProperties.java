@@ -29,6 +29,7 @@ public class MinioProperties {
     long cleanupIntervalMs = 300000L;
     String brandsBucket = "brands";
     String categoriesBucket = "categories";
+    String bannersBucket = "banner";
     String publicBaseUrl = "";
 
     @Getter
@@ -40,5 +41,6 @@ public class MinioProperties {
         String categories = "categories";
         String avatars = "avatars";
         String reviews = "reviews";
+        String banners = "banner";
     }
 }

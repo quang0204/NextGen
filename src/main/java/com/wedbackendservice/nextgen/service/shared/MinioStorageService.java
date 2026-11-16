@@ -54,6 +54,10 @@ public class MinioStorageService {
         return minioProperties.getCategoriesBucket();
     }
 
+    public String getBannersBucket() {
+        return minioProperties.getBannersBucket();
+    }
+
     public int getPresignedExpirySeconds() {
         return minioProperties.getPresignedExpirySeconds();
     }
@@ -65,9 +69,67 @@ public class MinioStorageService {
             ensureBucketReady(minioProperties.getBrandsBucket());
             ensureBucketReady(minioProperties.getCategoriesBucket());
             ensureBucketReady(minioProperties.getBucket().getReviews());
+            ensureBucketReady(getBannersBucket());
+            syncBannersToMinio();
         } catch (Exception e) {
             log.warn("MinIO chưa sẵn sàng khi khởi động ({}). Sẽ tự khởi tạo bucket ở lần upload đầu tiên.", e.getMessage());
         }
+    }
+
+    public void syncBannersToMinio() {
+        String bucket = getBannersBucket();
+        try {
+            ensureBucketReady(bucket);
+            String[] bannerFiles = new String[]{"banner1.png", "banner2.png"};
+            for (String fileName : bannerFiles) {
+                byte[] bytes = loadBannerBytes(fileName);
+                if (bytes != null && bytes.length > 0) {
+                    try (InputStream is = new java.io.ByteArrayInputStream(bytes)) {
+                        minioInternalClient.putObject(
+                                PutObjectArgs.builder()
+                                        .bucket(bucket)
+                                        .object(fileName)
+                                        .stream(is, bytes.length, -1)
+                                        .contentType("image/png")
+                                        .build()
+                        );
+                        log.info("Đã đồng bộ banner lên MinIO thành công: bucket={}, object={}, size={} bytes", bucket, fileName, bytes.length);
+                    }
+                } else {
+                    log.warn("Không tìm thấy tệp banner '{}' trên hệ thống để tải lên MinIO", fileName);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Không thể đồng bộ banner lên MinIO bucket '{}': {}", bucket, e.getMessage());
+        }
+    }
+
+    private byte[] loadBannerBytes(String fileName) {
+        // 1. Đọc từ classpath (src/main/resources/banners/)
+        try (InputStream is = getClass().getResourceAsStream("/banners/" + fileName)) {
+            if (is != null) {
+                byte[] data = is.readAllBytes();
+                if (data.length > 0) return data;
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Đọc từ đường dẫn tuyệt đối d:/banner/
+        try {
+            java.nio.file.Path p = java.nio.file.Path.of("d:/banner/" + fileName);
+            if (java.nio.file.Files.exists(p)) {
+                return java.nio.file.Files.readAllBytes(p);
+            }
+        } catch (Exception ignored) {}
+
+        // 3. Đọc từ thư mục làm việc banners/
+        try {
+            java.nio.file.Path p = java.nio.file.Path.of("banners/" + fileName);
+            if (java.nio.file.Files.exists(p)) {
+                return java.nio.file.Files.readAllBytes(p);
+            }
+        } catch (Exception ignored) {}
+
+        return null;
     }
 
     public void ensureBucketReady(String bucket) {
