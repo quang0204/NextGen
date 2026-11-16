@@ -55,6 +55,7 @@ public class ReturnsService {
     private final AuditLogRepository auditLogRepository;
     private final OrderStatusHistoryRepository orderStatusHistoryRepository;
     private final NotificationRepository notificationRepository;
+    private final VoucherRepository voucherRepository;
     private final SecurityHelper securityHelper;
     private final ObjectMapper objectMapper;
 
@@ -422,8 +423,21 @@ public class ReturnsService {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không hợp lệ khi chấp thuận đổi trả.");
         }
         Order order = returnRequest.getOrder();
-        if (order != null && order.getFinalAmount() != null && request.getRefundAmount().compareTo(order.getFinalAmount()) > 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không được vượt quá giá trị đơn hàng (" + order.getFinalAmount() + " VND).");
+        if (order != null && order.getFinalAmount() != null) {
+            BigDecimal previouslyRefunded = returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
+                    .stream()
+                    .filter(r -> !r.getReturnId().equals(returnRequest.getReturnId()) && "APPROVED".equalsIgnoreCase(r.getStatus()) && r.getRefundAmount() != null)
+                    .map(ReturnRequest::getRefundAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal remainingRefundable = order.getFinalAmount().subtract(previouslyRefunded);
+            if (remainingRefundable.compareTo(BigDecimal.ZERO) < 0) {
+                remainingRefundable = BigDecimal.ZERO;
+            }
+            if (request.getRefundAmount().compareTo(remainingRefundable) > 0) {
+                throw new AppException(ErrorCode.INVALID_REQUEST,
+                        String.format("Số tiền hoàn trả (%s VND) vượt quá số tiền còn lại có thể hoàn của đơn hàng (%s VND)!",
+                                request.getRefundAmount(), remainingRefundable));
+            }
         }
         if (order != null && request.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
             String pStatus = order.getPaymentStatus() != null ? order.getPaymentStatus().trim().toUpperCase() : "";
@@ -553,6 +567,11 @@ public class ReturnsService {
             order.setPaymentStatus(isPartial ? "PARTIALLY_REFUNDED" : PaymentStatus.REFUNDED.name());
             order.setUpdatedAt(now);
             orderRepository.save(order);
+
+            // Hoàn trả lại lượt dùng voucher cho khách hàng nếu đơn hàng được hoàn trả toàn bộ
+            if (!isPartial && order.getVoucher() != null) {
+                voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
+            }
 
             auditLogRepository.log(currentUser, "PAYMENT_REFUND", "Payments", refundPayment.getPaymentId(),
                     null, (isPartial ? "Hoàn trả một phần " : "Hoàn trả ") + request.getRefundAmount() + " VND cho yêu cầu đổi trả #" + returnRequest.getReturnId());

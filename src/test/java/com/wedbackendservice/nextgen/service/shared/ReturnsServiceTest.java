@@ -71,6 +71,9 @@ class ReturnsServiceTest {
     private NotificationRepository notificationRepository;
 
     @Mock
+    private VoucherRepository voucherRepository;
+
+    @Mock
     private SecurityHelper securityHelper;
 
     @Spy
@@ -440,6 +443,92 @@ class ReturnsServiceTest {
         assertThatThrownBy(() -> returnsService.inspectReturn(35L, request))
                 .isInstanceOf(AppException.class)
                 .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
+    @DisplayName("Thẩm định Chấp thuận thất bại khi số tiền hoàn vượt quá số tiền còn lại sau lần hoàn trước")
+    void inspectReturn_RefundExceedsCumulativeRemaining_ThrowsException() {
+        when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+
+        // Đơn hàng 29.990.000đ, đã hoàn 20.000.000đ ở phiếu khác (returnId 34)
+        ReturnRequest previousApprovedReturn = ReturnRequest.builder()
+                .returnId(34L)
+                .order(testOrder)
+                .status("APPROVED")
+                .refundAmount(BigDecimal.valueOf(20000000))
+                .build();
+        when(returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(210L)))
+                .thenReturn(List.of(previousApprovedReturn));
+
+        ReturnRequest pendingReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .status("PENDING")
+                .build();
+        when(returnRequestRepository.findById(35L)).thenReturn(Optional.of(pendingReturn));
+
+        // Yêu cầu hoàn thêm 15.000.000đ (20tr + 15tr = 35tr > 29.99tr)
+        InspectReturnRequest request = InspectReturnRequest.builder()
+                .status("APPROVED")
+                .inspectionResult("Lỗi camera")
+                .refundAmount(BigDecimal.valueOf(15000000))
+                .restockItems(List.of(
+                        RestockItemRequest.builder().variantId(101L).quantity(1).build()
+                ))
+                .build();
+
+        assertThatThrownBy(() -> returnsService.inspectReturn(35L, request))
+                .isInstanceOf(AppException.class)
+                .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST));
+    }
+
+    @Test
+    @DisplayName("Thẩm định Chấp thuận hoàn toàn bộ đơn có voucher thì hoàn lại lượt dùng voucher")
+    void inspectReturn_FullRefund_DecrementsVoucherCount() {
+        when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+
+        Voucher testVoucher = Voucher.builder()
+                .voucherId(99L)
+                .voucherCode("GIAM200K")
+                .usedCount(5)
+                .build();
+        testOrder.setVoucher(testVoucher);
+
+        ReturnRequest pendingReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .status("PENDING")
+                .build();
+        when(returnRequestRepository.findById(35L)).thenReturn(Optional.of(pendingReturn));
+        when(returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(210L)))
+                .thenReturn(List.of(pendingReturn));
+
+        ProductVariant variant = ProductVariant.builder().variantId(101L).sku("IP15PM").build();
+        OrderItem orderItem = OrderItem.builder().variant(variant).quantity(1).build();
+        when(orderItemRepository.findByOrderId(210L)).thenReturn(List.of(orderItem));
+        when(productVariantRepository.findById(101L)).thenReturn(Optional.of(variant));
+
+        Inventory inv = Inventory.builder().quantity(10).reservedQuantity(0).build();
+        when(inventoryRepository.findWithLockByVariantId(101L)).thenReturn(Optional.of(inv));
+        when(inventoryRepository.increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class))).thenReturn(1);
+        when(voucherRepository.decrementUsedCountAtomic(99L)).thenReturn(1);
+
+        InspectReturnRequest request = InspectReturnRequest.builder()
+                .status("APPROVED")
+                .inspectionResult("Lỗi màn hình hoàn toàn bộ")
+                .refundAmount(BigDecimal.valueOf(29990000)) // Hoàn 100%
+                .restockItems(List.of(
+                        RestockItemRequest.builder().variantId(101L).quantity(1).build()
+                ))
+                .build();
+
+        InspectReturnResponse response = returnsService.inspectReturn(35L, request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getStatus()).isEqualTo("APPROVED");
+        verify(voucherRepository, times(1)).decrementUsedCountAtomic(99L);
     }
 
     @Test
