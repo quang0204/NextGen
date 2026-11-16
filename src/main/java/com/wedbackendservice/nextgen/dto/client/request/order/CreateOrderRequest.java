@@ -31,6 +31,8 @@ public class CreateOrderRequest {
     @Builder.Default
     String shippingMethod = "standard";
 
+    BigDecimal shippingFee;
+
     BigDecimal expectedTotalAmount;
 
     String voucherCode;

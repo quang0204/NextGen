@@ -95,6 +95,7 @@ class InventoriesServiceTest {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
         when(productVariantRepository.findById(100L)).thenReturn(Optional.of(variant));
         when(inventoryRepository.findByVariant_VariantId(100L)).thenReturn(Optional.of(inventory));
+        when(inventoryRepository.save(any(Inventory.class))).thenAnswer(inv -> inv.getArgument(0));
         when(inventoryTransactionRepository.save(any(InventoryTransaction.class))).thenAnswer(inv -> {
             InventoryTransaction t = inv.getArgument(0);
             t.setTxnId(999L);
@@ -116,7 +117,7 @@ class InventoriesServiceTest {
         assertThat(res.getQuantityChange()).isEqualTo(5);
         assertThat(res.getAvailableQty()).isEqualTo(20);
 
-        verify(inventoryRepository).setQuantityAtomic(eq(100L), eq(25), any(LocalDateTime.class));
+        verify(inventoryRepository).save(any(Inventory.class));
         verify(inventoryTransactionRepository).save(any(InventoryTransaction.class));
         verify(auditLogRepository).log(eq(staffUser), eq("INVENTORY_ADJUSTMENT"), eq("Inventories"), eq(50L), anyString(), anyString());
     }

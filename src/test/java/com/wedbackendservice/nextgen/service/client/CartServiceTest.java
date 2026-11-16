@@ -104,7 +104,6 @@ class CartServiceTest {
                 .quantity(2)
                 .build();
         when(cartItemRepository.save(any(CartItem.class))).thenReturn(savedCartItem);
-        when(cartItemRepository.findByCartId(200L)).thenReturn(List.of(savedCartItem));
 
         CartItemAddRequest request = CartItemAddRequest.builder().variantId(100L).quantity(2).build();
         CartItemAddResponse response = cartService.addItemToCart(request);

@@ -238,10 +238,15 @@ public class OrdersService {
             }
         }
 
-        BigDecimal shippingFee = "EXPRESS".equalsIgnoreCase(
-                request.getShippingMethod() != null ? request.getShippingMethod().trim() : "")
-                ? BigDecimal.valueOf(30000)
-                : BigDecimal.ZERO;
+        BigDecimal shippingFee;
+        if (request.getShippingFee() != null && request.getShippingFee().compareTo(BigDecimal.ZERO) >= 0) {
+            shippingFee = request.getShippingFee();
+        } else {
+            shippingFee = "EXPRESS".equalsIgnoreCase(
+                    request.getShippingMethod() != null ? request.getShippingMethod().trim() : "")
+                    ? BigDecimal.valueOf(30000)
+                    : BigDecimal.ZERO;
+        }
         BigDecimal totalAmount = subtotal.subtract(voucherDiscount).add(shippingFee);
         if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
             totalAmount = BigDecimal.ZERO;

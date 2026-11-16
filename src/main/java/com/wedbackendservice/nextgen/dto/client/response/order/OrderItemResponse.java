@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.dto.client.response.order;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -23,4 +24,14 @@ public class OrderItemResponse {
     Integer quantity;
     BigDecimal lineTotal;
     String imageUrl;
+
+    @JsonProperty("productName")
+    public String getProductName() {
+        return productNameSnapshot;
+    }
+
+    @JsonProperty("sku")
+    public String getSku() {
+        return skuSnapshot;
+    }
 }
