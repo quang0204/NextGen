@@ -28,4 +28,6 @@ public class CreateReturnRequest {
     List<String> evidenceImages;
 
     BankInfoRequest bankInfo;
+
+    List<ReturnItemRequest> items;
 }

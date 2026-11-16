@@ -55,9 +55,9 @@ public class AdminReportsService {
         String safeMetric = StringUtils.hasText(metric) ? metric.trim().toUpperCase() : "REVENUE";
         String safeScope = StringUtils.hasText(scope) ? scope.trim().toUpperCase() : "VARIANT";
 
-        // 1. Lọc đơn hàng hợp lệ (không tính các đơn CANCELLED)
+        // 1. Lọc đơn hàng hợp lệ (không tính các đơn CANCELLED hoặc RETURNING)
         List<Order> validOrders = orderRepository.findAll().stream()
-                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getStatus()))
+                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getStatus()) && !"RETURNING".equalsIgnoreCase(o.getStatus()))
                 .filter(o -> {
                     if (!StringUtils.hasText(timeRange) || "ALL".equalsIgnoreCase(timeRange)) {
                         return true;
@@ -285,7 +285,7 @@ public class AdminReportsService {
         // 1. Tính tổng số lượng đã bán của từng variant qua OrderItems hợp lệ
         Map<Long, Long> variantSoldMap = new HashMap<>();
         List<Order> validOrders = orderRepository.findAll().stream()
-                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getStatus()))
+                .filter(o -> !"CANCELLED".equalsIgnoreCase(o.getStatus()) && !"RETURNING".equalsIgnoreCase(o.getStatus()))
                 .toList();
 
         if (!validOrders.isEmpty()) {

@@ -68,4 +68,16 @@ public class AdminOrdersController {
         return ApiResponse.ok("Đã xác nhận nhận tiền chuyển khoản cho đơn hàng thành công!",
                 ordersService.confirmOrderPayment(id, note));
     }
+
+    /**
+     * API 8.9: [POST] /api/v1/admin/orders/{id}/receive-return — Thủ kho nhận hàng hoàn kho & Hoàn tất hủy đơn (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @PostMapping("/{id:[0-9]+}/receive-return")
+    public ApiResponse<com.wedbackendservice.nextgen.dto.client.response.order.OrderDetailResponse> receiveReturnOrder(
+            @PathVariable Long id,
+            @RequestParam(required = false) String note) {
+        return ApiResponse.ok("Đã tiếp nhận kiện hàng hoàn về kho, hoàn kho thành công và cập nhật Đã hủy đơn!",
+                ordersService.receiveReturnOrder(id, note));
+    }
 }

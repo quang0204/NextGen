@@ -250,7 +250,9 @@ public class ShipmentsService {
                 if (paymentOpt.isPresent()) {
                     Payment payment = paymentOpt.get();
                     payment.setStatus(PaymentStatus.SUCCESS.name());
-                    payment.setPaidAt(paidNow);
+                    if (payment.getPaidAt() == null) {
+                        payment.setPaidAt(paidNow);
+                    }
                     paymentRepository.save(payment);
                 } else {
                     paymentRepository.save(Payment.builder()
@@ -266,6 +268,19 @@ public class ShipmentsService {
                 order.setPaymentStatus("PAID");
                 isPaymentCompleted = true;
                 orderRepository.save(order);
+            } else if (targetStatus == ShipmentStatus.FAILED_DELIVERY) {
+                synchronizedOrderStatus = OrderStatus.RETURNING.name();
+                order.setStatus(OrderStatus.RETURNING.name());
+                String failReason = (request.getNote() != null && !request.getNote().trim().isBlank())
+                        ? request.getNote().trim() : "Giao hàng không thành công";
+                order.setCancelReason("Giao hàng thất bại: " + failReason);
+                shipment.setFailReason(failReason);
+                if ("PAID".equalsIgnoreCase(order.getPaymentStatus())) {
+                    order.setPaymentStatus("REFUND_PENDING");
+                }
+                order.setUpdatedAt(LocalDateTime.now());
+                orderRepository.save(order);
+                restockOrderInventory(order, operator, failReason);
             }
 
             if (synchronizedOrderStatus != null && !synchronizedOrderStatus.equals(fromStatus)) {
@@ -339,14 +354,14 @@ public class ShipmentsService {
                     "Vận đơn đã ở trạng thái DELIVERED, không thể chuyển sang giao thất bại.");
         }
 
-        // Chặn lỗi hoàn kho 2 lần (Double Restock)
-        if ("FAILED_DELIVERY".equalsIgnoreCase(shipment.getShippingStatus())) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Vận đơn này đã được xử lý giao hàng thất bại trước đó.");
-        }
-
         Order order = shipment.getOrder();
         if (order != null && "CANCELLED".equalsIgnoreCase(order.getStatus())) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Đơn hàng liên kết đã bị hủy trước đó.");
+        }
+
+        // Chặn lỗi hoàn kho 2 lần (Double Restock)
+        if ("FAILED_DELIVERY".equalsIgnoreCase(shipment.getShippingStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Vận đơn này đã được xử lý giao hàng thất bại trước đó.");
         }
 
         String reason = request.getFailReason().trim();
@@ -378,41 +393,7 @@ public class ShipmentsService {
                     .note("Giao hàng thất bại - Đang hoàn về: " + reason + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
                     .build());
 
-            boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
-                    order.getOrderId(), InventoryTransactionType.EXPORT.name());
-            LocalDateTime restockNow = LocalDateTime.now();
-            List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
-            for (OrderItem item : orderItems) {
-                ProductVariant variant = item.getVariant();
-                if (variant != null) {
-                    if (wasExported) {
-                        Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
-                        int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
-                        int updatedRows = inventoryRepository.increaseQuantityAtomic(
-                                variant.getVariantId(), item.getQuantity(), restockNow);
-                        if (updatedRows > 0) {
-                            restockedCount++;
-                        }
-                        inventoryTransactionRepository.save(InventoryTransaction.builder()
-                                .variant(variant)
-                                .order(order)
-                                .performedBy(operator)
-                                .transactionType(InventoryTransactionType.RETURN.name())
-                                .formCode("MB04")
-                                .quantity(item.getQuantity())
-                                .qtyBefore(qtyBefore)
-                                .qtyAfter(qtyBefore + item.getQuantity())
-                                .reason("Nhập hoàn kho do bưu tá giao hàng thất bại")
-                                .build());
-                    } else {
-                        int released = inventoryRepository.releaseStockAtomic(
-                                variant.getVariantId(), item.getQuantity(), restockNow);
-                        if (released > 0) {
-                            restockedCount++;
-                        }
-                    }
-                }
-            }
+            restockedCount = restockOrderInventory(order, operator, reason);
 
             if (order.getUser() != null) {
                 notificationRepository.save(Notification.builder()
@@ -434,6 +415,47 @@ public class ShipmentsService {
                 .inventoryRestocked(restockedCount > 0)
                 .restockedItemsCount(restockedCount)
                 .build();
+    }
+
+    public int restockOrderInventory(Order order, User operator, String reason) {
+        if (order == null) return 0;
+        int restockedCount = 0;
+        boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
+                order.getOrderId(), InventoryTransactionType.EXPORT.name());
+        LocalDateTime restockNow = LocalDateTime.now();
+        List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
+        for (OrderItem item : orderItems) {
+            ProductVariant variant = item.getVariant();
+            if (variant != null) {
+                if (wasExported) {
+                    Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
+                    int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
+                    int updatedRows = inventoryRepository.increaseQuantityAtomic(
+                            variant.getVariantId(), item.getQuantity(), restockNow);
+                    if (updatedRows > 0) {
+                        restockedCount++;
+                    }
+                    inventoryTransactionRepository.save(InventoryTransaction.builder()
+                            .variant(variant)
+                            .order(order)
+                            .performedBy(operator)
+                            .transactionType(InventoryTransactionType.RETURN.name())
+                            .formCode("MB04")
+                            .quantity(item.getQuantity())
+                            .qtyBefore(qtyBefore)
+                            .qtyAfter(qtyBefore + item.getQuantity())
+                            .reason("Nhập hoàn kho: " + (reason != null ? reason : "Giao hàng thất bại"))
+                            .build());
+                } else {
+                    int released = inventoryRepository.releaseStockAtomic(
+                            variant.getVariantId(), item.getQuantity(), restockNow);
+                    if (released > 0) {
+                        restockedCount++;
+                    }
+                }
+            }
+        }
+        return restockedCount;
     }
 
     // =========================================================================

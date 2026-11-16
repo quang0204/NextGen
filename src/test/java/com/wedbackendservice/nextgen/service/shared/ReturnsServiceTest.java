@@ -241,6 +241,113 @@ class ReturnsServiceTest {
     }
 
     @Test
+    @DisplayName("Tạo yêu cầu đổi trả cho sản phẩm thứ 2 thành công khi sản phẩm thứ 1 đã có phiếu hoàn")
+    void createReturn_SecondItem_Success() {
+        when(securityHelper.getCurrentUser()).thenReturn(testUser);
+        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
+
+        ReturnRequest firstItemReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .reason("[Yêu cầu hoàn trả một phần: Điện thoại iphone 19 (x1)] - Lỗi màn hình")
+                .requestedItems("[{\"variantId\":101,\"productName\":\"Điện thoại iphone 19\",\"sku\":\"IPS3\",\"quantity\":1,\"unitPrice\":28000000}]")
+                .status("APPROVED")
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .build();
+
+        when(returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(anyCollection()))
+                .thenReturn(List.of(firstItemReturn));
+
+        ReturnRequest secondItemReturn = ReturnRequest.builder()
+                .returnId(36L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .reason("[Yêu cầu hoàn trả một phần: iPhone 15 Pro Max (x1)] - Lỗi pin")
+                .requestedItems("[{\"variantId\":102,\"productName\":\"iPhone 15 Pro Max\",\"sku\":\"IP15PM-256-TI\",\"quantity\":1,\"unitPrice\":28990000}]")
+                .status("PENDING")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        when(returnRequestRepository.save(any(ReturnRequest.class))).thenReturn(secondItemReturn);
+
+        CreateReturnRequest request = CreateReturnRequest.builder()
+                .orderId(210L)
+                .reason("[Yêu cầu hoàn trả một phần: iPhone 15 Pro Max (x1)] - Lỗi pin")
+                .evidenceImages(List.of("https://phoneshop.vn/uploads/pin.jpg"))
+                .items(List.of(
+                        com.wedbackendservice.nextgen.dto.client.request.returnrequest.ReturnItemRequest.builder()
+                                .variantId(102L)
+                                .productName("iPhone 15 Pro Max")
+                                .sku("IP15PM-256-TI")
+                                .quantity(1)
+                                .unitPrice(BigDecimal.valueOf(28990000))
+                                .build()
+                ))
+                .build();
+
+        CreateReturnResponse response = returnsService.createReturn(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getReturnId()).isEqualTo(36L);
+        assertThat(response.getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
+    @DisplayName("Tạo yêu cầu đổi trả thành công khi yêu cầu trước đó đã bị bác bỏ (REJECTED)")
+    void createReturn_AfterRejected_Success() {
+        when(securityHelper.getCurrentUser()).thenReturn(testUser);
+        when(orderRepository.findById(210L)).thenReturn(Optional.of(testOrder));
+
+        ReturnRequest rejectedReturn = ReturnRequest.builder()
+                .returnId(35L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .reason("[Yêu cầu hoàn trả một phần: iPhone 15 Pro Max (x1)] - Lỗi pin")
+                .requestedItems("[{\"variantId\":102,\"productName\":\"iPhone 15 Pro Max\",\"sku\":\"IP15PM-256-TI\",\"quantity\":1,\"unitPrice\":28990000}]")
+                .status("REJECTED")
+                .rejectReason("Chưa cung cấp đủ video mở hộp")
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .build();
+
+        when(returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(anyCollection()))
+                .thenReturn(List.of(rejectedReturn));
+
+        ReturnRequest newReturn = ReturnRequest.builder()
+                .returnId(37L)
+                .order(testOrder)
+                .requestedBy(testUser)
+                .reason("[Yêu cầu hoàn trả một phần: iPhone 15 Pro Max (x1)] - Lỗi pin (đã bổ sung video)")
+                .requestedItems("[{\"variantId\":102,\"productName\":\"iPhone 15 Pro Max\",\"sku\":\"IP15PM-256-TI\",\"quantity\":1,\"unitPrice\":28990000}]")
+                .status("PENDING")
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        when(returnRequestRepository.save(any(ReturnRequest.class))).thenReturn(newReturn);
+
+        CreateReturnRequest request = CreateReturnRequest.builder()
+                .orderId(210L)
+                .reason("[Yêu cầu hoàn trả một phần: iPhone 15 Pro Max (x1)] - Lỗi pin (đã bổ sung video)")
+                .evidenceImages(List.of("https://phoneshop.vn/uploads/pin2.jpg"))
+                .items(List.of(
+                        com.wedbackendservice.nextgen.dto.client.request.returnrequest.ReturnItemRequest.builder()
+                                .variantId(102L)
+                                .productName("iPhone 15 Pro Max")
+                                .sku("IP15PM-256-TI")
+                                .quantity(1)
+                                .unitPrice(BigDecimal.valueOf(28990000))
+                                .build()
+                ))
+                .build();
+
+        CreateReturnResponse response = returnsService.createReturn(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getReturnId()).isEqualTo(37L);
+        assertThat(response.getStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
     @DisplayName("Thẩm định Chấp thuận (APPROVED): Cập nhật trạng thái, Hoàn kho MB04 và Kích hoạt hoàn tiền")
     void inspectReturn_Approved_With_MB04_And_Refund() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);

@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.dto.portal.response.returnrequest.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
 import com.wedbackendservice.nextgen.enums.OrderStatus;
+import com.wedbackendservice.nextgen.dto.client.request.returnrequest.ReturnItemRequest;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.ReturnStatus;
@@ -86,13 +87,42 @@ public class ReturnsService {
             throw new AppException(ErrorCode.RETURN_PERIOD_EXPIRED);
         }
 
-        // 4. Chưa có yêu cầu đổi trả nào đang chờ duyệt (PENDING) hoặc đã được duyệt (APPROVED)
-        boolean hasExistingReturn = returnRequestRepository.existsByOrder_OrderIdAndStatusIn(
-                order.getOrderId(),
-                List.of(ReturnStatus.PENDING.name(), ReturnStatus.INSPECTING.name(), ReturnStatus.APPROVED.name())
-        );
-        if (hasExistingReturn) {
-            throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST);
+        // 4. Kiểm tra yêu cầu đổi trả trùng lặp (theo từng sản phẩm hoặc toàn bộ đơn)
+        if (PaymentStatus.REFUNDED.name().equalsIgnoreCase(order.getPaymentStatus())) {
+            throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST, "Đơn hàng này đã được hoàn trả toàn bộ, không thể tạo thêm yêu cầu!");
+        }
+
+        boolean hasNewItems = request.getItems() != null && !request.getItems().isEmpty();
+        if (!hasNewItems) {
+            boolean hasExistingReturn = returnRequestRepository.existsByOrder_OrderIdAndStatusIn(
+                    order.getOrderId(),
+                    List.of(ReturnStatus.PENDING.name(), ReturnStatus.INSPECTING.name(), ReturnStatus.APPROVED.name())
+            );
+            if (hasExistingReturn) {
+                throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST);
+            }
+        } else {
+            List<ReturnRequest> existingReturns = returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
+                    .stream()
+                    .filter(r -> "PENDING".equalsIgnoreCase(r.getStatus()) ||
+                                 "INSPECTING".equalsIgnoreCase(r.getStatus()) ||
+                                 "APPROVED".equalsIgnoreCase(r.getStatus()))
+                    .toList();
+            if (!existingReturns.isEmpty()) {
+                for (ReturnItemRequest reqItem : request.getItems()) {
+                    for (ReturnRequest exRet : existingReturns) {
+                        if (isItemMatchingExisting(reqItem, exRet)) {
+                            if ("APPROVED".equalsIgnoreCase(exRet.getStatus())) {
+                                throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST,
+                                        "Sản phẩm " + (reqItem.getProductName() != null ? reqItem.getProductName() : "") + " đã được hoàn tiền thành công trước đó!");
+                            } else {
+                                throw new AppException(ErrorCode.DUPLICATE_RETURN_REQUEST,
+                                        "Sản phẩm " + (reqItem.getProductName() != null ? reqItem.getProductName() : "") + " đang có yêu cầu đổi trả chờ xử lý!");
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // 5. Kiểm tra thông tin tài khoản ngân hàng nếu thanh toán ban đầu là COD
@@ -117,11 +147,21 @@ public class ReturnsService {
             }
         }
 
+        String requestedItemsJson = null;
+        if (request.getItems() != null && !request.getItems().isEmpty()) {
+            try {
+                requestedItemsJson = objectMapper.writeValueAsString(request.getItems());
+            } catch (Exception e) {
+                log.warn("Cannot serialize requestedItems: {}", e.getMessage());
+            }
+        }
+
         ReturnRequest returnRequest = ReturnRequest.builder()
                 .order(order)
                 .requestedBy(currentUser)
                 .reason(request.getReason())
                 .evidenceImages(evidenceJson)
+                .requestedItems(requestedItemsJson)
                 .status(ReturnStatus.PENDING.name())
                 .bankName(request.getBankInfo() != null ? request.getBankInfo().getBankName() : null)
                 .bankAccountNumber(request.getBankInfo() != null ? request.getBankInfo().getAccountNumber() : null)
@@ -218,6 +258,31 @@ public class ReturnsService {
                             .build()
                     : null;
 
+            List<OrderItemResponse> returnItems;
+            if (StringUtils.hasText(r.getRequestedItems())) {
+                try {
+                    List<ReturnItemRequest> parsed = objectMapper.readValue(
+                            r.getRequestedItems(),
+                            new com.fasterxml.jackson.core.type.TypeReference<List<ReturnItemRequest>>() {}
+                    );
+                    returnItems = parsed.stream().map(it -> OrderItemResponse.builder()
+                            .variantId(it.getVariantId())
+                            .productNameSnapshot(it.getProductName())
+                            .skuSnapshot(it.getSku())
+                            .unitPrice(it.getUnitPrice())
+                            .quantity(it.getQuantity())
+                            .lineTotal(it.getUnitPrice() != null && it.getQuantity() != null
+                                    ? it.getUnitPrice().multiply(BigDecimal.valueOf(it.getQuantity()))
+                                    : BigDecimal.ZERO)
+                            .build()
+                    ).toList();
+                } catch (Exception e) {
+                    returnItems = ord != null ? orderItemsByOrderId.getOrDefault(ord.getOrderId(), List.of()) : List.of();
+                }
+            } else {
+                returnItems = ord != null ? orderItemsByOrderId.getOrDefault(ord.getOrderId(), List.of()) : List.of();
+            }
+
             return AdminReturnItemResponse.builder()
                     .returnId(r.getReturnId())
                     .orderId(ord != null ? ord.getOrderId() : null)
@@ -232,7 +297,7 @@ public class ReturnsService {
                     .inspectedAt(DateTimeUtil.formatIsoInstant(r.getInspectedAt()))
                     .rejectReason(r.getRejectReason())
                     .bankInfo(bankInfo)
-                    .items(ord != null ? orderItemsByOrderId.getOrDefault(ord.getOrderId(), List.of()) : List.of())
+                    .items(returnItems)
                     .refundAmount(r.getRefundAmount())
                     .createdAt(DateTimeUtil.formatIsoInstant(r.getCreatedAt()))
                     .build();
@@ -360,10 +425,15 @@ public class ReturnsService {
         if (order != null && order.getFinalAmount() != null && request.getRefundAmount().compareTo(order.getFinalAmount()) > 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Số tiền hoàn trả không được vượt quá giá trị đơn hàng (" + order.getFinalAmount() + " VND).");
         }
-        if (order != null && request.getRefundAmount().compareTo(BigDecimal.ZERO) > 0
-                && !"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
-            throw new AppException(ErrorCode.INVALID_REQUEST,
-                    "Đơn hàng chưa được thanh toán (" + order.getPaymentStatus() + "), không thể hoàn tiền!");
+        if (order != null && request.getRefundAmount().compareTo(BigDecimal.ZERO) > 0) {
+            String pStatus = order.getPaymentStatus() != null ? order.getPaymentStatus().trim().toUpperCase() : "";
+            boolean isOrderDelivered = "COMPLETED".equalsIgnoreCase(order.getStatus()) || "DELIVERED".equalsIgnoreCase(order.getStatus());
+            boolean isPaid = "PAID".equals(pStatus) || "PARTIALLY_REFUNDED".equals(pStatus) || isOrderDelivered;
+
+            if (!isPaid) {
+                throw new AppException(ErrorCode.INVALID_REQUEST,
+                        "Đơn hàng chưa được thanh toán (" + order.getPaymentStatus() + "), không thể hoàn tiền!");
+            }
         }
         if (request.getRestockItems() == null || request.getRestockItems().isEmpty()) {
             throw new AppException(ErrorCode.RETURN_RESTOCK_ITEMS_REQUIRED);
@@ -400,6 +470,16 @@ public class ReturnsService {
         returnRequest.setInspectedBy(currentUser);
         returnRequest.setInspectedAt(now);
         returnRequest.setApprovedAt(now);
+
+        String restockedJson = null;
+        if (request.getRestockItems() != null && !request.getRestockItems().isEmpty()) {
+            try {
+                restockedJson = objectMapper.writeValueAsString(request.getRestockItems());
+            } catch (Exception e) {
+                log.warn("Cannot serialize restockItems: {}", e.getMessage());
+            }
+        }
+        returnRequest.setRestockedItems(restockedJson);
         returnRequestRepository.saveAndFlush(returnRequest);
 
         // 1. Tự động hoàn kho vật lý: tăng on_hand_qty và available_qty trong Inventories (atomic)
@@ -462,20 +542,37 @@ public class ReturnsService {
                     .build();
             paymentRepository.save(refundPayment);
 
-            order.setPaymentStatus(PaymentStatus.REFUNDED.name());
+            BigDecimal totalRefunded = returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
+                    .stream()
+                    .filter(r -> "APPROVED".equalsIgnoreCase(r.getStatus()) && r.getRefundAmount() != null)
+                    .map(ReturnRequest::getRefundAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .add(request.getRefundAmount());
+
+            boolean isPartial = order.getFinalAmount() != null && totalRefunded.compareTo(order.getFinalAmount()) < 0;
+            order.setPaymentStatus(isPartial ? "PARTIALLY_REFUNDED" : PaymentStatus.REFUNDED.name());
             order.setUpdatedAt(now);
             orderRepository.save(order);
 
             auditLogRepository.log(currentUser, "PAYMENT_REFUND", "Payments", refundPayment.getPaymentId(),
-                    null, "Hoàn trả " + request.getRefundAmount() + " VND cho yêu cầu đổi trả #" + returnRequest.getReturnId());
+                    null, (isPartial ? "Hoàn trả một phần " : "Hoàn trả ") + request.getRefundAmount() + " VND cho yêu cầu đổi trả #" + returnRequest.getReturnId());
         }
 
         String appOrderCode = order != null ? order.getOrderCode() : String.valueOf(returnRequest.getReturnId());
+        BigDecimal totalRefundedSummary = order != null ? returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
+                .stream()
+                .filter(r -> "APPROVED".equalsIgnoreCase(r.getStatus()) && r.getRefundAmount() != null)
+                .map(ReturnRequest::getRefundAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .add(request.getRefundAmount()) : request.getRefundAmount();
+        boolean isPartialRefund = order != null && order.getFinalAmount() != null && totalRefundedSummary.compareTo(order.getFinalAmount()) < 0;
         recordCustomerReturnOutcome(
                 returnRequest,
                 returnRequest.getRequestedBy(),
-                "Đã duyệt đổi trả & hoàn tiền đơn #" + appOrderCode,
-                "Yêu cầu đổi trả #RMA-" + returnRequest.getReturnId() + " được chấp thuận, hoàn " + request.getRefundAmount().stripTrailingZeros().toPlainString() + "đ và lập phiếu nhập kho MB04."
+                isPartialRefund ? "Đã duyệt hoàn tiền một phần đơn #" + appOrderCode : "Đã duyệt đổi trả & hoàn tiền đơn #" + appOrderCode,
+                isPartialRefund
+                        ? "Yêu cầu đổi trả #RMA-" + returnRequest.getReturnId() + " được chấp thuận: hoàn " + request.getRefundAmount().stripTrailingZeros().toPlainString() + "đ cho sản phẩm trả và lập phiếu nhập kho MB04."
+                        : "Yêu cầu đổi trả #RMA-" + returnRequest.getReturnId() + " được chấp thuận: hoàn " + request.getRefundAmount().stripTrailingZeros().toPlainString() + "đ và lập phiếu nhập kho MB04."
         );
 
         auditLogRepository.log(currentUser, "RETURN_APPROVED", "ReturnRequests", returnRequest.getReturnId(),
@@ -549,5 +646,60 @@ public class ReturnsService {
             return user.getFullName();
         }
         return String.valueOf(user.getUserId());
+    }
+
+    private boolean isItemMatchingExisting(ReturnItemRequest newItem, ReturnRequest existingReturn) {
+        // 1. Kiểm tra qua requestedItems JSON
+        if (StringUtils.hasText(existingReturn.getRequestedItems())) {
+            try {
+                List<ReturnItemRequest> existingItems = objectMapper.readValue(
+                        existingReturn.getRequestedItems(),
+                        new TypeReference<List<ReturnItemRequest>>() {}
+                );
+                for (ReturnItemRequest ex : existingItems) {
+                    if (newItem.getVariantId() != null && ex.getVariantId() != null && newItem.getVariantId().equals(ex.getVariantId())) {
+                        return true;
+                    }
+                    if (StringUtils.hasText(newItem.getSku()) && StringUtils.hasText(ex.getSku())
+                            && newItem.getSku().trim().equalsIgnoreCase(ex.getSku().trim())) {
+                        return true;
+                    }
+                    if (StringUtils.hasText(newItem.getProductName()) && StringUtils.hasText(ex.getProductName())) {
+                        String n1 = newItem.getProductName().trim().toLowerCase().split("\\(")[0].trim();
+                        String n2 = ex.getProductName().trim().toLowerCase().split("\\(")[0].trim();
+                        if (n1.equals(n2) || n1.contains(n2) || n2.contains(n1)) {
+                            return true;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Cannot parse existing requestedItems for returnId {}: {}", existingReturn.getReturnId(), e.getMessage());
+            }
+        }
+
+        // 2. Kiểm tra qua reason string
+        if (StringUtils.hasText(existingReturn.getReason())) {
+            String reasonLower = existingReturn.getReason().toLowerCase();
+            if (StringUtils.hasText(newItem.getSku()) && reasonLower.contains(newItem.getSku().trim().toLowerCase())) {
+                return true;
+            }
+            if (StringUtils.hasText(newItem.getProductName())) {
+                String fullName = newItem.getProductName().trim().toLowerCase();
+                String baseName = fullName.split("\\(")[0].trim();
+                if (reasonLower.contains(fullName) || (baseName.length() >= 3 && reasonLower.contains(baseName))) {
+                    return true;
+                }
+            }
+        }
+
+        // 3. Nếu phiếu cũ không chỉ định sản phẩm cụ thể và không phải là hoàn trả một phần -> nghĩa là hoàn toàn bộ đơn
+        boolean isPartial = (StringUtils.hasText(existingReturn.getReason()) &&
+                (existingReturn.getReason().toLowerCase().contains("hoàn trả một phần") ||
+                 existingReturn.getReason().toLowerCase().contains("hoan tra mot phan")));
+        if (!isPartial && !StringUtils.hasText(existingReturn.getRequestedItems())) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -9,6 +9,8 @@ import com.wedbackendservice.nextgen.dto.portal.response.order.*;
 import com.wedbackendservice.nextgen.dto.client.response.order.*;
 import com.wedbackendservice.nextgen.entity.*;
 import com.wedbackendservice.nextgen.enums.Role;
+import com.wedbackendservice.nextgen.enums.OrderStatus;
+import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
@@ -412,6 +414,13 @@ public class OrdersService {
         List<MyOrderItemResponse> items = orders.stream().map(order -> {
             Shipment shipment = myShipmentMap.get(order.getOrderId());
             ReturnRequest latestReturn = myReturnMap.get(order.getOrderId());
+            String payStatus = order.getPaymentStatus();
+            if ("COMPLETED".equalsIgnoreCase(order.getStatus())
+                    && !"REFUNDED".equalsIgnoreCase(payStatus)
+                    && !"PARTIALLY_REFUNDED".equalsIgnoreCase(payStatus)) {
+                payStatus = "PAID";
+            }
+
             return MyOrderItemResponse.builder()
                     .orderId(order.getOrderId())
                     .orderCode(order.getOrderCode())
@@ -424,7 +433,7 @@ public class OrdersService {
                     .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
                     .totalAmount(order.getFinalTotal())
                     .paymentMethod(order.getPaymentMethod())
-                    .paymentStatus(order.getPaymentStatus())
+                    .paymentStatus(payStatus)
                     .carrier(shipment != null ? shipment.getCarrier() : null)
                     .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
                     .cancelReason(order.getCancelReason())
@@ -481,6 +490,16 @@ public class OrdersService {
         String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
         ReturnRequest latestReturn = returnRequestRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).orElse(null);
 
+        String detailPaymentStatus = order.getPaymentStatus();
+        if ("COMPLETED".equalsIgnoreCase(order.getStatus())
+                && !"REFUNDED".equalsIgnoreCase(detailPaymentStatus)
+                && !"PARTIALLY_REFUNDED".equalsIgnoreCase(detailPaymentStatus)
+                && !"PAID".equalsIgnoreCase(detailPaymentStatus)) {
+            detailPaymentStatus = "PAID";
+            order.setPaymentStatus("PAID");
+            orderRepository.save(order);
+        }
+
         return OrderDetailResponse.builder()
                 .orderId(order.getOrderId())
                 .orderCode(order.getOrderCode())
@@ -489,7 +508,7 @@ public class OrdersService {
                 .recipientPhone(order.getRecipientPhone())
                 .shippingAddress(order.getShippingAddress())
                 .paymentMethod(order.getPaymentMethod())
-                .paymentStatus(order.getPaymentStatus())
+                .paymentStatus(detailPaymentStatus)
                 .subtotal(order.getSubtotal())
                 .voucherDiscount(order.getVoucherDiscount())
                 .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
@@ -641,6 +660,13 @@ public class OrdersService {
             Shipment shipment = shipmentMap.get(order.getOrderId());
             ReturnRequest latestReturn = adminReturnMap.get(order.getOrderId());
 
+            String adminPayStatus = order.getPaymentStatus();
+            if ("COMPLETED".equalsIgnoreCase(order.getStatus())
+                    && !"REFUNDED".equalsIgnoreCase(adminPayStatus)
+                    && !"PARTIALLY_REFUNDED".equalsIgnoreCase(adminPayStatus)) {
+                adminPayStatus = "PAID";
+            }
+
             return AdminOrderItemResponse.builder()
                     .orderId(order.getOrderId())
                     .orderCode(order.getOrderCode())
@@ -648,7 +674,7 @@ public class OrdersService {
                     .recipientPhone(order.getRecipientPhone())
                     .shippingAddress(order.getShippingAddress())
                     .paymentMethod(order.getPaymentMethod())
-                    .paymentStatus(order.getPaymentStatus())
+                    .paymentStatus(adminPayStatus)
                     .subtotal(order.getSubtotal())
                     .voucherDiscount(order.getVoucherDiscount())
                     .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
@@ -1086,5 +1112,101 @@ public class OrdersService {
         orderRepository.saveAll(expiredOrders);
         orderStatusHistoryRepository.saveAll(historiesToSave);
         return expiredOrders.size();
+    }
+
+    /**
+     * API 8.9: [POST] /api/v1/admin/orders/{id}/receive-return — Thủ kho nhận hàng hoàn kho & Hoàn tất hủy đơn (STAFF / ADMIN)
+     */
+    @Transactional
+    public OrderDetailResponse receiveReturnOrder(Long orderId, String note) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
+
+        String currentStatus = order.getStatus();
+        if (!OrderStatus.RETURNING.name().equalsIgnoreCase(currentStatus) && !"SHIPPING".equalsIgnoreCase(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Chỉ có thể xác nhận nhận hàng hoàn cho đơn hàng đang ở trạng thái RETURNING hoặc SHIPPING!");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+
+        // Kiểm tra và thực hiện hoàn kho nếu chưa hoàn (MB04)
+        boolean alreadyReturned = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
+                order.getOrderId(), InventoryTransactionType.RETURN.name());
+
+        if (!alreadyReturned) {
+            boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
+                    order.getOrderId(), InventoryTransactionType.EXPORT.name());
+            List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
+            for (OrderItem item : items) {
+                ProductVariant variant = item.getVariant();
+                if (variant != null) {
+                    if (wasExported) {
+                        Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
+                        int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
+                        inventoryRepository.increaseQuantityAtomic(variant.getVariantId(), item.getQuantity(), now);
+                        inventoryTransactionRepository.save(InventoryTransaction.builder()
+                                .variant(variant)
+                                .order(order)
+                                .performedBy(operator)
+                                .transactionType(InventoryTransactionType.RETURN.name())
+                                .formCode("MB04")
+                                .quantity(item.getQuantity())
+                                .qtyBefore(qtyBefore)
+                                .qtyAfter(qtyBefore + item.getQuantity())
+                                .reason("Thủ kho xác nhận nhập hoàn kho: " + (note != null ? note.trim() : "Hàng chuyển hoàn"))
+                                .build());
+                    } else {
+                        inventoryRepository.releaseStockAtomic(variant.getVariantId(), item.getQuantity(), now);
+                    }
+                }
+            }
+        }
+
+        order.setStatus(OrderStatus.CANCELLED.name());
+        order.setUpdatedAt(now);
+        String finalReason = (note != null && !note.trim().isBlank())
+                ? note.trim()
+                : (order.getCancelReason() != null ? order.getCancelReason() : "Bưu tá hoàn hàng về kho");
+        order.setCancelReason(finalReason);
+
+        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus()) || "REFUND_PENDING".equalsIgnoreCase(order.getPaymentStatus());
+        if (needRefund) {
+            order.setPaymentStatus("REFUND_PENDING");
+        }
+        Order saved = orderRepository.save(order);
+
+        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                .order(saved)
+                .changedBy(operator)
+                .previousStatus(currentStatus)
+                .newStatus(OrderStatus.CANCELLED.name())
+                .note("Thủ kho đã nhận lại kiện hàng từ bưu tá, nhập lại tồn kho và hoàn tất hủy đơn." +
+                        (needRefund ? " (Chờ kế toán hoàn tiền)" : ""))
+                .build());
+
+        // Đồng bộ Vận đơn sang FAILED_DELIVERY nếu có
+        Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
+        if (shipmentOpt.isPresent()) {
+            Shipment sh = shipmentOpt.get();
+            if (!"FAILED_DELIVERY".equalsIgnoreCase(sh.getShippingStatus())) {
+                sh.setShippingStatus("FAILED_DELIVERY");
+                sh.setFailReason(finalReason);
+                sh.setUpdatedBy(operator);
+                shipmentRepository.save(sh);
+            }
+        }
+
+        if (order.getUser() != null) {
+            notificationRepository.save(Notification.builder()
+                    .user(order.getUser())
+                    .order(saved)
+                    .title("Đơn hàng đã hoàn về kho")
+                    .content("Kiện hàng của đơn " + order.getOrderCode() + " đã hoàn về kho NextGen và cập nhật Đã hủy.")
+                    .isRead(false)
+                    .build());
+        }
+
+        return getOrderDetail(order.getOrderCode());
     }
 }
