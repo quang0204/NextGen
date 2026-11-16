@@ -30,6 +30,9 @@ public class MinioConfig {
     @Value("${minio.categories-bucket:categories}")
     private String categoriesBucket;
 
+    @Value("${minio.banners-bucket:banner}")
+    private String bannersBucket;
+
     @Bean(name = {"minioClient", "minioInternalClient"})
     public MinioClient minioClient() {
         MinioClient client = MinioClient.builder()
@@ -38,6 +41,7 @@ public class MinioConfig {
                 .build();
         initBucket(client, brandsBucket);
         initBucket(client, categoriesBucket);
+        initBucket(client, bannersBucket);
         return client;
     }
 
