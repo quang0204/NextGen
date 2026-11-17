@@ -6,7 +6,6 @@ import com.wedbackendservice.nextgen.dto.portal.request.inventory.InventoryAdjus
 import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.inventory.*;
 import com.wedbackendservice.nextgen.entity.*;
-import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
 import com.wedbackendservice.nextgen.enums.StockStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;

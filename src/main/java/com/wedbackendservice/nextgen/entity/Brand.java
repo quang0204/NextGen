@@ -25,7 +25,6 @@ public class Brand {
 
     String brandName;
 
-    @Column(name = "logo_url", columnDefinition = "TEXT")
     String logoUrl;
 
     String slug;

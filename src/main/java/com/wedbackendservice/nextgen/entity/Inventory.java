@@ -32,7 +32,6 @@ public class Inventory {
     Integer reservedQuantity = 0;
 
     @Builder.Default
-    @Column(name = "min_threshold")
     Integer minThreshold = 5;
 
     @LastModifiedDate

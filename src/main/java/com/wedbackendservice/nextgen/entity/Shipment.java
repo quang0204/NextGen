@@ -39,16 +39,10 @@ public class Shipment {
     String failReason;
     String notes;
 
-    @Column(name = "recipient_name")
+
     String recipientName;
-
-    @Column(name = "recipient_phone")
     String recipientPhone;
-
-    @Column(name = "shipping_address")
     String shippingAddress;
-
-    @Column(name = "cod_amount")
     BigDecimal codAmount;
 
     @Version

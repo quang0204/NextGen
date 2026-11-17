@@ -1,5 +1,4 @@
 package com.wedbackendservice.nextgen.controller.portal;
-import com.wedbackendservice.nextgen.service.client.UsersService;
 
 import com.wedbackendservice.nextgen.dto.portal.request.admin.CreateInternalUserRequest;
 import com.wedbackendservice.nextgen.dto.portal.request.admin.UpdateUserRoleRequest;

@@ -1,9 +1,7 @@
 package com.wedbackendservice.nextgen.controller.client;
 
-import com.wedbackendservice.nextgen.configuration.MinioProperties;
 import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.service.shared.MinioStorageService;
-import io.minio.MinioClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

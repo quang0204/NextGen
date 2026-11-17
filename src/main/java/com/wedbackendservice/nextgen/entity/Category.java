@@ -28,7 +28,6 @@ public class Category {
     Long categoryId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_category_id")
     Category parent;
 
     String categoryName;
@@ -36,7 +35,6 @@ public class Category {
     String slug;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "variant_schema", columnDefinition = "json")
     List<VariantSchemaField> variantSchema;
 
     @Builder.Default

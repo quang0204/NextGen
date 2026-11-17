@@ -37,8 +37,6 @@ public class Product {
     @Column(length = 1000)
     String thumbnailUrl;
     String status;
-
-    @Column(name = "warranty_policy", columnDefinition = "TEXT")
     String warrantyPolicy;
 
     @CreatedDate
