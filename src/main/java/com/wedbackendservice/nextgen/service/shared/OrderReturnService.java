@@ -36,7 +36,8 @@ public class OrderReturnService {
     @Transactional
     public OrderDetailResponse receiveReturnOrder(Long orderId, String note) {
         User operator = securityHelper.authenticateStaffOrAdmin();
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .or(() -> orderRepository.findById(orderId))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
         String currentStatus = order.getStatus();

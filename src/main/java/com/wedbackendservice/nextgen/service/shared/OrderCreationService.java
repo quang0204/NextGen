@@ -242,6 +242,10 @@ public class OrderCreationService {
             retry++;
         } while (orderRepository.existsByOrderCode(orderCode) && retry < maxRetries);
 
+        if (orderRepository.existsByOrderCode(orderCode)) {
+            orderCode = "DH-" + today + "-" + ThreadLocalRandom.current().nextInt(10000, 99999) + "-" + (System.currentTimeMillis() % 10000);
+        }
+
         Order order = Order.builder()
                 .orderCode(orderCode)
                 .user(user)

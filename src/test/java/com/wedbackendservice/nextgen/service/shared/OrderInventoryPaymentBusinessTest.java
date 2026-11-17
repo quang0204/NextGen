@@ -1076,4 +1076,116 @@ public class OrderInventoryPaymentBusinessTest {
                 .isInstanceOf(AppException.class)
                 .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.ERR_ORDER_CANNOT_CANCEL));
     }
+
+    // =========================================================================
+    // CASE 33: Hủy đơn hàng đã CUSTOMER_NOTIFIED được coi như đã trả tiền -> REFUND_PENDING
+    // =========================================================================
+    @Test
+    @DisplayName("Case 33: Hủy đơn hàng CUSTOMER_NOTIFIED chuyển sang REFUND_PENDING")
+    void testCancelOrder_customerNotified_marksRefundPending() {
+        when(securityHelper.getCurrentUser()).thenReturn(customer);
+
+        Order order = Order.builder()
+                .orderId(890L)
+                .orderCode("DH890")
+                .user(customer)
+                .status("PENDING_PAYMENT")
+                .paymentStatus("CUSTOMER_NOTIFIED")
+                .paymentMethod("BANK_TRANSFER")
+                .finalAmount(BigDecimal.valueOf(1500000))
+                .build();
+
+        StockReservation resv = StockReservation.builder()
+                .reservationId(501L)
+                .order(order)
+                .variant(variantA)
+                .quantity(1)
+                .status(ReservationStatus.RESERVED)
+                .build();
+
+        Payment payment = Payment.builder()
+                .paymentId(701L)
+                .order(order)
+                .status("CUSTOMER_NOTIFIED")
+                .build();
+
+        when(orderRepository.findByOrderCode("DH890")).thenReturn(Optional.of(order));
+        when(orderRepository.findByOrderCodeForUpdate("DH890")).thenReturn(Optional.of(order));
+        when(stockReservationRepository.findByOrder_OrderIdAndStatus(890L, ReservationStatus.RESERVED)).thenReturn(List.of(resv));
+        when(inventoryRepository.releaseStockAtomic(eq(101L), eq(1), any(LocalDateTime.class))).thenReturn(1);
+        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(890L)).thenReturn(Optional.of(payment));
+
+        CancelOrderRequest req = CancelOrderRequest.builder().reason("Khách chuyển nhầm muốn hoàn tiền").build();
+        CancelOrderResponse res = ordersService.cancelOrder("DH890", req);
+
+        assertThat(res.getStatus()).isEqualTo("CANCELLED");
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED.name());
+        assertThat(order.getPaymentStatus()).isEqualTo(PaymentStatus.REFUND_PENDING.name());
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUND_PENDING.name());
+        verify(outboxService).saveEvent(eq("ORDER"), eq("DH890"), eq("RefundRequested"), eq("order-cancelled-topic"), anyMap());
+    }
+
+    // =========================================================================
+    // CASE 34: Hủy đơn hàng với lý do null không bị NullPointerException
+    // =========================================================================
+    @Test
+    @DisplayName("Case 34: Hủy đơn hàng với reason null an toàn tuyệt đối")
+    void testCancelOrder_nullReason_handledSafely() {
+        when(securityHelper.getCurrentUser()).thenReturn(customer);
+
+        Order order = Order.builder()
+                .orderId(891L)
+                .orderCode("DH891")
+                .user(customer)
+                .status("WAITING_CONFIRMATION")
+                .paymentStatus("UNPAID")
+                .paymentMethod("COD")
+                .finalAmount(BigDecimal.valueOf(500000))
+                .build();
+
+        when(orderRepository.findByOrderCode("DH891")).thenReturn(Optional.of(order));
+        when(orderRepository.findByOrderCodeForUpdate("DH891")).thenReturn(Optional.of(order));
+        when(stockReservationRepository.findByOrder_OrderIdAndStatus(891L, ReservationStatus.RESERVED)).thenReturn(Collections.emptyList());
+
+        CancelOrderRequest req = CancelOrderRequest.builder().reason(null).build();
+        CancelOrderResponse res = ordersService.cancelOrder("DH891", req);
+
+        assertThat(res.getStatus()).isEqualTo("CANCELLED");
+        assertThat(res.getCancelReason()).isNotBlank();
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED.name());
+    }
+
+    // =========================================================================
+    // CASE 35: Chặn đặt hàng khi biến thể sản phẩm chưa có giá hoặc giá <= 0
+    // =========================================================================
+    @Test
+    @DisplayName("Case 35: Chặn đặt hàng khi biến thể sản phẩm chưa có giá hợp lệ")
+    void testCheckout_variantWithNullOrZeroPrice_throwsInvalidRequest() {
+        when(securityHelper.getCurrentUser()).thenReturn(customer);
+
+        ProductVariant invalidPriceVariant = ProductVariant.builder()
+                .variantId(109L)
+                .status("ACTIVE")
+                .sku("INVALID-PRICE-SKU")
+                .price(null) // Không có giá
+                .build();
+
+        when(productVariantRepository.findAllById(anyList())).thenReturn(List.of(invalidPriceVariant));
+
+        CreateOrderRequest request = CreateOrderRequest.builder()
+                .recipientName("Nguyen Van A")
+                .recipientPhone("0987654321")
+                .shippingAddress("123 Duong ABC, Quan 1, TP.HCM")
+                .paymentMethod("COD")
+                .items(List.of(OrderItemRequest.builder().variantId(109L).quantity(1).build()))
+                .build();
+
+        assertThatThrownBy(() -> ordersService.createOrder(request, null))
+                .isInstanceOf(AppException.class)
+                .satisfies(e -> {
+                    AppException ae = (AppException) e;
+                    assertThat(ae.getErrorCode()).isEqualTo(ErrorCode.INVALID_REQUEST);
+                    assertThat(ae.getMessage()).contains("chưa có giá hợp lệ");
+                });
+    }
 }

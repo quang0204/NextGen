@@ -51,7 +51,8 @@ public class OrderCancellationService {
     public CancelOrderResponse cancelOrder(String orderCode, CancelOrderRequest request) {
         User currentUser = securityHelper.getCurrentUser();
 
-        Order order = orderRepository.findByOrderCode(orderCode.trim())
+        Order order = orderRepository.findByOrderCodeForUpdate(orderCode.trim())
+                .or(() -> orderRepository.findByOrderCode(orderCode.trim()))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng có mã " + orderCode + "!"));
 
         boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
@@ -67,17 +68,23 @@ public class OrderCancellationService {
         }
 
         LocalDateTime now = LocalDateTime.now(clock);
+        String reason = (request != null && org.springframework.util.StringUtils.hasText(request.getReason()))
+                ? request.getReason().trim()
+                : "Khách hàng yêu cầu hủy đơn";
 
         // Rollback giải phóng tồn giữ chỗ via InventoryService
-        boolean stockReleased = inventoryService.releaseStockForOrder(order.getOrderId(), request.getReason().trim());
+        boolean stockReleased = inventoryService.releaseStockForOrder(order.getOrderId(), reason);
 
         // Hoàn trả lượt sử dụng voucher nếu có
         if (order.getVoucher() != null) {
             voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
         }
 
-        // Cập nhật trạng thái Payment sang CANCELLED hoặc REFUND_PENDING nếu đã thanh toán
-        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus()) || PaymentStatus.SUCCESS.name().equalsIgnoreCase(order.getPaymentStatus());
+        // Cập nhật trạng thái Payment sang CANCELLED hoặc REFUND_PENDING nếu đã thanh toán / khách báo đã chuyển
+        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus())
+                || PaymentStatus.SUCCESS.name().equalsIgnoreCase(order.getPaymentStatus())
+                || "CUSTOMER_NOTIFIED".equalsIgnoreCase(order.getPaymentStatus())
+                || PaymentStatus.CUSTOMER_NOTIFIED.name().equalsIgnoreCase(order.getPaymentStatus());
         paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).ifPresent(payment -> {
             if (needRefund) {
                 payment.setStatus(PaymentStatus.REFUND_PENDING.name());
@@ -88,19 +95,19 @@ public class OrderCancellationService {
         });
 
         // Cập nhật đơn hàng qua OrderStateService
-        order.setCancelReason(request.getReason().trim());
+        order.setCancelReason(reason);
         if (needRefund) {
             order.setPaymentStatus(PaymentStatus.REFUND_PENDING.name());
         }
         orderStateService.transition(order, OrderStatus.CANCELLED, currentUser,
-                "Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""));
+                "Hủy đơn hàng: " + reason + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""));
         orderRepository.save(order);
 
         // Phát Outbox Event OrderCancelled / RefundRequested
         Map<String, Object> cancelPayload = new HashMap<>();
         cancelPayload.put("orderId", order.getOrderId());
         cancelPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
-        cancelPayload.put("cancelReason", request.getReason().trim());
+        cancelPayload.put("cancelReason", reason);
         cancelPayload.put("refundPending", needRefund);
         cancelPayload.put("refundAmount", needRefund ? order.getFinalTotal() : BigDecimal.ZERO);
         cancelPayload.put("refundRequestedAt", DateTimeUtil.formatIsoInstant(now));
@@ -117,7 +124,7 @@ public class OrderCancellationService {
                         .user(order.getUser())
                         .order(order)
                         .title("Đơn hàng đã bị hủy")
-                        .content("Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + request.getReason().trim())
+                        .content("Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + reason)
                         .isRead(false)
                         .build());
             } catch (Exception notifEx) {
@@ -128,7 +135,7 @@ public class OrderCancellationService {
         return CancelOrderResponse.builder()
                 .orderCode(order.getOrderCode())
                 .status(OrderStatus.CANCELLED.name())
-                .cancelReason(request.getReason().trim())
+                .cancelReason(reason)
                 .releasedHoldStock(stockReleased)
                 .cancelledAt(DateTimeUtil.formatIsoInstant(now))
                 .build();

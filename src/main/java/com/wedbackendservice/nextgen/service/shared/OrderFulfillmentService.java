@@ -52,7 +52,8 @@ public class OrderFulfillmentService {
     public ConfirmOrderResponse confirmOrder(Long id, ConfirmOrderRequest request) {
         User operator = securityHelper.authenticateStaffOrAdmin();
 
-        Order order = orderRepository.findById(id)
+        Order order = orderRepository.findByIdForUpdate(id)
+                .or(() -> orderRepository.findById(id))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
@@ -67,9 +68,10 @@ public class OrderFulfillmentService {
         orderStateService.transition(order, OrderStatus.CONFIRMED, operator, confirmNote);
         orderRepository.save(order);
 
-        // Sinh mã tracking vận đơn: GHN-YYYYMMDD-OrderId
+        // Sinh mã tracking vận đơn theo hãng vận chuyển: [PREFIX]-YYYYMMDD-OrderId
         String dateStr = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String trackingCode = "GHN-" + dateStr + order.getOrderId();
+        String carrierPrefix = resolveCarrierPrefix(request.getCarrier());
+        String trackingCode = carrierPrefix + dateStr + order.getOrderId();
 
         BigDecimal codAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? order.getFinalTotal() : BigDecimal.ZERO;
 
@@ -144,7 +146,8 @@ public class OrderFulfillmentService {
     @Transactional
     public OrderDetailResponse prepareOrder(Long id) {
         User operator = securityHelper.authenticateStaffOrAdmin();
-        Order order = orderRepository.findById(id)
+        Order order = orderRepository.findByIdForUpdate(id)
+                .or(() -> orderRepository.findById(id))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
@@ -197,7 +200,8 @@ public class OrderFulfillmentService {
     public PackExportOrderResponse packAndExportOrder(Long id, PackExportOrderRequest request) {
         User operator = securityHelper.authenticateStaffOrAdmin();
 
-        Order order = orderRepository.findById(id)
+        Order order = orderRepository.findByIdForUpdate(id)
+                .or(() -> orderRepository.findById(id))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
@@ -291,7 +295,8 @@ public class OrderFulfillmentService {
             throw new AppException(ErrorCode.UNAUTHORIZED, "Chỉ quản trị viên hoặc nhân viên mới có quyền xác nhận thanh toán!");
         }
 
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .or(() -> orderRepository.findById(orderId))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
         if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus())) {
@@ -360,7 +365,8 @@ public class OrderFulfillmentService {
     @Transactional
     public OrderDetailResponse customerNotifyPayment(Long orderId, String note) {
         User currentUser = securityHelper.getCurrentUser();
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdForUpdate(orderId)
+                .or(() -> orderRepository.findById(orderId))
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
         if (order.getUser() == null || !order.getUser().getUserId().equals(currentUser.getUserId())) {
@@ -383,5 +389,15 @@ public class OrderFulfillmentService {
         }
 
         return ordersQueryService.getOrderDetail(order.getOrderCode());
+    }
+
+    private String resolveCarrierPrefix(String carrier) {
+        if (!StringUtils.hasText(carrier)) return "GHN-";
+        String c = carrier.trim().toUpperCase();
+        if (c.contains("VIETTEL") || c.contains("VTP")) return "VTP-";
+        if (c.contains("GHTK") || c.contains("TIẾT KIỆM") || c.contains("TIET KIEM")) return "GHTK-";
+        if (c.contains("VNPOST") || c.contains("EMS")) return "VNPOST-";
+        if (c.contains("J&T") || c.contains("JT")) return "JT-";
+        return "GHN-";
     }
 }

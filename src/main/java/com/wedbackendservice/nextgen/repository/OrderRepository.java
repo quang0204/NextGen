@@ -1,10 +1,12 @@
 package com.wedbackendservice.nextgen.repository;
 
 import com.wedbackendservice.nextgen.entity.Order;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,10 +18,18 @@ import java.util.Optional;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long>, JpaSpecificationExecutor<Order> {
 
-    @Query("SELECT o FROM Order o WHERE o.status = 'PENDING_PAYMENT' AND (o.paymentStatus IS NULL OR UPPER(o.paymentStatus) <> 'PAID') AND o.createdAt <= :expiredBefore")
+    @Query("SELECT o FROM Order o WHERE o.status = 'PENDING_PAYMENT' AND (o.paymentStatus IS NULL OR (UPPER(o.paymentStatus) NOT IN ('PAID', 'SUCCESS', 'CUSTOMER_NOTIFIED'))) AND o.createdAt <= :expiredBefore")
     List<Order> findExpiredPendingOrders(@Param("expiredBefore") java.time.LocalDateTime expiredBefore);
 
     Optional<Order> findByOrderCode(String orderCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.orderId = :orderId")
+    Optional<Order> findByIdForUpdate(@Param("orderId") Long orderId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.orderCode = :orderCode")
+    Optional<Order> findByOrderCodeForUpdate(@Param("orderCode") String orderCode);
 
     boolean existsByOrderCode(String orderCode);
 

@@ -72,7 +72,7 @@ public class OrderPricingService {
             if (v.getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getStatus())) {
                 String prodName = v.getProduct() != null ? v.getProduct().getProductName() : v.getVariantName();
                 throw new AppException(ErrorCode.PRODUCT_INACTIVE,
-                        String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinhdong!", prodName, v.getSku()));
+                        String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinh doanh!", prodName, v.getSku()));
             }
             if (v.getProduct() != null && v.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getProduct().getStatus())) {
                 throw new AppException(ErrorCode.PRODUCT_INACTIVE,
@@ -101,7 +101,10 @@ public class OrderPricingService {
             int qty = entry.getValue();
             ProductVariant variant = variantMap.get(vId);
 
-            BigDecimal unitPrice = variant.getPrice() != null ? variant.getPrice() : BigDecimal.ZERO;
+            BigDecimal unitPrice = variant.getPrice();
+            if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new AppException(ErrorCode.INVALID_REQUEST, "Biến thể sản phẩm chưa có giá hợp lệ!");
+            }
             BigDecimal promoPrice = bestPromoPriceMap.get(vId);
             if (promoPrice != null && promoPrice.compareTo(unitPrice) < 0) {
                 unitPrice = promoPrice;
@@ -168,7 +171,7 @@ public class OrderPricingService {
     }
 
     public Map<Long, Integer> validateAndConsolidateItems(List<OrderItemRequest> items) {
-        Map<Long, Integer> consolidated = new LinkedHashMap<>();
+        Map<Long, Integer> consolidated = new TreeMap<>();
         if (items != null) {
             for (OrderItemRequest req : items) {
                 if (req.getVariantId() != null && req.getQuantity() != null && req.getQuantity() > 0) {
