@@ -235,9 +235,9 @@ public class ReturnsService {
                                             .skuSnapshot(oi.getSkuSnapshot())
                                             .colorSnapshot(oi.getColorSnapshot())
                                             .romSnapshot(oi.getRomSnapshot())
-                                            .unitPrice(oi.getPrice())
+                                            .unitPrice(oi.getUnitPrice())
                                             .quantity(oi.getQuantity())
-                                            .lineTotal((oi.getTotalPrice() != null ? oi.getTotalPrice() : (oi.getPrice() != null && oi.getQuantity() != null ? oi.getPrice().multiply(java.math.BigDecimal.valueOf(oi.getQuantity())) : java.math.BigDecimal.ZERO)))
+                                            .lineTotal(oi.getLineTotal())
                                             .imageUrl(oi.getImageUrl())
                                             .build();
                                 }, Collectors.toList())
@@ -288,7 +288,7 @@ public class ReturnsService {
                     .returnId(r.getReturnId())
                     .orderId(ord != null ? ord.getOrderId() : null)
                     .orderCode(ord != null ? ord.getOrderCode() : null)
-                    .orderTotalAmount(ord != null ? (ord.getFinalAmount() != null ? ord.getFinalAmount() : (ord.getTotalAmount() != null ? ord.getTotalAmount() : java.math.BigDecimal.ZERO)) : null)
+                    .orderTotalAmount(ord != null ? ord.getFinalTotal() : null)
                     .customer(customerInfo)
                     .reason(r.getReason())
                     .evidenceImages(parseImages(r.getEvidenceImages()))
@@ -511,7 +511,7 @@ public class ReturnsService {
                             .minThreshold(5)
                             .build()));
 
-            int qtyBefore = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inventory);
+            int qtyBefore = inventory.getOnHandQty();
             int qtyRestock = item.getQuantity();
             int qtyAfter = qtyBefore + qtyRestock;
 
@@ -538,8 +538,8 @@ public class ReturnsService {
                     .variantId(variant.getVariantId())
                     .sku(variant.getSku())
                     .quantityRestocked(qtyRestock)
-                    .newOnHandQty(com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inventory))
-                    .newAvailableQty(com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inventory))
+                    .newOnHandQty(inventory.getOnHandQty())
+                    .newAvailableQty(inventory.getAvailableQty())
                     .build());
         }
 

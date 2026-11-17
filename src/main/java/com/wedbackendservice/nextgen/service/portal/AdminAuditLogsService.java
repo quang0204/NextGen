@@ -2,6 +2,7 @@ package com.wedbackendservice.nextgen.service.portal;
 
 import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogListResponse;
+import com.wedbackendservice.nextgen.dto.portal.response.admin.AuditLogResponse;
 import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.mapper.AuditLogMapper;
 import com.wedbackendservice.nextgen.security.SecurityHelper;

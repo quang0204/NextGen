@@ -54,4 +54,16 @@ public class Order {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
+
+    public BigDecimal getSubtotal() {
+        return totalAmount != null ? totalAmount : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getVoucherDiscount() {
+        return discountAmount != null ? discountAmount : BigDecimal.ZERO;
+    }
+
+    public BigDecimal getFinalTotal() {
+        return finalAmount != null ? finalAmount : (totalAmount != null ? totalAmount : BigDecimal.ZERO);
+    }
 }

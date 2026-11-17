@@ -437,7 +437,7 @@ public class ProductsService {
 
             boolean isAvailable = pVariants.stream().anyMatch(v -> {
                 Inventory inv = inventoryByVariant.get(v.getVariantId());
-                return inv != null && com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv) > 0;
+                return inv != null && inv.getAvailableQty() > 0;
             });
 
             // Primary image
@@ -546,7 +546,7 @@ public class ProductsService {
                     }
 
                     Inventory inv = promoInventoryMap.get(variant.getVariantId());
-                    boolean inStock = inv != null && com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv) > 0;
+                    boolean inStock = inv != null && inv.getAvailableQty() > 0;
 
                     String image = variant.getImageUrl() != null && !variant.getImageUrl().isBlank()
                             ? variant.getImageUrl()
@@ -649,7 +649,7 @@ public class ProductsService {
             }
 
             Inventory inv = inventoryMap.get(firstVariant.getVariantId());
-            boolean inStock = inv != null && com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv) > 0;
+            boolean inStock = inv != null && inv.getAvailableQty() > 0;
 
             result.add(ProductFeaturedResponse.builder()
                     .productId(product.getProductId())
@@ -685,7 +685,7 @@ public class ProductsService {
                         .imageId(img.getImageId())
                         .imageUrl(img.getImageUrl())
                         .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
-                        .sortOrder(img.getDisplayOrder())
+                        .sortOrder(img.getSortOrder())
                         .build())
                 .toList();
 
@@ -793,7 +793,7 @@ public class ProductsService {
                     .objectKey(objectKey)
                     .bucket(bucket)
                     .isPrimary(Boolean.TRUE.equals(img.getIsPrimary()))
-                    .sortOrder(img.getDisplayOrder())
+                    .sortOrder(img.getSortOrder())
                     .build();
         }).toList();
 
@@ -815,9 +815,9 @@ public class ProductsService {
             if (inv != null) {
                 invResp = AdminProductDetailResponse.AdminVariantInventoryResponse.builder()
                         .inventoryId(inv.getInventoryId())
-                        .onHandQty(com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv))
-                        .reservedQty(com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(inv))
-                        .availableQty(com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv))
+                        .onHandQty(inv.getOnHandQty())
+                        .reservedQty(inv.getReservedQty())
+                        .availableQty(inv.getAvailableQty())
                         .minThreshold(inv.getMinThreshold() != null ? inv.getMinThreshold() : 5)
                         .build();
             }
@@ -1098,9 +1098,9 @@ public class ProductsService {
                     .listPrice(savedVariant.getPrice())
                     .inventory(CreateProductResponse.InventorySummary.builder()
                             .inventoryId(savedInventory.getInventoryId())
-                            .onHandQty(com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(savedInventory))
-                            .reservedQty(com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(savedInventory))
-                            .availableQty(com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(savedInventory))
+                            .onHandQty(savedInventory.getOnHandQty())
+                            .reservedQty(savedInventory.getReservedQty())
+                            .availableQty(savedInventory.getAvailableQty())
                             .minThreshold(savedInventory.getMinThreshold())
                             .build())
                     .build());
@@ -1395,9 +1395,9 @@ public class ProductsService {
                 .isActive(true)
                 .inventory(CreateProductResponse.InventorySummary.builder()
                         .inventoryId(savedInventory.getInventoryId())
-                        .onHandQty(com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(savedInventory))
-                        .reservedQty(com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(savedInventory))
-                        .availableQty(com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(savedInventory))
+                        .onHandQty(savedInventory.getOnHandQty())
+                        .reservedQty(savedInventory.getReservedQty())
+                        .availableQty(savedInventory.getAvailableQty())
                         .minThreshold(savedInventory.getMinThreshold())
                         .build())
                 .createdAt(savedVariant.getCreatedAt() != null ? savedVariant.getCreatedAt().toString() : LocalDateTime.now().toString())

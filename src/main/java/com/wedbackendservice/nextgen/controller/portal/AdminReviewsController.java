@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.dto.client.response.review.ReviewResponse;
 import com.wedbackendservice.nextgen.service.client.ReviewsService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController

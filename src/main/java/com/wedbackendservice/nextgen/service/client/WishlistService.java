@@ -2,6 +2,7 @@ package com.wedbackendservice.nextgen.service.client;
 
 import com.wedbackendservice.nextgen.dto.client.request.wishlist.WishlistToggleRequest;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistListResponse;
+import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistProductResponse;
 import com.wedbackendservice.nextgen.dto.client.response.wishlist.WishlistToggleResponse;
 import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.entity.Product;
@@ -27,6 +28,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 

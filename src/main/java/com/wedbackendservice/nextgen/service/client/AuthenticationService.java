@@ -16,6 +16,7 @@ import com.wedbackendservice.nextgen.dto.session.ResetPasswordSessionData;
 import com.wedbackendservice.nextgen.dto.session.TokenPair;
 import com.wedbackendservice.nextgen.dto.client.response.auth.*;
 import com.wedbackendservice.nextgen.dto.client.request.auth.*;
+import com.wedbackendservice.nextgen.entity.AuditLog;
 import com.wedbackendservice.nextgen.entity.Cart;
 import com.wedbackendservice.nextgen.entity.Notification;
 import com.wedbackendservice.nextgen.entity.User;

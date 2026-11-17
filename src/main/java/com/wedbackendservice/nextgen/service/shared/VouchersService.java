@@ -29,7 +29,12 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -78,10 +83,10 @@ public class VouchersService {
 
             result.add(ValidVoucherResponse.builder()
                     .voucherId(v.getVoucherId())
-                    .code(v.getVoucherCode())
+                    .code(v.getCode())
                     .discountType(normalizeDiscountType(v.getDiscountType()))
                     .discountValue(v.getDiscountValue())
-                    .maxDiscount(v.getMaxDiscountAmount())
+                    .maxDiscount(v.getMaxDiscount())
                     .minOrderValue(v.getMinOrderValue())
                     .usageLimit(v.getUsageLimit())
                     .usedCount(used)
@@ -126,7 +131,7 @@ public class VouchersService {
         if (voucher.getMinOrderValue() != null && subtotal.compareTo(voucher.getMinOrderValue()) < 0) {
             String minOrderFormatted = CURRENCY_FORMATTER.format(voucher.getMinOrderValue()) + "đ";
             throw new AppException(ErrorCode.ERR_VOUCHER_MIN_ORDER,
-                    String.format("Đơn hàng chưa đạt giá trị tối thiểu %s để áp dụng mã %s!", minOrderFormatted, voucher.getVoucherCode()));
+                    String.format("Đơn hàng chưa đạt giá trị tối thiểu %s để áp dụng mã %s!", minOrderFormatted, voucher.getCode()));
         }
 
         BigDecimal discountAmount = BigDecimal.ZERO;
@@ -135,8 +140,8 @@ public class VouchersService {
         if ("PERCENT".equals(type)) {
             BigDecimal percent = voucher.getDiscountValue() != null ? voucher.getDiscountValue() : BigDecimal.ZERO;
             discountAmount = subtotal.multiply(percent).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-            if (voucher.getMaxDiscountAmount() != null && voucher.getMaxDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
-                discountAmount = discountAmount.min(voucher.getMaxDiscountAmount());
+            if (voucher.getMaxDiscount() != null && voucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
+                discountAmount = discountAmount.min(voucher.getMaxDiscount());
             }
             discountAmount = discountAmount.min(subtotal);
         } else {
@@ -152,7 +157,7 @@ public class VouchersService {
 
         return ApplyVoucherResponse.builder()
                 .voucherId(voucher.getVoucherId())
-                .code(voucher.getVoucherCode())
+                .code(voucher.getCode())
                 .discountType(type)
                 .discountValue(voucher.getDiscountValue())
                 .discountAmount(discountAmount)
@@ -198,10 +203,10 @@ public class VouchersService {
 
         List<AdminVoucherItemResponse> items = pageResult.getContent().stream().map(v -> AdminVoucherItemResponse.builder()
                 .voucherId(v.getVoucherId())
-                .code(v.getVoucherCode())
+                .code(v.getCode())
                 .discountType(normalizeDiscountType(v.getDiscountType()))
                 .discountValue(v.getDiscountValue())
-                .maxDiscount(v.getMaxDiscountAmount())
+                .maxDiscount(v.getMaxDiscount())
                 .minOrderValue(v.getMinOrderValue())
                 .usageLimit(v.getUsageLimit())
                 .usedCount(v.getUsedCount() != null ? v.getUsedCount() : 0)
@@ -270,14 +275,14 @@ public class VouchersService {
 
         // Ghi Audit Log (D18)
         auditLogRepository.log(currentUser, "CREATE_VOUCHER", "Vouchers", savedVoucher.getVoucherId(),
-                null, "Khởi tạo mã voucher mới: " + savedVoucher.getVoucherCode());
+                null, "Khởi tạo mã voucher mới: " + savedVoucher.getCode());
 
         return CreateVoucherResponse.builder()
                 .voucherId(savedVoucher.getVoucherId())
-                .code(savedVoucher.getVoucherCode())
+                .code(savedVoucher.getCode())
                 .discountType(savedVoucher.getDiscountType())
                 .discountValue(savedVoucher.getDiscountValue())
-                .maxDiscount(savedVoucher.getMaxDiscountAmount())
+                .maxDiscount(savedVoucher.getMaxDiscount())
                 .minOrderValue(savedVoucher.getMinOrderValue())
                 .usageLimit(savedVoucher.getUsageLimit())
                 .usedCount(savedVoucher.getUsedCount())
@@ -309,7 +314,7 @@ public class VouchersService {
 
         return ToggleVoucherResponse.builder()
                 .voucherId(voucher.getVoucherId())
-                .code(voucher.getVoucherCode())
+                .code(voucher.getCode())
                 .isActive(voucher.getIsActive())
                 .updatedAt(DateTimeUtil.formatIsoInstant(voucher.getUpdatedAt()))
                 .build();

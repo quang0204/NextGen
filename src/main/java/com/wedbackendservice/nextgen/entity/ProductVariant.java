@@ -37,9 +37,12 @@ public class ProductVariant {
     String color;
     Integer ramGb;
     Integer romGb;
+
+    @Column(name = "connection_type")
     String connectionType;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "attributes", columnDefinition = "json")
     Map<String, Object> attributes;
 
     @Column(length = 1000)

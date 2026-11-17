@@ -29,11 +29,19 @@ public class OrderItem {
     @ManyToOne(fetch = FetchType.LAZY)
     ProductVariant variant;
 
+    @Column(name = "sku_snapshot")
     String skuSnapshot;
+
+    @Column(name = "product_name_snapshot")
     String productNameSnapshot;
+
+    @Column(name = "color_snapshot")
     String colorSnapshot;
+
+    @Column(name = "rom_snapshot")
     String romSnapshot;
 
+    @Column(name = "image_url")
     String imageUrl;
 
     BigDecimal price;
@@ -42,4 +50,12 @@ public class OrderItem {
 
     @CreatedDate
     LocalDateTime createdAt;
+
+    public BigDecimal getUnitPrice() {
+        return price;
+    }
+
+    public BigDecimal getLineTotal() {
+        return totalPrice != null ? totalPrice : (price != null && quantity != null ? price.multiply(BigDecimal.valueOf(quantity)) : BigDecimal.ZERO);
+    }
 }

@@ -89,10 +89,10 @@ public class OrdersService {
                             .orderId(existing.getOrderId())
                             .orderCode(existing.getOrderCode())
                             .status(existing.getStatus())
-                            .subtotal(existing.getTotalAmount())
-                            .voucherDiscount(existing.getDiscountAmount())
+                            .subtotal(existing.getSubtotal())
+                            .voucherDiscount(existing.getVoucherDiscount())
                             .shippingFee(existing.getShippingFee() != null ? existing.getShippingFee() : BigDecimal.ZERO)
-                            .totalAmount((existing.getFinalAmount() != null ? existing.getFinalAmount() : (existing.getTotalAmount() != null ? existing.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                            .totalAmount(existing.getFinalTotal())
                             .paymentMethod(existing.getPaymentMethod())
                             .paymentStatus(existing.getPaymentStatus())
                             .itemsCount(existingItems != null ? existingItems.size() : 0)
@@ -137,7 +137,7 @@ public class OrdersService {
             Inventory inv = inventoryRepository.findByVariant_VariantId(variantId)
                     .orElseGet(() -> Inventory.builder().variant(variant).quantity(0).reservedQuantity(0).minThreshold(5).build());
 
-            int available = com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv);
+            int available = inv.getAvailableQty();
             if (available < requestedQty) {
                 String prodName = variant.getProduct() != null ? variant.getProduct().getProductName() : variant.getVariantName();
                 throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
@@ -215,15 +215,15 @@ public class OrdersService {
             if (appliedVoucher.getMinOrderValue() != null && subtotal.compareTo(appliedVoucher.getMinOrderValue()) < 0) {
                 throw new AppException(ErrorCode.ERR_VOUCHER_MIN_ORDER,
                         String.format("Đơn hàng chưa đạt giá trị tối thiểu %sđ để áp dụng mã %s!",
-                                CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()), appliedVoucher.getVoucherCode()));
+                                CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()), appliedVoucher.getCode()));
             }
 
             String discType = appliedVoucher.getDiscountType() != null ? appliedVoucher.getDiscountType().trim().toUpperCase() : "FIXED";
             if ("PERCENT".equals(discType) || "PERCENTAGE".equals(discType)) {
                 BigDecimal pct = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
                 voucherDiscount = subtotal.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-                if (appliedVoucher.getMaxDiscountAmount() != null && appliedVoucher.getMaxDiscountAmount().compareTo(BigDecimal.ZERO) > 0) {
-                    voucherDiscount = voucherDiscount.min(appliedVoucher.getMaxDiscountAmount());
+                if (appliedVoucher.getMaxDiscount() != null && appliedVoucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
+                    voucherDiscount = voucherDiscount.min(appliedVoucher.getMaxDiscount());
                 }
                 voucherDiscount = voucherDiscount.min(subtotal);
             } else {
@@ -361,10 +361,10 @@ public class OrdersService {
                 .orderId(savedOrder.getOrderId())
                 .orderCode(savedOrder.getOrderCode())
                 .status(savedOrder.getStatus())
-                .subtotal(savedOrder.getTotalAmount())
-                .voucherDiscount(savedOrder.getDiscountAmount())
+                .subtotal(savedOrder.getSubtotal())
+                .voucherDiscount(savedOrder.getVoucherDiscount())
                 .shippingFee(savedOrder.getShippingFee() != null ? savedOrder.getShippingFee() : BigDecimal.ZERO)
-                .totalAmount((savedOrder.getFinalAmount() != null ? savedOrder.getFinalAmount() : (savedOrder.getTotalAmount() != null ? savedOrder.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                .totalAmount(savedOrder.getFinalTotal())
                 .paymentMethod(savedOrder.getPaymentMethod())
                 .paymentStatus(savedOrder.getPaymentStatus())
                 .itemsCount(orderItemsToSave.size())
@@ -433,14 +433,14 @@ public class OrdersService {
                     .recipientName(order.getRecipientName())
                     .recipientPhone(order.getRecipientPhone())
                     .shippingAddress(order.getShippingAddress())
-                    .subtotal(order.getTotalAmount())
-                    .voucherDiscount(order.getDiscountAmount())
+                    .subtotal(order.getSubtotal())
+                    .voucherDiscount(order.getVoucherDiscount())
                     .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                    .totalAmount((order.getFinalAmount() != null ? order.getFinalAmount() : (order.getTotalAmount() != null ? order.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                    .totalAmount(order.getFinalTotal())
                     .paymentMethod(order.getPaymentMethod())
                     .paymentStatus(payStatus)
-                    .carrier(shipment != null ? shipment.getCarrierName() : null)
-                    .trackingCode(shipment != null ? shipment.getTrackingNumber() : null)
+                    .carrier(shipment != null ? shipment.getCarrier() : null)
+                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
                     .cancelReason(order.getCancelReason())
                     .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
                     .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
@@ -491,8 +491,8 @@ public class OrdersService {
                 .toList();
 
         Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
-        String carrier = shipmentOpt.map(Shipment::getCarrierName).orElse(null);
-        String trackingCode = shipmentOpt.map(Shipment::getTrackingNumber).orElse(null);
+        String carrier = shipmentOpt.map(Shipment::getCarrier).orElse(null);
+        String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
         ReturnRequest latestReturn = returnRequestRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).orElse(null);
 
         String detailPaymentStatus = order.getPaymentStatus();
@@ -514,10 +514,10 @@ public class OrdersService {
                 .shippingAddress(order.getShippingAddress())
                 .paymentMethod(order.getPaymentMethod())
                 .paymentStatus(detailPaymentStatus)
-                .subtotal(order.getTotalAmount())
-                .voucherDiscount(order.getDiscountAmount())
+                .subtotal(order.getSubtotal())
+                .voucherDiscount(order.getVoucherDiscount())
                 .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                .totalAmount((order.getFinalAmount() != null ? order.getFinalAmount() : (order.getTotalAmount() != null ? order.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                .totalAmount(order.getFinalTotal())
                 .carrier(carrier)
                 .trackingCode(trackingCode)
                 .cancelReason(order.getCancelReason())
@@ -680,13 +680,13 @@ public class OrdersService {
                     .shippingAddress(order.getShippingAddress())
                     .paymentMethod(order.getPaymentMethod())
                     .paymentStatus(adminPayStatus)
-                    .subtotal(order.getTotalAmount())
-                    .voucherDiscount(order.getDiscountAmount())
+                    .subtotal(order.getSubtotal())
+                    .voucherDiscount(order.getVoucherDiscount())
                     .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                    .totalAmount((order.getFinalAmount() != null ? order.getFinalAmount() : (order.getTotalAmount() != null ? order.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                    .totalAmount(order.getFinalTotal())
                     .status(order.getStatus())
-                    .carrier(shipment != null ? shipment.getCarrierName() : null)
-                    .trackingCode(shipment != null ? shipment.getTrackingNumber() : null)
+                    .carrier(shipment != null ? shipment.getCarrier() : null)
+                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
                     .cancelReason(order.getCancelReason())
                     .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
                     .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
@@ -758,7 +758,7 @@ public class OrdersService {
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String trackingCode = "GHN-" + dateStr + order.getOrderId();
 
-        BigDecimal codAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? (order.getFinalAmount() != null ? order.getFinalAmount() : (order.getTotalAmount() != null ? order.getTotalAmount() : java.math.BigDecimal.ZERO)) : BigDecimal.ZERO;
+        BigDecimal codAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? order.getFinalTotal() : BigDecimal.ZERO;
 
         Shipment shipment = Shipment.builder()
                 .order(order)
@@ -804,9 +804,9 @@ public class OrdersService {
 
         ShipmentDetailResponse shipmentDetail = ShipmentDetailResponse.builder()
                 .shipmentId(savedShipment.getShipmentId())
-                .trackingCode(savedShipment.getTrackingNumber())
-                .carrier(savedShipment.getCarrierName())
-                .status(savedShipment.getShippingStatus())
+                .trackingCode(savedShipment.getTrackingCode())
+                .carrier(savedShipment.getCarrier())
+                .status(savedShipment.getStatus())
                 .recipientName(savedShipment.getRecipientName())
                 .recipientPhone(savedShipment.getRecipientPhone())
                 .codAmount(savedShipment.getCodAmount())
@@ -851,7 +851,7 @@ public class OrdersService {
                     .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
                             "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
 
-            int onHandBefore = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
+            int onHandBefore = inv.getOnHandQty();
             int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
             if (updatedRows == 0) {
                 throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
@@ -926,9 +926,9 @@ public class OrdersService {
 
         ShipmentDetailResponse shipmentDetail = ShipmentDetailResponse.builder()
                 .shipmentId(savedShipment.getShipmentId())
-                .trackingCode(savedShipment.getTrackingNumber())
-                .carrier(savedShipment.getCarrierName())
-                .status(savedShipment.getShippingStatus())
+                .trackingCode(savedShipment.getTrackingCode())
+                .carrier(savedShipment.getCarrier())
+                .status(savedShipment.getStatus())
                 .recipientName(savedShipment.getRecipientName())
                 .recipientPhone(savedShipment.getRecipientPhone())
                 .codAmount(savedShipment.getCodAmount())
@@ -989,7 +989,7 @@ public class OrdersService {
                         .order(updated)
                         .paymentMethod(updated.getPaymentMethod() != null ? updated.getPaymentMethod() : "BANK_TRANSFER")
                         .paymentProvider("SIMULATED_QR")
-                        .amount((updated.getFinalAmount() != null ? updated.getFinalAmount() : (updated.getTotalAmount() != null ? updated.getTotalAmount() : java.math.BigDecimal.ZERO)))
+                        .amount(updated.getFinalTotal())
                         .transactionRef("TXN-" + System.currentTimeMillis())
                         .build());
         payment.setStatus(PaymentStatus.SUCCESS.name());
@@ -1148,7 +1148,7 @@ public class OrdersService {
                 if (variant != null) {
                     if (wasExported) {
                         Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
-                        int qtyBefore = inv != null ? com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv) : 0;
+                        int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
                         inventoryRepository.increaseQuantityAtomic(variant.getVariantId(), item.getQuantity(), now);
                         inventoryTransactionRepository.save(InventoryTransaction.builder()
                                 .variant(variant)

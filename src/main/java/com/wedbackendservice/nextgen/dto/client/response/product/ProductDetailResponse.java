@@ -9,8 +9,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
-@Getter
-@Setter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -30,8 +29,7 @@ public class ProductDetailResponse {
     List<VariantSchemaField> variantSchema;
     List<VariantDetailResponse> variants;
 
-    @Getter
-    @Setter
+    @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -43,8 +41,7 @@ public class ProductDetailResponse {
         Integer sortOrder;
     }
 
-    @Getter
-    @Setter
+    @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -54,8 +51,7 @@ public class ProductDetailResponse {
         List<SpecItemResponse> items;
     }
 
-    @Getter
-    @Setter
+    @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
@@ -65,8 +61,7 @@ public class ProductDetailResponse {
         String specValue;
     }
 
-    @Getter
-    @Setter
+    @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor

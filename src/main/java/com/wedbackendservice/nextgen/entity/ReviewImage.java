@@ -31,13 +31,22 @@ public class ReviewImage {
             foreignKey = @ForeignKey(name = "fk_review_images_review"))
     Review review;
 
+    /** Link ảnh do MinIO / S3 sinh ra. */
+    @Column(length = 500, nullable = false)
     String imageUrl;
+
+    @Column(length = 100)
     String bucket;
+
+    @Column(length = 500)
     String objectKey;
+
+    @Column(length = 50)
     String contentType;
 
     Long fileSize;
 
+    /** Thứ tự hiển thị, từ 1 đến 5. */
     Integer displayOrder;
 
     @CreatedDate

@@ -48,7 +48,11 @@ public class ReturnRequest {
     String inspectionResult;
 
     String rejectReason;
+
+    @Column(columnDefinition = "TEXT")
     String requestedItems;
+
+    @Column(columnDefinition = "TEXT")
     String restockedItems;
 
     String adminNote;

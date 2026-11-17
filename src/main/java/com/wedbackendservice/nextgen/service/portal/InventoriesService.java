@@ -6,6 +6,7 @@ import com.wedbackendservice.nextgen.dto.portal.request.inventory.InventoryAdjus
 import com.wedbackendservice.nextgen.dto.common.PageResponse;
 import com.wedbackendservice.nextgen.dto.portal.response.inventory.*;
 import com.wedbackendservice.nextgen.entity.*;
+import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
 import com.wedbackendservice.nextgen.enums.StockStatus;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
@@ -111,9 +112,9 @@ public class InventoriesService {
             ProductVariant v = inv.getVariant();
             Product p = v != null ? v.getProduct() : null;
 
-            int onHand = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
-            int reserved = com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(inv);
-            int available = com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv);
+            int onHand = inv.getOnHandQty();
+            int reserved = inv.getReservedQty();
+            int available = inv.getAvailableQty();
             int threshold = inv.getMinThreshold();
             String itemStatus = determineStatus(available, threshold);
 
@@ -186,9 +187,9 @@ public class InventoriesService {
                         .build()));
 
         Product product = variant.getProduct();
-        int onHand = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inventory);
-        int reserved = com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(inventory);
-        int available = com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inventory);
+        int onHand = inventory.getOnHandQty();
+        int reserved = inventory.getReservedQty();
+        int available = inventory.getAvailableQty();
         int threshold = inventory.getMinThreshold();
         String itemStatus = determineStatus(available, threshold);
 
@@ -273,7 +274,7 @@ public class InventoriesService {
                         .minThreshold(5)
                         .build()));
 
-        int reservedQty = com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(inventory);
+        int reservedQty = inventory.getReservedQty();
         if (request.getActualCount() < reservedQty) {
             throw new AppException(
                     ErrorCode.ERR_STOCK_ADJUST_INVALID,
@@ -282,7 +283,7 @@ public class InventoriesService {
             );
         }
 
-        int qtyBefore = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inventory);
+        int qtyBefore = inventory.getOnHandQty();
         int qtyActual = request.getActualCount();
         int quantityChange = qtyActual - qtyBefore;
         LocalDateTime now = LocalDateTime.now();
@@ -461,9 +462,9 @@ public class InventoriesService {
             ProductVariant v = inv.getVariant();
             Product p = v != null ? v.getProduct() : null;
 
-            int onHand = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
-            int reserved = com.wedbackendservice.nextgen.util.InventoryUtil.getReserved(inv);
-            int available = com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv);
+            int onHand = inv.getOnHandQty();
+            int reserved = inv.getReservedQty();
+            int available = inv.getAvailableQty();
             int threshold = inv.getMinThreshold();
             int deficit = Math.max(0, threshold - available);
             String itemStatus = available <= 0 ? "OUT_OF_STOCK" : "LOW_STOCK";
