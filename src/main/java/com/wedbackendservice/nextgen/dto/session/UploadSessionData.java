@@ -13,73 +13,73 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class UploadSessionData {
-    public static final String STATUS_PENDING = "PENDING";
-    public static final String STATUS_COMPLETED = "COMPLETED";
-    public static final String STATUS_ATTACHED = "ATTACHED";
+  public static final String STATUS_PENDING = "PENDING";
+  public static final String STATUS_COMPLETED = "COMPLETED";
+  public static final String STATUS_ATTACHED = "ATTACHED";
 
-    String uploadId;
+  String uploadId;
 
-    @JsonAlias({"ownerId", "userId"})
-    Long ownerId;
+  @JsonAlias({"ownerId", "userId"})
+  Long ownerId;
 
-    Long productId;
-    Long brandId;
-    Long categoryId;
+  Long productId;
+  Long brandId;
+  Long categoryId;
 
-    String storageType;
-    String bucket;
-    String objectKey;
+  String storageType;
+  String bucket;
+  String objectKey;
 
-    @JsonAlias({"originalFileName", "fileName"})
-    String originalFileName;
+  @JsonAlias({"originalFileName", "fileName"})
+  String originalFileName;
 
-    String contentType;
+  String contentType;
 
-    @JsonAlias({"expectedSize", "fileSize"})
-    Long expectedSize;
+  @JsonAlias({"expectedSize", "fileSize"})
+  Long expectedSize;
 
-    Long actualSize;
-    String etag;
-    String status;
+  Long actualSize;
+  String etag;
+  String status;
 
-    String canonicalUrl;
-    String accessUrl;
+  String canonicalUrl;
+  String accessUrl;
 
-    @JsonAlias({"presignedExpiresAtMillis", "expiresAt"})
-    Long presignedExpiresAtMillis;
+  @JsonAlias({"presignedExpiresAtMillis", "expiresAt"})
+  Long presignedExpiresAtMillis;
 
-    @JsonAlias({"createdAtMillis", "createdAt"})
-    Long createdAtMillis;
+  @JsonAlias({"createdAtMillis", "createdAt"})
+  Long createdAtMillis;
 
-    public Long getUserId() {
-        return ownerId;
-    }
+  public Long getUserId() {
+    return ownerId;
+  }
 
-    public void setUserId(Long userId) {
-        this.ownerId = userId;
-    }
+  public void setUserId(Long userId) {
+    this.ownerId = userId;
+  }
 
-    public String getFileName() {
-        return originalFileName;
-    }
+  public String getFileName() {
+    return originalFileName;
+  }
 
-    public void setFileName(String fileName) {
-        this.originalFileName = fileName;
-    }
+  public void setFileName(String fileName) {
+    this.originalFileName = fileName;
+  }
 
-    public Long getFileSize() {
-        return expectedSize;
-    }
+  public Long getFileSize() {
+    return expectedSize;
+  }
 
-    public void setFileSize(Long fileSize) {
-        this.expectedSize = fileSize;
-    }
+  public void setFileSize(Long fileSize) {
+    this.expectedSize = fileSize;
+  }
 
-    public Long getExpiresAt() {
-        return presignedExpiresAtMillis;
-    }
+  public Long getExpiresAt() {
+    return presignedExpiresAtMillis;
+  }
 
-    public void setExpiresAt(Long expiresAt) {
-        this.presignedExpiresAtMillis = expiresAt;
-    }
+  public void setExpiresAt(Long expiresAt) {
+    this.presignedExpiresAtMillis = expiresAt;
+  }
 }

@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.order;
 
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -12,11 +11,11 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ShipmentDetailResponse {
-    Long shipmentId;
-    String trackingCode;
-    String carrier;
-    String status;
-    String recipientName;
-    String recipientPhone;
-    BigDecimal codAmount;
+  Long shipmentId;
+  String trackingCode;
+  String carrier;
+  String status;
+  String recipientName;
+  String recipientPhone;
+  BigDecimal codAmount;
 }

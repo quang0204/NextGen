@@ -14,16 +14,16 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UploadFileInput {
-    @NotBlank(message = "Tên tập tin không được để trống")
-    @JsonAlias({"originalFileName", "filename", "name"})
-    String fileName;
+  @NotBlank(message = "Tên tập tin không được để trống")
+  @JsonAlias({"originalFileName", "filename", "name"})
+  String fileName;
 
-    @NotBlank(message = "Content type không được để trống")
-    @JsonAlias({"mimeType", "type"})
-    String contentType;
+  @NotBlank(message = "Content type không được để trống")
+  @JsonAlias({"mimeType", "type"})
+  String contentType;
 
-    @NotNull(message = "Kích thước tập tin không được để trống")
-    @Positive(message = "Kích thước tập tin phải lớn hơn 0")
-    @JsonAlias({"size", "sizeBytes"})
-    Long fileSize;
+  @NotNull(message = "Kích thước tập tin không được để trống")
+  @Positive(message = "Kích thước tập tin phải lớn hơn 0")
+  @JsonAlias({"size", "sizeBytes"})
+  Long fileSize;
 }

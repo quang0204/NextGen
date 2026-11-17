@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.voucher;
 
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -12,11 +11,11 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ApplyVoucherResponse {
-    Long voucherId;
-    String code;
-    String discountType;
-    BigDecimal discountValue;
-    BigDecimal discountAmount;
-    BigDecimal originalSubtotal;
-    BigDecimal finalSubtotal;
+  Long voucherId;
+  String code;
+  String discountType;
+  BigDecimal discountValue;
+  BigDecimal discountAmount;
+  BigDecimal originalSubtotal;
+  BigDecimal finalSubtotal;
 }

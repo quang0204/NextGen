@@ -1,14 +1,11 @@
 package com.wedbackendservice.nextgen.dto.client.request.payment;
 
 import jakarta.validation.constraints.NotBlank;
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
-import java.math.BigDecimal;
-
-/**
- * Mô phỏng callback từ cổng thanh toán (dùng cho demo/đồ án).
- */
+/** Mô phỏng callback từ cổng thanh toán (dùng cho demo/đồ án). */
 @Getter
 @Setter
 @Builder
@@ -17,13 +14,13 @@ import java.math.BigDecimal;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class SimulateCallbackRequest {
 
-    @NotBlank(message = "transactionRef không được để trống")
-    String transactionRef;
+  @NotBlank(message = "transactionRef không được để trống")
+  String transactionRef;
 
-    /** true = thanh toán thành công, false = thất bại. Mặc định true. */
-    Boolean success;
+  /** true = thanh toán thành công, false = thất bại. Mặc định true. */
+  Boolean success;
 
-    BigDecimal amount;
+  BigDecimal amount;
 
-    String note;
+  String note;
 }

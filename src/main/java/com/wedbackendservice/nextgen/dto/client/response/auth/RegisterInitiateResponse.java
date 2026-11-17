@@ -13,10 +13,11 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterInitiateResponse {
-    @Enumerated(EnumType.STRING)
-    OtpChannel channel;
-    String targetEmail;
-    String registrationToken;
-    Integer expiresInSeconds;
-    Integer cooldownSeconds;
+  @Enumerated(EnumType.STRING)
+  OtpChannel channel;
+
+  String targetEmail;
+  String registrationToken;
+  Integer expiresInSeconds;
+  Integer cooldownSeconds;
 }

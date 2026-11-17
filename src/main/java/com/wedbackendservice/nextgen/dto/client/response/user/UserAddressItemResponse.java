@@ -10,9 +10,9 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserAddressItemResponse {
-    Long addressId;
-    String recipientName;
-    String phone;
-    String addressLine;
-    Boolean isDefault;
+  Long addressId;
+  String recipientName;
+  String phone;
+  String addressLine;
+  Boolean isDefault;
 }

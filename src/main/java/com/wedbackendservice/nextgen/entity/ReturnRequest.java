@@ -1,14 +1,13 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -20,49 +19,47 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReturnRequest {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long returnId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long returnId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Order order;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    User requestedBy;
+  @ManyToOne(fetch = FetchType.LAZY)
+  User requestedBy;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    User inspectedBy;
+  @ManyToOne(fetch = FetchType.LAZY)
+  User inspectedBy;
 
-    String reason;
+  String reason;
 
-    String status;
+  String status;
 
-    BigDecimal refundAmount;
+  BigDecimal refundAmount;
 
-    String evidenceImages;
+  String evidenceImages;
 
-    String bankName;
-    String bankAccountNumber;
-    String bankAccountHolder;
+  String bankName;
+  String bankAccountNumber;
+  String bankAccountHolder;
 
-    String inspectionResult;
+  String inspectionResult;
 
-    String rejectReason;
+  String rejectReason;
 
-    @Column(columnDefinition = "TEXT")
-    String requestedItems;
+  @Column(columnDefinition = "TEXT")
+  String requestedItems;
 
-    @Column(columnDefinition = "TEXT")
-    String restockedItems;
+  @Column(columnDefinition = "TEXT")
+  String restockedItems;
 
-    String adminNote;
+  String adminNote;
 
-    LocalDateTime inspectedAt;
-    LocalDateTime approvedAt;
+  LocalDateTime inspectedAt;
+  LocalDateTime approvedAt;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @CreatedDate LocalDateTime createdAt;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @LastModifiedDate LocalDateTime updatedAt;
 }

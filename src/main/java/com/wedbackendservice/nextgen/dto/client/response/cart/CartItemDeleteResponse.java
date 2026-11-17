@@ -1,10 +1,9 @@
 package com.wedbackendservice.nextgen.dto.client.response.cart;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -14,7 +13,7 @@ import java.math.BigDecimal;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CartItemDeleteResponse {
-    Long deletedItemId;
-    Integer remainingItems;
-    BigDecimal newSubtotal;
+  Long deletedItemId;
+  Integer remainingItems;
+  BigDecimal newSubtotal;
 }

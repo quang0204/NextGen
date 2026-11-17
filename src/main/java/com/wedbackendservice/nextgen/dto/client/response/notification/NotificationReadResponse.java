@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class NotificationReadResponse {
-    Long notificationId;
-    boolean isRead;
-    long unreadCount;
+  Long notificationId;
+  boolean isRead;
+  long unreadCount;
 }

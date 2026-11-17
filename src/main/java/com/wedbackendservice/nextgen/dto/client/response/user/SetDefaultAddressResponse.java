@@ -12,9 +12,9 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SetDefaultAddressResponse {
-    Long defaultAddressId;
-    String recipientName;
-    String phone;
-    String addressLine;
-    Boolean isDefault;
+  Long defaultAddressId;
+  String recipientName;
+  String phone;
+  String addressLine;
+  Boolean isDefault;
 }

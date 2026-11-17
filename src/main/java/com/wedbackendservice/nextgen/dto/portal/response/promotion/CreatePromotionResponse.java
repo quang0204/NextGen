@@ -10,11 +10,11 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreatePromotionResponse {
-    Long promotionId;
-    String name;
-    Integer appliedVariantsCount;
-    String status;
-    String startAt;
-    String endAt;
-    String createdAt;
+  Long promotionId;
+  String name;
+  Integer appliedVariantsCount;
+  String status;
+  String startAt;
+  String endAt;
+  String createdAt;
 }

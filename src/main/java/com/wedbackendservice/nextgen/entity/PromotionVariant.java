@@ -1,13 +1,12 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -19,23 +18,24 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PromotionVariant {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long promoVariantId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long promoVariantId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Promotion promotion;
-    @ManyToOne(fetch = FetchType.LAZY)
-    ProductVariant variant;
-    BigDecimal promotionalPrice;
-    @CreatedDate
-    LocalDateTime createdAt;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Promotion promotion;
 
-    public BigDecimal getPromoPrice() {
-        return promotionalPrice;
-    }
+  @ManyToOne(fetch = FetchType.LAZY)
+  ProductVariant variant;
 
-    public void setPromoPrice(BigDecimal promoPrice) {
-        this.promotionalPrice = promoPrice;
-    }
+  BigDecimal promotionalPrice;
+  @CreatedDate LocalDateTime createdAt;
+
+  public BigDecimal getPromoPrice() {
+    return promotionalPrice;
+  }
+
+  public void setPromoPrice(BigDecimal promoPrice) {
+    this.promotionalPrice = promoPrice;
+  }
 }

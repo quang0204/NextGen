@@ -11,10 +11,10 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ShipmentStatusUpdateRequest {
-    @NotBlank(message = "Trạng thái không được để trống")
-    String status;
+  @NotBlank(message = "Trạng thái không được để trống")
+  String status;
 
-    String note;
+  String note;
 
-    Boolean codCollected;
+  Boolean codCollected;
 }

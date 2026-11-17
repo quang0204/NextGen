@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.notification;
 
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -12,11 +11,11 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class NotificationResponse {
-    Long notificationId;
-    Long orderId;
-    String orderCode;
-    String title;
-    String content;
-    Boolean isRead;
-    LocalDateTime createdAt;
+  Long notificationId;
+  Long orderId;
+  String orderCode;
+  String title;
+  String content;
+  Boolean isRead;
+  LocalDateTime createdAt;
 }

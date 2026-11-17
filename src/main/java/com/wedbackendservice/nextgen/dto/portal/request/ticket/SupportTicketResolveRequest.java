@@ -13,8 +13,8 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class SupportTicketResolveRequest {
 
-    TicketStatus status;
+  TicketStatus status;
 
-    @Size(max = 2000, message = "Ghi chú xử lý tối đa 2000 ký tự")
-    String resolutionNote;
+  @Size(max = 2000, message = "Ghi chú xử lý tối đa 2000 ký tự")
+  String resolutionNote;
 }

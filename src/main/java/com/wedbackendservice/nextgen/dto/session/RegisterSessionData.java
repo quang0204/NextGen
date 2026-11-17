@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.session;
 
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -12,10 +11,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterSessionData {
-    String fullName;
-    String phone;
-    String email;
-    String passwordHash;
-    String otpCode;
-    LocalDateTime createdAt;
+  String fullName;
+  String phone;
+  String email;
+  String passwordHash;
+  String otpCode;
+  LocalDateTime createdAt;
 }

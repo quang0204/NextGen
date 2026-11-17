@@ -10,6 +10,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ResendOtpResponse {
-    Integer cooldownSeconds;
-    Integer expiresInSeconds;
+  Integer cooldownSeconds;
+  Integer expiresInSeconds;
 }

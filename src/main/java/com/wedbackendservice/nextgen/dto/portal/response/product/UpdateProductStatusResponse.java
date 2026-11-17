@@ -11,11 +11,11 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UpdateProductStatusResponse {
-    Long productId;
-    String name;
-    String previousStatus;
-    String newStatus;
-    String reason;
-    String updatedBy;
-    String updatedAt;
+  Long productId;
+  String name;
+  String previousStatus;
+  String newStatus;
+  String reason;
+  String updatedBy;
+  String updatedAt;
 }

@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PackExportOrderRequest {
-    Integer packageWeightGrams;
-    String exportNote;
-    String assignedShipper;
+  Integer packageWeightGrams;
+  String exportNote;
+  String assignedShipper;
 }

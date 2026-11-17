@@ -7,12 +7,12 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface CategoryMapper {
-    @Mapping(source = "categoryName", target = "name")
-    @Mapping(source = "parent.categoryId", target = "parentId")
-    @Mapping(source = "parent.categoryName", target = "parentName")
-    @Mapping(source = "isActive", target = "isVisible")
-    @Mapping(target = "productCount", ignore = true)
-    @Mapping(target = "children", ignore = true)
-    @Mapping(target = "effectiveVariantSchema", ignore = true)
-    CategoryResponse tocategoryResponse(Category category);
+  @Mapping(source = "categoryName", target = "name")
+  @Mapping(source = "parent.categoryId", target = "parentId")
+  @Mapping(source = "parent.categoryName", target = "parentName")
+  @Mapping(source = "isActive", target = "isVisible")
+  @Mapping(target = "productCount", ignore = true)
+  @Mapping(target = "children", ignore = true)
+  @Mapping(target = "effectiveVariantSchema", ignore = true)
+  CategoryResponse tocategoryResponse(Category category);
 }

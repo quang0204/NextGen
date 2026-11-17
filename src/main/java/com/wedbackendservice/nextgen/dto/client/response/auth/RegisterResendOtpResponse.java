@@ -10,6 +10,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterResendOtpResponse {
-    Integer cooldownSeconds;
-    Integer expiresInSeconds;
+  Integer cooldownSeconds;
+  Integer expiresInSeconds;
 }

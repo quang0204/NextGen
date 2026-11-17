@@ -10,8 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class InventorySummaryResponse {
-    Integer totalOnHand;
-    Integer totalReserved;
-    Integer totalAvailable;
-    Integer lowStockCount;
+  Integer totalOnHand;
+  Integer totalReserved;
+  Integer totalAvailable;
+  Integer lowStockCount;
 }

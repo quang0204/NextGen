@@ -10,11 +10,11 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class PipelineSummaryResponse {
-    Long pendingPayment;
-    Long waitingConfirmation;
-    Long confirmed;
-    Long preparing;
-    Long shipping;
-    Long completed;
-    Long cancelled;
+  Long pendingPayment;
+  Long waitingConfirmation;
+  Long confirmed;
+  Long preparing;
+  Long shipping;
+  Long completed;
+  Long cancelled;
 }

@@ -10,17 +10,17 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class InventoryItemResponse {
-    Long inventoryId;
-    Long variantId;
-    Long productId;
-    String productName;
-    String sku;
-    String color;
-    Integer romGb;
-    Integer onHandQty;
-    Integer reservedQty;
-    Integer availableQty;
-    Integer minThreshold;
-    String status;
-    String updatedAt;
+  Long inventoryId;
+  Long variantId;
+  Long productId;
+  String productName;
+  String sku;
+  String color;
+  Integer romGb;
+  Integer onHandQty;
+  Integer reservedQty;
+  Integer availableQty;
+  Integer minThreshold;
+  String status;
+  String updatedAt;
 }

@@ -10,9 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AuthenticationResponse {
-    @Builder.Default
-    String tokenType = "Bearer";
-    String accessToken;
-    String refreshToken;
-    User users;
+  @Builder.Default String tokenType = "Bearer";
+  String accessToken;
+  String refreshToken;
+  User users;
 }

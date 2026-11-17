@@ -14,17 +14,17 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BrandRequest {
 
-    @JsonProperty("name")
-    @JsonAlias({"name", "brandName"})
-    @NotBlank(message = "Tên thương hiệu không được để trống")
-    String name;
+  @JsonProperty("name")
+  @JsonAlias({"name", "brandName"})
+  @NotBlank(message = "Tên thương hiệu không được để trống")
+  String name;
 
-    String slug;
-    String logoUrl;
-    String logoUploadId;
-    String description;
+  String slug;
+  String logoUrl;
+  String logoUploadId;
+  String description;
 
-    @JsonProperty("isVisible")
-    @JsonAlias({"isVisible", "isActive"})
-    Boolean isVisible;
+  @JsonProperty("isVisible")
+  @JsonAlias({"isVisible", "isActive"})
+  Boolean isVisible;
 }

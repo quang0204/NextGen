@@ -10,9 +10,9 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CancelOrderResponse {
-    String orderCode;
-    String status;
-    String cancelReason;
-    Boolean releasedHoldStock;
-    String cancelledAt;
+  String orderCode;
+  String status;
+  String cancelReason;
+  Boolean releasedHoldStock;
+  String cancelledAt;
 }

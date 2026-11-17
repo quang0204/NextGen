@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.promotion;
 
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -12,11 +11,11 @@ import java.util.List;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ActivePromotionResponse {
-    Long promotionId;
-    String name;
-    String description;
-    String startAt;
-    String endAt;
-    String status;
-    List<ActivePromotionVariantResponse> variants;
+  Long promotionId;
+  String name;
+  String description;
+  String startAt;
+  String endAt;
+  String status;
+  List<ActivePromotionVariantResponse> variants;
 }

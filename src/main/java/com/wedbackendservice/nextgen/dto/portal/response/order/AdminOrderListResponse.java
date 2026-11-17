@@ -13,5 +13,5 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminOrderListResponse extends PageResponse<AdminOrderItemResponse> {
-    PipelineSummaryResponse pipelineSummary;
+  PipelineSummaryResponse pipelineSummary;
 }

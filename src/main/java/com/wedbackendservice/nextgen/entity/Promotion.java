@@ -1,14 +1,13 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -20,67 +19,65 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Promotion {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long promotionId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long promotionId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    User createdBy;
-    String promotionName;
-    String description;
-    String discountType;
-    BigDecimal discountValue;
-    LocalDateTime startDate;
-    LocalDateTime endDate;
+  @ManyToOne(fetch = FetchType.LAZY)
+  User createdBy;
 
-    String status;
+  String promotionName;
+  String description;
+  String discountType;
+  BigDecimal discountValue;
+  LocalDateTime startDate;
+  LocalDateTime endDate;
 
-    @Builder.Default
-    Boolean isActive = true;
+  String status;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @Builder.Default Boolean isActive = true;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @CreatedDate LocalDateTime createdAt;
 
-    public String getName() {
-        return promotionName != null ? promotionName : "";
+  @LastModifiedDate LocalDateTime updatedAt;
+
+  public String getName() {
+    return promotionName != null ? promotionName : "";
+  }
+
+  public void setName(String name) {
+    this.promotionName = name;
+  }
+
+  public LocalDateTime getStartAt() {
+    return startDate;
+  }
+
+  public void setStartAt(LocalDateTime startAt) {
+    this.startDate = startAt;
+  }
+
+  public LocalDateTime getEndAt() {
+    return endDate;
+  }
+
+  public void setEndAt(LocalDateTime endAt) {
+    this.endDate = endAt;
+  }
+
+  public String resolveStatus(LocalDateTime now) {
+    if (status != null && !status.isBlank()) {
+      return status;
     }
-
-    public void setName(String name) {
-        this.promotionName = name;
+    if (Boolean.FALSE.equals(isActive)) {
+      return com.wedbackendservice.nextgen.enums.PromotionStatus.PAUSED.name();
     }
-
-    public LocalDateTime getStartAt() {
-        return startDate;
+    if (startDate != null && now.isBefore(startDate)) {
+      return com.wedbackendservice.nextgen.enums.PromotionStatus.UPCOMING.name();
     }
-
-    public void setStartAt(LocalDateTime startAt) {
-        this.startDate = startAt;
+    if (endDate != null && now.isAfter(endDate)) {
+      return com.wedbackendservice.nextgen.enums.PromotionStatus.ENDED.name();
     }
-
-    public LocalDateTime getEndAt() {
-        return endDate;
-    }
-
-    public void setEndAt(LocalDateTime endAt) {
-        this.endDate = endAt;
-    }
-
-    public String resolveStatus(LocalDateTime now) {
-        if (status != null && !status.isBlank()) {
-            return status;
-        }
-        if (Boolean.FALSE.equals(isActive)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.PAUSED.name();
-        }
-        if (startDate != null && now.isBefore(startDate)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.UPCOMING.name();
-        }
-        if (endDate != null && now.isAfter(endDate)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.ENDED.name();
-        }
-        return com.wedbackendservice.nextgen.enums.PromotionStatus.ACTIVE.name();
-    }
+    return com.wedbackendservice.nextgen.enums.PromotionStatus.ACTIVE.name();
+  }
 }

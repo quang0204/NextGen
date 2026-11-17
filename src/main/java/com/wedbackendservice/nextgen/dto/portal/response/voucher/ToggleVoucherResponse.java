@@ -10,8 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ToggleVoucherResponse {
-    Long voucherId;
-    String code;
-    Boolean isActive;
-    String updatedAt;
+  Long voucherId;
+  String code;
+  Boolean isActive;
+  String updatedAt;
 }

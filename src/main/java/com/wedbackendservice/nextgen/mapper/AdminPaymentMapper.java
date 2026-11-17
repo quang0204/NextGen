@@ -7,9 +7,9 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface AdminPaymentMapper {
-    @Mapping(source = "order.orderId", target = "orderId")
-    @Mapping(source = "order.orderCode", target = "orderCode")
-    @Mapping(source = "order.user.fullName", target = "customerName")
-    @Mapping(source = "order.user.phone", target = "customerPhone")
-    AdminPaymentItemResponse toItem(Payment payment);
+  @Mapping(source = "order.orderId", target = "orderId")
+  @Mapping(source = "order.orderCode", target = "orderCode")
+  @Mapping(source = "order.user.fullName", target = "customerName")
+  @Mapping(source = "order.user.phone", target = "customerPhone")
+  AdminPaymentItemResponse toItem(Payment payment);
 }

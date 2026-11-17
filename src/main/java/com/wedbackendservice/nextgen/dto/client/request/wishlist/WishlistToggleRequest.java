@@ -12,6 +12,6 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class WishlistToggleRequest {
 
-    @NotNull(message = "productId không được để trống")
-    Long productId;
+  @NotNull(message = "productId không được để trống")
+  Long productId;
 }

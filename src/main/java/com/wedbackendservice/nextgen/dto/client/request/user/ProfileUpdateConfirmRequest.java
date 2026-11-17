@@ -12,10 +12,10 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ProfileUpdateConfirmRequest {
-    @NotBlank(message = "otpSessionToken không được để trống")
-    String otpSessionToken;
+  @NotBlank(message = "otpSessionToken không được để trống")
+  String otpSessionToken;
 
-    @NotBlank(message = "otpCode không được để trống")
-    @Pattern(regexp = "^[0-9]{6}$", message = "otpCode phải là chuỗi 6 chữ số")
-    String otpCode;
+  @NotBlank(message = "otpCode không được để trống")
+  @Pattern(regexp = "^[0-9]{6}$", message = "otpCode phải là chuỗi 6 chữ số")
+  String otpCode;
 }

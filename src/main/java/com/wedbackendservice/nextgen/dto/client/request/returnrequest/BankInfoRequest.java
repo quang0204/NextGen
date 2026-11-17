@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BankInfoRequest {
-    String bankName;
-    String accountNumber;
-    String accountHolder;
+  String bankName;
+  String accountNumber;
+  String accountHolder;
 }

@@ -11,6 +11,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterResendOtpRequest {
-    @NotBlank(message = "registrationToken không được để trống")
-    String registrationToken;
+  @NotBlank(message = "registrationToken không được để trống")
+  String registrationToken;
 }

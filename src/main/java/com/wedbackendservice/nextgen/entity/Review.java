@@ -1,13 +1,12 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -19,26 +18,24 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Review {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long reviewId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long reviewId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    OrderItem orderItem;
+  @ManyToOne(fetch = FetchType.LAZY)
+  OrderItem orderItem;
 
-    @Column(nullable = false)
-    Integer rating;
-    String comment;
-    Boolean isVerifiedPurchase;
+  @Column(nullable = false)
+  Integer rating;
 
-    @Builder.Default
-    String status = "VISIBLE";
-    String reply;
-    LocalDateTime repliedAt;
+  String comment;
+  Boolean isVerifiedPurchase;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @Builder.Default String status = "VISIBLE";
+  String reply;
+  LocalDateTime repliedAt;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @CreatedDate LocalDateTime createdAt;
+
+  @LastModifiedDate LocalDateTime updatedAt;
 }

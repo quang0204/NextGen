@@ -10,9 +10,9 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class OrderStatusHistoryResponse {
-    Long historyId;
-    String status;
-    String changedBy;
-    String note;
-    String changedAt;
+  Long historyId;
+  String status;
+  String changedBy;
+  String note;
+  String changedAt;
 }

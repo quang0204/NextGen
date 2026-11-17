@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReturnSummaryResponse {
-    Long totalPending;
-    Long totalApproved;
-    Long totalRejected;
+  Long totalPending;
+  Long totalApproved;
+  Long totalRejected;
 }

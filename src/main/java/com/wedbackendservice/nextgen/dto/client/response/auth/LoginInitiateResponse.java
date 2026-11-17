@@ -13,10 +13,11 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class LoginInitiateResponse {
-    @Enumerated(EnumType.STRING)
-    OtpChannel channel;
-    String targetMasked;
-    String sessionToken;
-    Integer expiresInSeconds;
-    Integer cooldownSeconds;
+  @Enumerated(EnumType.STRING)
+  OtpChannel channel;
+
+  String targetMasked;
+  String sessionToken;
+  Integer expiresInSeconds;
+  Integer cooldownSeconds;
 }

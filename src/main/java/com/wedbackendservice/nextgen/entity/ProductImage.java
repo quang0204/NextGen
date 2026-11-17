@@ -1,12 +1,11 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -18,44 +17,43 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ProductImage {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long imageId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long imageId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Product product;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Product product;
 
-    @Column(length = 1000)
-    String imageUrl;
-    Integer displayOrder;
+  @Column(length = 1000)
+  String imageUrl;
 
-    @Builder.Default
-    Boolean isPrimary = false;
+  Integer displayOrder;
 
-    @Column(length = 100)
-    String bucket;
+  @Builder.Default Boolean isPrimary = false;
 
-    @Column(length = 500)
-    String objectKey;
+  @Column(length = 100)
+  String bucket;
 
-    String originalFileName;
+  @Column(length = 500)
+  String objectKey;
 
-    @Column(length = 100)
-    String contentType;
+  String originalFileName;
 
-    Long fileSize;
+  @Column(length = 100)
+  String contentType;
 
-    @Column(length = 100)
-    String etag;
+  Long fileSize;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @Column(length = 100)
+  String etag;
 
-    public Integer getSortOrder() {
-        return displayOrder != null ? displayOrder : 0;
-    }
+  @CreatedDate LocalDateTime createdAt;
 
-    public void setSortOrder(Integer sortOrder) {
-        this.displayOrder = sortOrder;
-    }
+  public Integer getSortOrder() {
+    return displayOrder != null ? displayOrder : 0;
+  }
+
+  public void setSortOrder(Integer sortOrder) {
+    this.displayOrder = sortOrder;
+  }
 }

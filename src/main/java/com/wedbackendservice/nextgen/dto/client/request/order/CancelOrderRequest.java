@@ -11,6 +11,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CancelOrderRequest {
-    @NotBlank(message = "Lý do hủy đơn hàng không được để trống")
-    String reason;
+  @NotBlank(message = "Lý do hủy đơn hàng không được để trống")
+  String reason;
 }

@@ -13,10 +13,10 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ShipmentFailDeliveryRequest {
-    @JsonProperty("failReason")
-    @JsonAlias({"failReason", "reason"})
-    @NotBlank(message = "Lý do thất bại không được để trống")
-    String failReason;
+  @JsonProperty("failReason")
+  @JsonAlias({"failReason", "reason"})
+  @NotBlank(message = "Lý do thất bại không được để trống")
+  String failReason;
 
-    String note;
+  String note;
 }

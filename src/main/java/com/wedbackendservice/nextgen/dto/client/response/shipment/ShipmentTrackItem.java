@@ -9,8 +9,8 @@ import lombok.experimental.FieldDefaults;
 @NoArgsConstructor
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
-public  class ShipmentTrackItem {
-    String productName;
-    String color;
-    Integer quantity;
+public class ShipmentTrackItem {
+  String productName;
+  String color;
+  Integer quantity;
 }

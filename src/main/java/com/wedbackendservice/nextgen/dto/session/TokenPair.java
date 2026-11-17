@@ -9,6 +9,6 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @NoArgsConstructor
 public class TokenPair {
-    String accessToken;
-    String refreshToken;
+  String accessToken;
+  String refreshToken;
 }

@@ -13,20 +13,20 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class RegisterInitiateRequest {
-    @NotBlank(message = "Họ và tên không được để trống")
-    String fullName;
+  @NotBlank(message = "Họ và tên không được để trống")
+  String fullName;
 
-    @NotBlank(message = "Số điện thoại không được để trống")
-    @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Số điện thoại không hợp lệ")
-    String phone;
+  @NotBlank(message = "Số điện thoại không được để trống")
+  @Pattern(regexp = "^(0|\\+84)[0-9]{9}$", message = "Số điện thoại không hợp lệ")
+  String phone;
 
-    @NotBlank(message = "Email không được để trống")
-    @Email(message = "Email không đúng định dạng")
-    String email;
+  @NotBlank(message = "Email không được để trống")
+  @Email(message = "Email không đúng định dạng")
+  String email;
 
-    @NotBlank(message = "Mật khẩu không được để trống")
-    String password;
+  @NotBlank(message = "Mật khẩu không được để trống")
+  String password;
 
-    @NotBlank(message = "Mật khẩu xác nhận không được để trống")
-    String confirmPassword;
+  @NotBlank(message = "Mật khẩu xác nhận không được để trống")
+  String confirmPassword;
 }

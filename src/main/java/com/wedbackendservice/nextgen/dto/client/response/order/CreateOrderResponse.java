@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.order;
 
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.math.BigDecimal;
 
 @Getter
 @Setter
@@ -12,15 +11,15 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreateOrderResponse {
-    Long orderId;
-    String orderCode;
-    String status;
-    BigDecimal subtotal;
-    BigDecimal voucherDiscount;
-    BigDecimal shippingFee;
-    BigDecimal totalAmount;
-    String paymentMethod;
-    String paymentStatus;
-    Integer itemsCount;
-    String createdAt;
+  Long orderId;
+  String orderCode;
+  String status;
+  BigDecimal subtotal;
+  BigDecimal voucherDiscount;
+  BigDecimal shippingFee;
+  BigDecimal totalAmount;
+  String paymentMethod;
+  String paymentStatus;
+  Integer itemsCount;
+  String createdAt;
 }

@@ -12,7 +12,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CartItemUpdateRequest {
-    @NotNull(message = "Số lượng không được để trống")
-    @Min(value = 0, message = "Số lượng không được nhỏ hơn 0 (gửi 0 để xóa sản phẩm khỏi giỏ)")
-    Integer quantity;
+  @NotNull(message = "Số lượng không được để trống")
+  @Min(value = 0, message = "Số lượng không được nhỏ hơn 0 (gửi 0 để xóa sản phẩm khỏi giỏ)")
+  Integer quantity;
 }

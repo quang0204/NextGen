@@ -12,10 +12,10 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class LoginVerifyOtpRequest {
-    @NotBlank(message = "sessionToken không được để trống")
-    String sessionToken;
+  @NotBlank(message = "sessionToken không được để trống")
+  String sessionToken;
 
-    @NotBlank(message = "Mã OTP không được để trống")
-    @Pattern(regexp = "^[0-9]{6}$", message = "Mã OTP phải gồm 6 chữ số")
-    String otpCode;
+  @NotBlank(message = "Mã OTP không được để trống")
+  @Pattern(regexp = "^[0-9]{6}$", message = "Mã OTP phải gồm 6 chữ số")
+  String otpCode;
 }

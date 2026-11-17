@@ -12,7 +12,7 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CustomerInfoResponse {
-    Long userId;
-    String fullName;
-    String phone;
+  Long userId;
+  String fullName;
+  String phone;
 }

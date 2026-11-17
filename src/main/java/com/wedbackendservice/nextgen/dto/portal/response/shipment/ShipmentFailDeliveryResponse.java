@@ -12,11 +12,11 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ShipmentFailDeliveryResponse {
-    Long shipmentId;
-    String trackingCode;
-    String shipmentStatus;
-    String failReason;
-    String orderStatus;
-    Boolean inventoryRestocked;
-    Integer restockedItemsCount;
+  Long shipmentId;
+  String trackingCode;
+  String shipmentStatus;
+  String failReason;
+  String orderStatus;
+  Boolean inventoryRestocked;
+  Integer restockedItemsCount;
 }

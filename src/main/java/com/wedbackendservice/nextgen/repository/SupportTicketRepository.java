@@ -2,6 +2,7 @@ package com.wedbackendservice.nextgen.repository;
 
 import com.wedbackendservice.nextgen.entity.SupportTicket;
 import com.wedbackendservice.nextgen.entity.User;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -11,24 +12,22 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-
 @Repository
-public interface SupportTicketRepository extends JpaRepository<SupportTicket, Long>,
-        JpaSpecificationExecutor<SupportTicket> {
+public interface SupportTicketRepository
+    extends JpaRepository<SupportTicket, Long>, JpaSpecificationExecutor<SupportTicket> {
 
-    @Override
-    @EntityGraph(attributePaths = {"user", "handledBy"})
-    Page<SupportTicket> findAll(Specification<SupportTicket> spec, Pageable pageable);
+  @Override
+  @EntityGraph(attributePaths = {"user", "handledBy"})
+  Page<SupportTicket> findAll(Specification<SupportTicket> spec, Pageable pageable);
 
-    long countByStatus(String status);
+  long countByStatus(String status);
 
-    @Query("SELECT t.status, COUNT(t) FROM SupportTicket t GROUP BY t.status")
-    List<Object[]> countByStatusGrouped();
+  @Query("SELECT t.status, COUNT(t) FROM SupportTicket t GROUP BY t.status")
+  List<Object[]> countByStatusGrouped();
 
-    @EntityGraph(attributePaths = {"user", "handledBy"})
-    List<SupportTicket> findByUserOrderByCreatedAtDesc(User user);
+  @EntityGraph(attributePaths = {"user", "handledBy"})
+  List<SupportTicket> findByUserOrderByCreatedAtDesc(User user);
 
-    @EntityGraph(attributePaths = {"user", "handledBy"})
-    List<SupportTicket> findByUser_UserIdOrderByCreatedAtDesc(Long userId);
+  @EntityGraph(attributePaths = {"user", "handledBy"})
+  List<SupportTicket> findByUser_UserIdOrderByCreatedAtDesc(Long userId);
 }

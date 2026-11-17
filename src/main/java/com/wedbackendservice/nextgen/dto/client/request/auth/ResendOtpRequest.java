@@ -11,6 +11,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ResendOtpRequest {
-    @NotBlank(message = "sessionToken không được để trống")
-    String sessionToken;
+  @NotBlank(message = "sessionToken không được để trống")
+  String sessionToken;
 }

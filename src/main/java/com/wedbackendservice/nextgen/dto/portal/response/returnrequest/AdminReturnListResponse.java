@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.portal.response.returnrequest;
 
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -12,7 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminReturnListResponse {
-    List<AdminReturnItemResponse> items;
-    ReturnSummaryResponse summary;
-    ReturnPaginationResponse pagination;
+  List<AdminReturnItemResponse> items;
+  ReturnSummaryResponse summary;
+  ReturnPaginationResponse pagination;
 }

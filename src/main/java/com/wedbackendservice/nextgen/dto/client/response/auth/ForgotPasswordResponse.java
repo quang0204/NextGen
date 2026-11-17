@@ -13,10 +13,12 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ForgotPasswordResponse {
-    String resetToken;
-    @Enumerated(EnumType.STRING)
-    OtpChannel channel;
-    String targetMasked;
-    Integer expiresInSeconds;
-    Integer cooldownSeconds;
+  String resetToken;
+
+  @Enumerated(EnumType.STRING)
+  OtpChannel channel;
+
+  String targetMasked;
+  Integer expiresInSeconds;
+  Integer cooldownSeconds;
 }

@@ -13,18 +13,18 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class FaqRequest {
 
-    @NotBlank(message = "Câu hỏi không được để trống")
-    @Size(max = 500, message = "Câu hỏi tối đa 500 ký tự")
-    String question;
+  @NotBlank(message = "Câu hỏi không được để trống")
+  @Size(max = 500, message = "Câu hỏi tối đa 500 ký tự")
+  String question;
 
-    @NotBlank(message = "Câu trả lời không được để trống")
-    @Size(max = 5000, message = "Câu trả lời tối đa 5000 ký tự")
-    String answer;
+  @NotBlank(message = "Câu trả lời không được để trống")
+  @Size(max = 5000, message = "Câu trả lời tối đa 5000 ký tự")
+  String answer;
 
-    @Size(max = 100, message = "Danh mục tối đa 100 ký tự")
-    String category;
+  @Size(max = 100, message = "Danh mục tối đa 100 ký tự")
+  String category;
 
-    Integer displayOrder;
+  Integer displayOrder;
 
-    Boolean isActive;
+  Boolean isActive;
 }

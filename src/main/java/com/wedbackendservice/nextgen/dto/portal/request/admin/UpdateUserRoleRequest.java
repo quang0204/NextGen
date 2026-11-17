@@ -12,7 +12,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdateUserRoleRequest {
-    @NotNull(message = "Vai trò không được để trống")
-    Role role;
-    String reason;
+  @NotNull(message = "Vai trò không được để trống")
+  Role role;
+
+  String reason;
 }

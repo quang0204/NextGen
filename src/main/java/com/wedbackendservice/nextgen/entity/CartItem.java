@@ -1,13 +1,12 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -19,21 +18,19 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CartItem {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long cartItemId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long cartItemId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Cart cart;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Cart cart;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    ProductVariant variant;
+  @ManyToOne(fetch = FetchType.LAZY)
+  ProductVariant variant;
 
-    Integer quantity;
+  Integer quantity;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @CreatedDate LocalDateTime createdAt;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @LastModifiedDate LocalDateTime updatedAt;
 }

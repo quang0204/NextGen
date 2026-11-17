@@ -1,12 +1,11 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -18,39 +17,36 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Inventory {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long inventoryId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long inventoryId;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    ProductVariant variant;
+  @OneToOne(fetch = FetchType.LAZY)
+  ProductVariant variant;
 
-    @Builder.Default
-    Integer quantity = 0;
+  @Builder.Default Integer quantity = 0;
 
-    @Builder.Default
-    Integer reservedQuantity = 0;
+  @Builder.Default Integer reservedQuantity = 0;
 
-    @Builder.Default
-    @Column(name = "min_threshold")
-    Integer minThreshold = 5;
+  @Builder.Default
+  @Column(name = "min_threshold")
+  Integer minThreshold = 5;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @LastModifiedDate LocalDateTime updatedAt;
 
-    public Integer getOnHandQty() {
-        return quantity != null ? quantity : 0;
-    }
+  public Integer getOnHandQty() {
+    return quantity != null ? quantity : 0;
+  }
 
-    public Integer getReservedQty() {
-        return reservedQuantity != null ? reservedQuantity : 0;
-    }
+  public Integer getReservedQty() {
+    return reservedQuantity != null ? reservedQuantity : 0;
+  }
 
-    public Integer getAvailableQty() {
-        return Math.max(0, getOnHandQty() - getReservedQty());
-    }
+  public Integer getAvailableQty() {
+    return Math.max(0, getOnHandQty() - getReservedQty());
+  }
 
-    public Integer getMinThreshold() {
-        return minThreshold != null ? minThreshold : 5;
-    }
+  public Integer getMinThreshold() {
+    return minThreshold != null ? minThreshold : 5;
+  }
 }

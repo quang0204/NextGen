@@ -1,6 +1,9 @@
 package com.wedbackendservice.nextgen.repository;
 
 import com.wedbackendservice.nextgen.entity.ReturnRequest;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -11,29 +14,26 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Optional;
-
 @Repository
-public interface ReturnRequestRepository extends JpaRepository<ReturnRequest, Long>, JpaSpecificationExecutor<ReturnRequest> {
+public interface ReturnRequestRepository
+    extends JpaRepository<ReturnRequest, Long>, JpaSpecificationExecutor<ReturnRequest> {
 
-    @Override
-    @EntityGraph(attributePaths = {"order", "order.user", "requestedBy", "inspectedBy"})
-    Page<ReturnRequest> findAll(Specification<ReturnRequest> spec, Pageable pageable);
+  @Override
+  @EntityGraph(attributePaths = {"order", "order.user", "requestedBy", "inspectedBy"})
+  Page<ReturnRequest> findAll(Specification<ReturnRequest> spec, Pageable pageable);
 
-    boolean existsByOrder_OrderIdAndStatusIn(Long orderId, Collection<String> statuses);
+  boolean existsByOrder_OrderIdAndStatusIn(Long orderId, Collection<String> statuses);
 
-    Optional<ReturnRequest> findFirstByOrder_OrderIdOrderByCreatedAtDesc(Long orderId);
+  Optional<ReturnRequest> findFirstByOrder_OrderIdOrderByCreatedAtDesc(Long orderId);
 
-    List<ReturnRequest> findByOrder_OrderIdInOrderByCreatedAtDesc(Collection<Long> orderIds);
+  List<ReturnRequest> findByOrder_OrderIdInOrderByCreatedAtDesc(Collection<Long> orderIds);
 
-    @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status = :status")
-    long countByStatus(@Param("status") String status);
+  @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status = :status")
+  long countByStatus(@Param("status") String status);
 
-    @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status IN :statuses")
-    long countByStatusIn(@Param("statuses") Collection<String> statuses);
+  @Query("SELECT COUNT(r) FROM ReturnRequest r WHERE r.status IN :statuses")
+  long countByStatusIn(@Param("statuses") Collection<String> statuses);
 
-    @Query("SELECT r.status, COUNT(r) FROM ReturnRequest r GROUP BY r.status")
-    List<Object[]> countByStatusGrouped();
+  @Query("SELECT r.status, COUNT(r) FROM ReturnRequest r GROUP BY r.status")
+  List<Object[]> countByStatusGrouped();
 }

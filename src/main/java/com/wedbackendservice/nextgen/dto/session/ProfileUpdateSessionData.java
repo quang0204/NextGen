@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.session;
 
+import java.time.Instant;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.Instant;
 
 @Getter
 @Setter
@@ -12,12 +11,12 @@ import java.time.Instant;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ProfileUpdateSessionData {
-    Long userId;
-    String fullName;
-    String phone;
-    String email;
-    String otpCode;
-    Instant createdAt;
-    Instant lastSentAt;
-    Instant otpExpiresAt;
+  Long userId;
+  String fullName;
+  String phone;
+  String email;
+  String otpCode;
+  Instant createdAt;
+  Instant lastSentAt;
+  Instant otpExpiresAt;
 }

@@ -10,8 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReturnPaginationResponse {
-    int currentPage;
-    int pageSize;
-    long totalItems;
-    int totalPages;
+  int currentPage;
+  int pageSize;
+  long totalItems;
+  int totalPages;
 }

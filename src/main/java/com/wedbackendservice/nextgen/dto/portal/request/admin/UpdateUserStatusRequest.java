@@ -12,8 +12,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdateUserStatusRequest {
-    @NotNull(message = "Trạng thái không được để trống")
-    UserStatus status;
+  @NotNull(message = "Trạng thái không được để trống")
+  UserStatus status;
 
-    String lockReason;
+  String lockReason;
 }

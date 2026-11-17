@@ -13,13 +13,13 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ConfirmUploadRequest {
 
-    @NotBlank(message = "uploadId không được để trống")
-    String uploadId;
+  @NotBlank(message = "uploadId không được để trống")
+  String uploadId;
 
-    @NotBlank(message = "objectKey không được để trống")
-    String objectKey;
+  @NotBlank(message = "objectKey không được để trống")
+  String objectKey;
 
-    Boolean isPrimary;
+  Boolean isPrimary;
 
-    Integer sortOrder;
+  Integer sortOrder;
 }

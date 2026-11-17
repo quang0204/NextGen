@@ -10,8 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdateProductStatusRequest {
-    @NotBlank(message = "status không được để trống")
-    String status;
+  @NotBlank(message = "status không được để trống")
+  String status;
 
-    String reason;
+  String reason;
 }

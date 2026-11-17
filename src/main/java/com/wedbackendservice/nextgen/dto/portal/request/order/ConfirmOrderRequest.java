@@ -11,8 +11,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ConfirmOrderRequest {
-    @NotBlank(message = "Đơn vị vận chuyển (carrier) không được để trống")
-    String carrier;
+  @NotBlank(message = "Đơn vị vận chuyển (carrier) không được để trống")
+  String carrier;
 
-    String note;
+  String note;
 }

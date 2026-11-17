@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ExportedItemResponse {
-    String sku;
-    Integer quantity;
-    Integer remainingOnHand;
+  String sku;
+  Integer quantity;
+  Integer remainingOnHand;
 }

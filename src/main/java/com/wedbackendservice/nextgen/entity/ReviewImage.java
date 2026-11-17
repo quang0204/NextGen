@@ -1,16 +1,15 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
-
 /**
- * Ảnh của một đánh giá (API 12.1 / 12.2 / 12.3), lưu trên MinIO / S3 bucket "reviews".
- * Mỗi đánh giá tối đa 5 ảnh.
+ * Ảnh của một đánh giá (API 12.1 / 12.2 / 12.3), lưu trên MinIO / S3 bucket "reviews". Mỗi đánh giá
+ * tối đa 5 ảnh.
  */
 @Entity
 @Getter
@@ -22,33 +21,34 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReviewImage {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long imageId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long imageId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "review_id", nullable = false,
-            foreignKey = @ForeignKey(name = "fk_review_images_review"))
-    Review review;
+  @ManyToOne(fetch = FetchType.LAZY, optional = false)
+  @JoinColumn(
+      name = "review_id",
+      nullable = false,
+      foreignKey = @ForeignKey(name = "fk_review_images_review"))
+  Review review;
 
-    /** Link ảnh do MinIO / S3 sinh ra. */
-    @Column(length = 500, nullable = false)
-    String imageUrl;
+  /** Link ảnh do MinIO / S3 sinh ra. */
+  @Column(length = 500, nullable = false)
+  String imageUrl;
 
-    @Column(length = 100)
-    String bucket;
+  @Column(length = 100)
+  String bucket;
 
-    @Column(length = 500)
-    String objectKey;
+  @Column(length = 500)
+  String objectKey;
 
-    @Column(length = 50)
-    String contentType;
+  @Column(length = 50)
+  String contentType;
 
-    Long fileSize;
+  Long fileSize;
 
-    /** Thứ tự hiển thị, từ 1 đến 5. */
-    Integer displayOrder;
+  /** Thứ tự hiển thị, từ 1 đến 5. */
+  Integer displayOrder;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @CreatedDate LocalDateTime createdAt;
 }

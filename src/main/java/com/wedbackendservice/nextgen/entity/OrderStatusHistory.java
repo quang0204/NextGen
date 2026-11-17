@@ -1,12 +1,11 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -18,33 +17,32 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class OrderStatusHistory {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long historyId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long historyId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Order order;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    User changedBy;
+  @ManyToOne(fetch = FetchType.LAZY)
+  User changedBy;
 
-    String previousStatus;
-    String newStatus;
+  String previousStatus;
+  String newStatus;
 
-    String note;
+  String note;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @CreatedDate LocalDateTime createdAt;
 
-    public String getFromStatus() {
-        return previousStatus;
-    }
+  public String getFromStatus() {
+    return previousStatus;
+  }
 
-    public String getToStatus() {
-        return newStatus;
-    }
+  public String getToStatus() {
+    return newStatus;
+  }
 
-    public String getReason() {
-        return note;
-    }
+  public String getReason() {
+    return note;
+  }
 }

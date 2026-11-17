@@ -1,10 +1,9 @@
 package com.wedbackendservice.nextgen.dto.client.response.product;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.math.BigDecimal;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.math.BigDecimal;
 
 @Data
 @Builder
@@ -13,9 +12,9 @@ import java.math.BigDecimal;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ProductRelatedResponse {
-    Long productId;
-    String name;
-    String primaryImage;
-    BigDecimal minPrice;
-    String brand;
+  Long productId;
+  String name;
+  String primaryImage;
+  BigDecimal minPrice;
+  String brand;
 }

@@ -1,9 +1,9 @@
 package com.wedbackendservice.nextgen.enums;
 
 public enum StorageType {
-    BRANDS,
-    PRODUCTS,
-    CATEGORIES,
-    AVATARS,
-    REVIEWS
+  BRANDS,
+  PRODUCTS,
+  CATEGORIES,
+  AVATARS,
+  REVIEWS
 }

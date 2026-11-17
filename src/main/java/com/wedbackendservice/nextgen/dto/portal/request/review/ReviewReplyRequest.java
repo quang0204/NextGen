@@ -13,7 +13,7 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ReviewReplyRequest {
 
-    @NotBlank(message = "Nội dung phản hồi không được để trống")
-    @Size(max = 2000, message = "Nội dung phản hồi tối đa 2000 ký tự")
-    String reply;
+  @NotBlank(message = "Nội dung phản hồi không được để trống")
+  @Size(max = 2000, message = "Nội dung phản hồi tối đa 2000 ký tự")
+  String reply;
 }

@@ -13,13 +13,13 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class InventoryAdjustmentRequest {
-    Long variantId;
-    String sku;
+  Long variantId;
+  String sku;
 
-    @NotNull(message = "Số lượng kiểm kê thực tế không được để trống")
-    @Min(value = 0, message = "Số lượng kiểm kê thực tế không được nhỏ hơn 0")
-    Integer actualCount;
+  @NotNull(message = "Số lượng kiểm kê thực tế không được để trống")
+  @Min(value = 0, message = "Số lượng kiểm kê thực tế không được nhỏ hơn 0")
+  Integer actualCount;
 
-    @NotBlank(message = "Lý do điều chỉnh không được để trống")
-    String reason;
+  @NotBlank(message = "Lý do điều chỉnh không được để trống")
+  String reason;
 }

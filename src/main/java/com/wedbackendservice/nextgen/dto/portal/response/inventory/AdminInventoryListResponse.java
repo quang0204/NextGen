@@ -13,5 +13,5 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode(callSuper = true)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class AdminInventoryListResponse extends PageResponse<InventoryItemResponse> {
-    InventorySummaryResponse summary;
+  InventorySummaryResponse summary;
 }

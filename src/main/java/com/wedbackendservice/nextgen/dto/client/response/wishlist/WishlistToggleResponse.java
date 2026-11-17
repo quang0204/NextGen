@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class WishlistToggleResponse {
-    Long productId;
-    boolean isFavorite;
-    String message;
+  Long productId;
+  boolean isFavorite;
+  String message;
 }

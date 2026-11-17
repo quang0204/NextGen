@@ -1,7 +1,6 @@
 package com.wedbackendservice.nextgen.dto.portal.response.order;
 
 import com.wedbackendservice.nextgen.dto.client.response.order.ShipmentDetailResponse;
-
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -12,11 +11,11 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ConfirmOrderResponse {
-    Long orderId;
-    String orderCode;
-    String orderStatus;
-    String formCode;
-    ShipmentDetailResponse shipment;
-    String confirmedBy;
-    String confirmedAt;
+  Long orderId;
+  String orderCode;
+  String orderStatus;
+  String formCode;
+  ShipmentDetailResponse shipment;
+  String confirmedBy;
+  String confirmedAt;
 }

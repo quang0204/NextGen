@@ -11,28 +11,28 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface OrderMapper {
-    @Mapping(source = "variant.variantId", target = "variantId")
-    @Mapping(source = "variant.product.productId", target = "productId")
-    OrderItemResponse toOrderItemResponse(OrderItem oi);
+  @Mapping(source = "variant.variantId", target = "variantId")
+  @Mapping(source = "variant.product.productId", target = "productId")
+  OrderItemResponse toOrderItemResponse(OrderItem oi);
 
-    @Mapping(source = "toStatus", target = "status")
-    @Mapping(source = "reason", target = "note")
-    @Mapping(target = "changedBy", expression = "java(formatChangedBy(h.getChangedBy()))")
-    @Mapping(target = "changedAt", expression = "java(formatCreatedAt(h))")
-    OrderStatusHistoryResponse toOrderStatusHistoryResponse(OrderStatusHistory h);
+  @Mapping(source = "toStatus", target = "status")
+  @Mapping(source = "reason", target = "note")
+  @Mapping(target = "changedBy", expression = "java(formatChangedBy(h.getChangedBy()))")
+  @Mapping(target = "changedAt", expression = "java(formatCreatedAt(h))")
+  OrderStatusHistoryResponse toOrderStatusHistoryResponse(OrderStatusHistory h);
 
-    default String formatChangedBy(User user) {
-        if (user == null) {
-            return "Hệ thống";
-        }
-        if (user.getFullName() == null) {
-            return "Người dùng";
-        }
-        String roleName = user.getRole() != null ? user.getRole().name() : "Người dùng";
-        return user.getFullName() + " (" + roleName + ")";
+  default String formatChangedBy(User user) {
+    if (user == null) {
+      return "Hệ thống";
     }
-
-    default String formatCreatedAt(OrderStatusHistory h) {
-        return DateTimeUtil.formatIsoInstant(h.getCreatedAt());
+    if (user.getFullName() == null) {
+      return "Người dùng";
     }
+    String roleName = user.getRole() != null ? user.getRole().name() : "Người dùng";
+    return user.getFullName() + " (" + roleName + ")";
+  }
+
+  default String formatCreatedAt(OrderStatusHistory h) {
+    return DateTimeUtil.formatIsoInstant(h.getCreatedAt());
+  }
 }

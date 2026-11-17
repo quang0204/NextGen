@@ -13,13 +13,13 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class SupportTicketCreateRequest {
 
-    @NotBlank(message = "Tiêu đề phiếu hỗ trợ không được để trống")
-    @Size(max = 200, message = "Tiêu đề tối đa 200 ký tự")
-    String subject;
+  @NotBlank(message = "Tiêu đề phiếu hỗ trợ không được để trống")
+  @Size(max = 200, message = "Tiêu đề tối đa 200 ký tự")
+  String subject;
 
-    @NotBlank(message = "Nội dung phiếu hỗ trợ không được để trống")
-    @Size(max = 5000, message = "Nội dung tối đa 5000 ký tự")
-    String description;
+  @NotBlank(message = "Nội dung phiếu hỗ trợ không được để trống")
+  @Size(max = 5000, message = "Nội dung tối đa 5000 ký tự")
+  String description;
 
-    String priority;
+  String priority;
 }

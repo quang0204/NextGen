@@ -10,7 +10,7 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UpdatePromotionStatusResponse {
-    Long promotionId;
-    String status;
-    String updatedAt;
+  Long promotionId;
+  String status;
+  String updatedAt;
 }

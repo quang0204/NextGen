@@ -1,10 +1,9 @@
 package com.wedbackendservice.nextgen.dto.client.response.payment;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -14,12 +13,12 @@ import java.time.LocalDateTime;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SimulateCallbackResponse {
-    Long paymentId;
-    String transactionRef;
-    String status;
-    Long orderId;
-    String orderCode;
-    String orderPaymentStatus;
-    LocalDateTime paidAt;
-    String message;
+  Long paymentId;
+  String transactionRef;
+  String status;
+  Long orderId;
+  String orderCode;
+  String orderPaymentStatus;
+  LocalDateTime paidAt;
+  String message;
 }

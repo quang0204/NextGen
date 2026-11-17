@@ -1,14 +1,13 @@
 package com.wedbackendservice.nextgen.entity;
 
 import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -20,67 +19,64 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class Shipment {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    Long shipmentId;
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long shipmentId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    Order order;
+  @ManyToOne(fetch = FetchType.LAZY)
+  Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    User updatedBy;
+  @ManyToOne(fetch = FetchType.LAZY)
+  User updatedBy;
 
-    String trackingNumber;
-    String carrierName;
-    String shippingStatus;
-    LocalDateTime estimatedDelivery;
-    LocalDateTime shippedAt;
-    LocalDateTime deliveredAt;
-    String failReason;
-    String notes;
+  String trackingNumber;
+  String carrierName;
+  String shippingStatus;
+  LocalDateTime estimatedDelivery;
+  LocalDateTime shippedAt;
+  LocalDateTime deliveredAt;
+  String failReason;
+  String notes;
 
-    @Column(name = "recipient_name")
-    String recipientName;
+  @Column(name = "recipient_name")
+  String recipientName;
 
-    @Column(name = "recipient_phone")
-    String recipientPhone;
+  @Column(name = "recipient_phone")
+  String recipientPhone;
 
-    @Column(name = "shipping_address")
-    String shippingAddress;
+  @Column(name = "shipping_address")
+  String shippingAddress;
 
-    @Column(name = "cod_amount")
-    BigDecimal codAmount;
+  @Column(name = "cod_amount")
+  BigDecimal codAmount;
 
-    @Version
-    Long version;
+  @Version Long version;
 
-    @CreatedDate
-    LocalDateTime createdAt;
+  @CreatedDate LocalDateTime createdAt;
 
-    @LastModifiedDate
-    LocalDateTime updatedAt;
+  @LastModifiedDate LocalDateTime updatedAt;
 
-    public String getTrackingCode() {
-        return trackingNumber;
-    }
+  public String getTrackingCode() {
+    return trackingNumber;
+  }
 
-    public void setTrackingCode(String code) {
-        this.trackingNumber = code;
-    }
+  public void setTrackingCode(String code) {
+    this.trackingNumber = code;
+  }
 
-    public String getCarrier() {
-        return carrierName;
-    }
+  public String getCarrier() {
+    return carrierName;
+  }
 
-    public void setCarrier(String carrier) {
-        this.carrierName = carrier;
-    }
+  public void setCarrier(String carrier) {
+    this.carrierName = carrier;
+  }
 
-    public String getStatus() {
-        return shippingStatus;
-    }
+  public String getStatus() {
+    return shippingStatus;
+  }
 
-    public void setStatus(String status) {
-        this.shippingStatus = status;
-    }
+  public void setStatus(String status) {
+    this.shippingStatus = status;
+  }
 }

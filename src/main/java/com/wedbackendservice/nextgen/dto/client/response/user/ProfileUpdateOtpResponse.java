@@ -10,8 +10,8 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ProfileUpdateOtpResponse {
-    String otpSessionToken;
-    String targetEmailMasked;
-    Integer expiresInSeconds;
-    Integer resendCooldownSeconds;
+  String otpSessionToken;
+  String targetEmailMasked;
+  Integer expiresInSeconds;
+  Integer resendCooldownSeconds;
 }

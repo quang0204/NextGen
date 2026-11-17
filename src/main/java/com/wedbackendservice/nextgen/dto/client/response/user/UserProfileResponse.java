@@ -2,10 +2,9 @@ package com.wedbackendservice.nextgen.dto.client.response.user;
 
 import com.wedbackendservice.nextgen.enums.Role;
 import com.wedbackendservice.nextgen.enums.UserStatus;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -14,12 +13,12 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class UserProfileResponse {
-    Long userId;
-    Role role;
-    String fullName;
-    String email;
-    String phone;
-    UserStatus status;
-    LocalDateTime createdAt;
-    LocalDateTime updatedAt;
+  Long userId;
+  Role role;
+  String fullName;
+  String email;
+  String phone;
+  UserStatus status;
+  LocalDateTime createdAt;
+  LocalDateTime updatedAt;
 }

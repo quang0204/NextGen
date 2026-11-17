@@ -2,10 +2,9 @@ package com.wedbackendservice.nextgen.dto.client.response.brand;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -15,19 +14,19 @@ import java.time.LocalDateTime;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BrandResponse {
-    Long brandId;
+  Long brandId;
 
-    @JsonProperty("name")
-    String name;
+  @JsonProperty("name")
+  String name;
 
-    String slug;
-    String logoUrl;
-    String description;
+  String slug;
+  String logoUrl;
+  String description;
 
-    @JsonProperty("isVisible")
-    Boolean isVisible;
+  @JsonProperty("isVisible")
+  Boolean isVisible;
 
-    Integer totalProducts;
-    LocalDateTime createdAt;
-    LocalDateTime updatedAt;
+  Integer totalProducts;
+  LocalDateTime createdAt;
+  LocalDateTime updatedAt;
 }

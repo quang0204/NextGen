@@ -12,9 +12,9 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class RestockedItemResponse {
-    Long variantId;
-    String sku;
-    Integer quantityRestocked;
-    Integer newOnHandQty;
-    Integer newAvailableQty;
+  Long variantId;
+  String sku;
+  Integer quantityRestocked;
+  Integer newOnHandQty;
+  Integer newAvailableQty;
 }

@@ -1,12 +1,11 @@
 package com.wedbackendservice.nextgen.dto.portal.response.admin;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.*;
-import lombok.experimental.FieldDefaults;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
 
 @Getter
 @Setter
@@ -16,15 +15,15 @@ import java.util.Map;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class PaymentLedgerSummaryResponse {
-    LocalDate fromDate;
-    LocalDate toDate;
-    long totalTransactions;
-    long successTransactions;
-    long pendingTransactions;
-    long failedTransactions;
-    long refundedTransactions;
-    BigDecimal totalCollected;
-    BigDecimal totalPending;
-    BigDecimal totalRefunded;
-    Map<String, BigDecimal> collectedByMethod;
+  LocalDate fromDate;
+  LocalDate toDate;
+  long totalTransactions;
+  long successTransactions;
+  long pendingTransactions;
+  long failedTransactions;
+  long refundedTransactions;
+  BigDecimal totalCollected;
+  BigDecimal totalPending;
+  BigDecimal totalRefunded;
+  Map<String, BigDecimal> collectedByMethod;
 }

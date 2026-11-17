@@ -13,11 +13,11 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CreatePaymentIntentRequest {
 
-    @NotNull(message = "orderId không được để trống")
-    Long orderId;
+  @NotNull(message = "orderId không được để trống")
+  Long orderId;
 
-    @NotNull(message = "Phương thức thanh toán không được để trống")
-    PaymentMethod paymentMethod;
+  @NotNull(message = "Phương thức thanh toán không được để trống")
+  PaymentMethod paymentMethod;
 
-    String note;
+  String note;
 }

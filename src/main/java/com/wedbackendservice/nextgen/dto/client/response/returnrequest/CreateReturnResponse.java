@@ -1,10 +1,9 @@
 package com.wedbackendservice.nextgen.dto.client.response.returnrequest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -14,12 +13,12 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class CreateReturnResponse {
-    Long returnId;
-    Long orderId;
-    String orderCode;
-    Long requestedBy;
-    String status;
-    String reason;
-    List<String> evidenceImages;
-    String createdAt;
+  Long returnId;
+  Long orderId;
+  String orderCode;
+  Long requestedBy;
+  String status;
+  String reason;
+  List<String> evidenceImages;
+  String createdAt;
 }

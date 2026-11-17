@@ -1,9 +1,8 @@
 package com.wedbackendservice.nextgen.dto.client.response.faq;
 
+import java.time.LocalDateTime;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -12,12 +11,12 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class FaqResponse {
-    Long faqId;
-    String question;
-    String answer;
-    String category;
-    Integer displayOrder;
-    Boolean isActive;
-    LocalDateTime createdAt;
-    LocalDateTime updatedAt;
+  Long faqId;
+  String question;
+  String answer;
+  String category;
+  Integer displayOrder;
+  Boolean isActive;
+  LocalDateTime createdAt;
+  LocalDateTime updatedAt;
 }

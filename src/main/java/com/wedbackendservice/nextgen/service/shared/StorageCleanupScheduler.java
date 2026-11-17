@@ -10,17 +10,17 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class StorageCleanupScheduler {
 
-    private final StorageFileService storageFileService;
+  private final StorageFileService storageFileService;
 
-    @Scheduled(fixedDelayString = "${minio.cleanup-interval-ms:300000}")
-    public void cleanupExpiredPendingUploads() {
-        try {
-            int cleaned = storageFileService.cleanupExpiredPendingUploads();
-            if (cleaned > 0) {
-                log.info("Cleaned up {} expired pending MinIO upload sessions", cleaned);
-            }
-        } catch (Exception e) {
-            log.debug("Skipped pending MinIO upload cleanup: {}", e.getMessage());
-        }
+  @Scheduled(fixedDelayString = "${minio.cleanup-interval-ms:300000}")
+  public void cleanupExpiredPendingUploads() {
+    try {
+      int cleaned = storageFileService.cleanupExpiredPendingUploads();
+      if (cleaned > 0) {
+        log.info("Cleaned up {} expired pending MinIO upload sessions", cleaned);
+      }
+    } catch (Exception e) {
+      log.debug("Skipped pending MinIO upload cleanup: {}", e.getMessage());
     }
+  }
 }

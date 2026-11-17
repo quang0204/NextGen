@@ -10,16 +10,16 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class InventoryTransactionItemResponse {
-    Long txnId;
-    String formCode;
-    String sku;
-    String productName;
-    String txnType;
-    Integer quantityChange;
-    Integer qtyBefore;
-    Integer qtyAfter;
-    Long orderId;
-    String reason;
-    String performedBy;
-    String performedAt;
+  Long txnId;
+  String formCode;
+  String sku;
+  String productName;
+  String txnType;
+  Integer quantityChange;
+  Integer qtyBefore;
+  Integer qtyAfter;
+  Long orderId;
+  String reason;
+  String performedBy;
+  String performedAt;
 }

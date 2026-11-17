@@ -2,11 +2,10 @@ package com.wedbackendservice.nextgen.dto.portal.request.returnrequest;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import lombok.*;
-import lombok.experimental.FieldDefaults;
-
 import java.math.BigDecimal;
 import java.util.List;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
 
 @Getter
 @Setter
@@ -16,16 +15,15 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class InspectReturnRequest {
 
-    @NotBlank(message = "Trạng thái thẩm định (status) không được để trống!")
-    String status;
+  @NotBlank(message = "Trạng thái thẩm định (status) không được để trống!")
+  String status;
 
-    @NotBlank(message = "Kết quả giám định (inspectionResult) không được để trống!")
-    String inspectionResult;
+  @NotBlank(message = "Kết quả giám định (inspectionResult) không được để trống!")
+  String inspectionResult;
 
-    BigDecimal refundAmount;
+  BigDecimal refundAmount;
 
-    @Valid
-    List<@Valid RestockItemRequest> restockItems;
+  @Valid List<@Valid RestockItemRequest> restockItems;
 
-    String rejectReason;
+  String rejectReason;
 }

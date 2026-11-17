@@ -11,6 +11,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ForgotPasswordRequest {
-    @NotBlank(message = "Số điện thoại hoặc Email không được để trống")
-    String identity;
+  @NotBlank(message = "Số điện thoại hoặc Email không được để trống")
+  String identity;
 }

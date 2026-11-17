@@ -10,16 +10,16 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class LowStockItemResponse {
-    Long variantId;
-    Long productId;
-    String productName;
-    String sku;
-    String color;
-    Integer onHandQty;
-    Integer reservedQty;
-    Integer availableQty;
-    Integer minThreshold;
-    Integer deficit;
-    String status;
-    Integer recommendImportQty;
+  Long variantId;
+  Long productId;
+  String productName;
+  String sku;
+  String color;
+  Integer onHandQty;
+  Integer reservedQty;
+  Integer availableQty;
+  Integer minThreshold;
+  Integer deficit;
+  String status;
+  Integer recommendImportQty;
 }

@@ -4,10 +4,9 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.wedbackendservice.nextgen.dto.client.response.category.VariantSchemaField;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
-
-import java.util.List;
 
 @Getter
 @Setter
@@ -17,19 +16,19 @@ import java.util.List;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class CategoryRequest {
 
-    Long parentId;
+  Long parentId;
 
-    @JsonProperty("name")
-    @JsonAlias({"name", "categoryName"})
-    @NotBlank(message = "Tên danh mục không được để trống")
-    String name;
+  @JsonProperty("name")
+  @JsonAlias({"name", "categoryName"})
+  @NotBlank(message = "Tên danh mục không được để trống")
+  String name;
 
-    String slug;
-    String description;
+  String slug;
+  String description;
 
-    List<VariantSchemaField> variantSchema;
+  List<VariantSchemaField> variantSchema;
 
-    @JsonProperty("isVisible")
-    @JsonAlias({"isVisible", "isActive"})
-    Boolean isVisible;
+  @JsonProperty("isVisible")
+  @JsonAlias({"isVisible", "isActive"})
+  Boolean isVisible;
 }

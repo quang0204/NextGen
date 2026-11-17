@@ -1,7 +1,7 @@
 package com.wedbackendservice.nextgen.controller.client;
 
-import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.dto.client.response.shipment.ShipmentTrackResponse;
+import com.wedbackendservice.nextgen.dto.common.ApiResponse;
 import com.wedbackendservice.nextgen.service.shared.ShipmentsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -11,13 +11,12 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class ShipmentsController {
 
-    private final ShipmentsService shipmentsService;
+  private final ShipmentsService shipmentsService;
 
-    /**
-     * API 9.1: Khách hàng tra cứu hành trình vận chuyển (Public)
-     */
-    @GetMapping("/track/{trackingCode}")
-    public ApiResponse<ShipmentTrackResponse> trackShipment(@PathVariable String trackingCode) {
-        return ApiResponse.ok("Tra cứu thông tin vận đơn thành công", shipmentsService.trackShipment(trackingCode));
-    }
+  /** API 9.1: Khách hàng tra cứu hành trình vận chuyển (Public) */
+  @GetMapping("/track/{trackingCode}")
+  public ApiResponse<ShipmentTrackResponse> trackShipment(@PathVariable String trackingCode) {
+    return ApiResponse.ok(
+        "Tra cứu thông tin vận đơn thành công", shipmentsService.trackShipment(trackingCode));
+  }
 }

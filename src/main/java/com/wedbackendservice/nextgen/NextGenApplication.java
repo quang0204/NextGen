@@ -14,8 +14,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 @EnableMethodSecurity
 public class NextGenApplication {
 
-    public static void main(String[] args) {
-        SpringApplication.run(NextGenApplication.class, args);
-    }
-
+  public static void main(String[] args) {
+    SpringApplication.run(NextGenApplication.class, args);
+  }
 }

@@ -11,6 +11,6 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ForgotResendOtpRequest {
-    @NotBlank(message = "resetToken không được để trống")
-    String resetToken;
+  @NotBlank(message = "resetToken không được để trống")
+  String resetToken;
 }
