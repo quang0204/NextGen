@@ -42,12 +42,4 @@ public class OrderItem {
 
     @CreatedDate
     LocalDateTime createdAt;
-
-    public BigDecimal getUnitPrice() {
-        return price;
-    }
-
-    public BigDecimal getLineTotal() {
-        return totalPrice != null ? totalPrice : (price != null && quantity != null ? price.multiply(BigDecimal.valueOf(quantity)) : BigDecimal.ZERO);
-    }
 }

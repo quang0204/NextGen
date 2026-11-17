@@ -72,7 +72,7 @@ public class PromotionsService {
                         .filter(inv -> inv.getVariant() != null)
                         .collect(Collectors.toMap(
                                 inv -> inv.getVariant().getVariantId(),
-                                Inventory::getAvailableQty,
+                                com.wedbackendservice.nextgen.util.InventoryUtil::getAvailable,
                                 (a, b) -> a
                         ));
 
@@ -83,7 +83,7 @@ public class PromotionsService {
             Product prod = v.getProduct();
 
             BigDecimal listPrice = v.getPrice() != null ? v.getPrice() : BigDecimal.ZERO;
-            BigDecimal promoPrice = pv.getPromoPrice() != null ? pv.getPromoPrice() : listPrice;
+            BigDecimal promoPrice = pv.getPromotionalPrice() != null ? pv.getPromotionalPrice() : listPrice;
 
             int discountPercent = 0;
             if (listPrice.compareTo(BigDecimal.ZERO) > 0 && promoPrice.compareTo(listPrice) < 0) {
@@ -124,11 +124,11 @@ public class PromotionsService {
 
         return promotions.stream().map(p -> ActivePromotionResponse.builder()
                 .promotionId(p.getPromotionId())
-                .name(p.getName())
+                .name(p.getPromotionName())
                 .description(p.getDescription())
                 .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
                 .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
-                .status(p.resolveStatus(now))
+                .status(resolvePromotionStatus(p, now))
                 .variants(variantsByPromoId.getOrDefault(p.getPromotionId(), List.of()))
                 .build()).toList();
     }
@@ -170,11 +170,11 @@ public class PromotionsService {
 
             return AdminPromotionItemResponse.builder()
                     .promotionId(p.getPromotionId())
-                    .name(p.getName())
+                    .name(p.getPromotionName())
                     .description(p.getDescription())
                     .startAt(DateTimeUtil.formatIsoInstant(p.getStartDate()))
                     .endAt(DateTimeUtil.formatIsoInstant(p.getEndDate()))
-                    .status(p.resolveStatus(now))
+                    .status(resolvePromotionStatus(p, now))
                     .appliedVariantsCount(variantResponses.size())
                     .createdBy(createdByName)
                     .createdAt(DateTimeUtil.formatIsoInstant(p.getCreatedAt()))
@@ -265,11 +265,11 @@ public class PromotionsService {
 
         // Ghi Audit Log (D18)
         auditLogRepository.log(currentUser, "CREATE_PROMOTION", "Promotions", savedPromotion.getPromotionId(),
-                null, "Tạo mới chiến dịch: " + savedPromotion.getName() + " kèm " + variants.size() + " biến thể");
+                null, "Tạo mới chiến dịch: " + savedPromotion.getPromotionName() + " kèm " + variants.size() + " biến thể");
 
         return CreatePromotionResponse.builder()
                 .promotionId(savedPromotion.getPromotionId())
-                .name(savedPromotion.getName())
+                .name(savedPromotion.getPromotionName())
                 .appliedVariantsCount(variants.size())
                 .status(savedPromotion.getStatus())
                 .startAt(DateTimeUtil.formatIsoInstant(savedPromotion.getStartDate()))
@@ -325,7 +325,7 @@ public class PromotionsService {
         promotionVariantRepository.deleteByPromotion_PromotionId(id);
         promotionRepository.delete(promotion);
         auditLogRepository.log(currentUser, "DELETE_PROMOTION", "Promotions", id,
-                promotion.getName(), "DELETED");
+                promotion.getPromotionName(), "DELETED");
     }
 
     private void validateNoOverlappingPromotion(
@@ -357,7 +357,23 @@ public class PromotionsService {
             String endStr = cp.getEndDate() != null ? DateTimeUtil.formatIsoInstant(cp.getEndDate()) : "không giới hạn";
             throw new AppException(ErrorCode.INVALID_REQUEST,
                     String.format("Sản phẩm '%s' đang tham gia chiến dịch '%s' (kết thúc: %s). Không thể cộng dồn 2 chiến dịch khuyến mãi cùng lúc!",
-                            prodName, cp.getName(), endStr));
+                            prodName, cp.getPromotionName(), endStr));
         }
+    }
+
+    private String resolvePromotionStatus(Promotion p, LocalDateTime now) {
+        if (p.getStatus() != null && !p.getStatus().isBlank()) {
+            return p.getStatus();
+        }
+        if (Boolean.FALSE.equals(p.getIsActive())) {
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.PAUSED.name();
+        }
+        if (p.getStartDate() != null && now.isBefore(p.getStartDate())) {
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.UPCOMING.name();
+        }
+        if (p.getEndDate() != null && now.isAfter(p.getEndDate())) {
+            return com.wedbackendservice.nextgen.enums.PromotionStatus.ENDED.name();
+        }
+        return com.wedbackendservice.nextgen.enums.PromotionStatus.ACTIVE.name();
     }
 }

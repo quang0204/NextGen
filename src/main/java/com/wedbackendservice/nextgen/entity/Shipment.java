@@ -53,28 +53,4 @@ public class Shipment {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
-
-    public String getTrackingCode() {
-        return trackingNumber;
-    }
-
-    public void setTrackingCode(String code) {
-        this.trackingNumber = code;
-    }
-
-    public String getCarrier() {
-        return carrierName;
-    }
-
-    public void setCarrier(String carrier) {
-        this.carrierName = carrier;
-    }
-
-    public String getStatus() {
-        return shippingStatus;
-    }
-
-    public void setStatus(String status) {
-        this.shippingStatus = status;
-    }
 }

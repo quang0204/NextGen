@@ -259,7 +259,7 @@ public class ShipmentsService {
                             .order(order)
                             .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
                             .paymentProvider("COD_SHIPPER")
-                            .amount(order.getFinalTotal())
+                            .amount((order.getFinalAmount() != null ? order.getFinalAmount() : (order.getTotalAmount() != null ? order.getTotalAmount() : java.math.BigDecimal.ZERO)))
                             .status(PaymentStatus.SUCCESS.name())
                             .transactionRef("COD-" + order.getOrderCode())
                             .paidAt(paidNow)
@@ -429,7 +429,7 @@ public class ShipmentsService {
             if (variant != null) {
                 if (wasExported) {
                     Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
-                    int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
+                    int qtyBefore = inv != null ? com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv) : 0;
                     int updatedRows = inventoryRepository.increaseQuantityAtomic(
                             variant.getVariantId(), item.getQuantity(), restockNow);
                     if (updatedRows > 0) {
@@ -578,7 +578,7 @@ public class ShipmentsService {
             Inventory inv = inventoryRepository.findWithLockByVariantId(v.getVariantId())
                     .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
                             "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
-            int onHandBefore = inv.getOnHandQty();
+            int onHandBefore = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
             int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
             if (updatedRows == 0) {
                 throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,

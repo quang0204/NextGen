@@ -100,8 +100,8 @@ public class AdminReportsService {
                         : 1L;
 
                 int qty = item.getQuantity() != null ? item.getQuantity() : 1;
-                BigDecimal revenue = item.getLineTotal() != null ? item.getLineTotal() : BigDecimal.ZERO;
-                BigDecimal unitPrice = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                BigDecimal revenue = (item.getTotalPrice() != null ? item.getTotalPrice() : (item.getPrice() != null && item.getQuantity() != null ? item.getPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())) : java.math.BigDecimal.ZERO)) != null ? (item.getTotalPrice() != null ? item.getTotalPrice() : (item.getPrice() != null && item.getQuantity() != null ? item.getPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())) : java.math.BigDecimal.ZERO)) : BigDecimal.ZERO;
+                BigDecimal unitPrice = item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO;
 
                 ProductAggregator agg = prodAggMap.computeIfAbsent(productId, id -> {
                     Product p = variant != null ? variant.getProduct() : null;
@@ -123,8 +123,8 @@ public class AdminReportsService {
                 if (variant != null) {
                     Inventory inv = inventoryMap.get(variant.getVariantId());
                     if (inv != null) {
-                        agg.onHandQty += inv.getOnHandQty();
-                        agg.availableQty += inv.getAvailableQty();
+                        agg.onHandQty += com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
+                        agg.availableQty += com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv);
                     }
                 }
             }
@@ -180,8 +180,8 @@ public class AdminReportsService {
                         : (item.getVariant() != null ? item.getVariant().getSku() : "SKU-" + item.getOrderItemId());
 
                 int qty = item.getQuantity() != null ? item.getQuantity() : 1;
-                BigDecimal revenue = item.getLineTotal() != null ? item.getLineTotal() : BigDecimal.ZERO;
-                BigDecimal unitPrice = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+                BigDecimal revenue = (item.getTotalPrice() != null ? item.getTotalPrice() : (item.getPrice() != null && item.getQuantity() != null ? item.getPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())) : java.math.BigDecimal.ZERO)) != null ? (item.getTotalPrice() != null ? item.getTotalPrice() : (item.getPrice() != null && item.getQuantity() != null ? item.getPrice().multiply(java.math.BigDecimal.valueOf(item.getQuantity())) : java.math.BigDecimal.ZERO)) : BigDecimal.ZERO;
+                BigDecimal unitPrice = item.getPrice() != null ? item.getPrice() : BigDecimal.ZERO;
 
                 ProductVariant variant = item.getVariant();
                 Long variantId = variant != null ? variant.getVariantId() : item.getOrderItemId();
@@ -210,8 +210,8 @@ public class AdminReportsService {
                     if (variant != null) {
                         Inventory inv = inventoryMap.get(variant.getVariantId());
                         if (inv != null) {
-                            onHand = inv.getOnHandQty();
-                            avail = inv.getAvailableQty();
+                            onHand = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
+                            avail = com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv);
                         }
                     }
 
@@ -307,7 +307,7 @@ public class AdminReportsService {
             ProductVariant variant = inv.getVariant();
             if (variant == null) continue;
 
-            int onHand = inv.getOnHandQty();
+            int onHand = com.wedbackendservice.nextgen.util.InventoryUtil.getOnHand(inv);
             if (onHand <= 0) continue; // Chỉ phân tích sản phẩm còn tồn kho
 
             Product product = variant.getProduct();
@@ -371,7 +371,7 @@ public class AdminReportsService {
                     .rom(variant.getRomGb() != null ? variant.getRomGb() + "GB" : "")
                     .imageUrl(variant.getImageUrl() != null ? variant.getImageUrl() : (product != null ? product.getThumbnailUrl() : ""))
                     .onHandQty(onHand)
-                    .availableQty(inv.getAvailableQty())
+                    .availableQty(com.wedbackendservice.nextgen.util.InventoryUtil.getAvailable(inv))
                     .unitPrice(unitPrice)
                     .unitsSold(unitsSold)
                     .tiedCapital(tiedCapital)

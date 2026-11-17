@@ -43,44 +43,4 @@ public class Promotion {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
-
-    public String getName() {
-        return promotionName != null ? promotionName : "";
-    }
-
-    public void setName(String name) {
-        this.promotionName = name;
-    }
-
-    public LocalDateTime getStartAt() {
-        return startDate;
-    }
-
-    public void setStartAt(LocalDateTime startAt) {
-        this.startDate = startAt;
-    }
-
-    public LocalDateTime getEndAt() {
-        return endDate;
-    }
-
-    public void setEndAt(LocalDateTime endAt) {
-        this.endDate = endAt;
-    }
-
-    public String resolveStatus(LocalDateTime now) {
-        if (status != null && !status.isBlank()) {
-            return status;
-        }
-        if (Boolean.FALSE.equals(isActive)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.PAUSED.name();
-        }
-        if (startDate != null && now.isBefore(startDate)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.UPCOMING.name();
-        }
-        if (endDate != null && now.isAfter(endDate)) {
-            return com.wedbackendservice.nextgen.enums.PromotionStatus.ENDED.name();
-        }
-        return com.wedbackendservice.nextgen.enums.PromotionStatus.ACTIVE.name();
-    }
 }

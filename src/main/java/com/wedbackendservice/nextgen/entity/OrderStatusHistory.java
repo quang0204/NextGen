@@ -35,16 +35,4 @@ public class OrderStatusHistory {
 
     @CreatedDate
     LocalDateTime createdAt;
-
-    public String getFromStatus() {
-        return previousStatus;
-    }
-
-    public String getToStatus() {
-        return newStatus;
-    }
-
-    public String getReason() {
-        return note;
-    }
 }

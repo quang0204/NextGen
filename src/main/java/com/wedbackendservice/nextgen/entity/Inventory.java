@@ -36,20 +36,4 @@ public class Inventory {
 
     @LastModifiedDate
     LocalDateTime updatedAt;
-
-    public Integer getOnHandQty() {
-        return quantity != null ? quantity : 0;
-    }
-
-    public Integer getReservedQty() {
-        return reservedQuantity != null ? reservedQuantity : 0;
-    }
-
-    public Integer getAvailableQty() {
-        return Math.max(0, getOnHandQty() - getReservedQty());
-    }
-
-    public Integer getMinThreshold() {
-        return minThreshold != null ? minThreshold : 5;
-    }
 }
