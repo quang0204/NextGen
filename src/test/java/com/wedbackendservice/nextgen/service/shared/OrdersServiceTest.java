@@ -74,8 +74,39 @@ class OrdersServiceTest {
     @Spy
     private OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
-    @InjectMocks
+    @Mock
+    private NotificationRepository notificationRepository;
+    @Mock
+    private OrderStateService orderStateService;
+    @Mock
+    private OrdersQueryService ordersQueryService;
+
+    private OrderFulfillmentService orderFulfillmentService;
     private OrdersService ordersService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        orderFulfillmentService = new OrderFulfillmentService(
+                securityHelper,
+                orderRepository,
+                shipmentRepository,
+                paymentRepository,
+                notificationRepository,
+                auditLogRepository,
+                orderStateService,
+                inventoryService,
+                ordersQueryService,
+                outboxService,
+                clock
+        );
+        ordersService = new OrdersService(
+                null,
+                ordersQueryService,
+                orderFulfillmentService,
+                null,
+                null
+        );
+    }
 
     @Test
     void packAndExportOrder_throwsWhenAtomicStockDeductionReturnsZero() {

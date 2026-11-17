@@ -134,34 +134,64 @@ public class OrderInventoryPaymentBusinessTest {
                 orderMapper
         );
 
-        ordersService = new OrdersService(
+        OrderCreationService orderCreationService = new OrderCreationService(
                 securityHelper,
+                tokenRedisService,
+                orderPricingService,
                 orderRepository,
                 orderItemRepository,
                 orderStatusHistoryRepository,
-                inventoryRepository,
-                inventoryTransactionRepository,
-                productVariantRepository,
-                voucherRepository,
-                promotionVariantRepository,
+                paymentRepository,
+                inventoryService,
+                outboxService,
+                orderPostCommitService,
+                java.time.Clock.systemDefaultZone()
+        );
+
+        OrderFulfillmentService orderFulfillmentService = new OrderFulfillmentService(
+                securityHelper,
+                orderRepository,
                 shipmentRepository,
-                null,
-                cartRepository,
-                cartItemRepository,
-                auditLogRepository,
-                tokenRedisService,
                 paymentRepository,
                 notificationRepository,
-                orderMapper,
-                outboxService,
-                inventoryService,
-                shippingFeeCalc,
-                orderExpirationService,
-                orderPostCommitService,
+                auditLogRepository,
                 orderStateService,
-                orderPricingService,
+                inventoryService,
+                ordersQueryService,
+                outboxService,
+                java.time.Clock.systemDefaultZone()
+        );
+
+        OrderCancellationService orderCancellationService = new OrderCancellationService(
+                securityHelper,
+                orderRepository,
+                paymentRepository,
+                voucherRepository,
+                notificationRepository,
+                inventoryService,
+                orderStateService,
+                orderExpirationService,
+                outboxService,
+                java.time.Clock.systemDefaultZone()
+        );
+
+        OrderReturnService orderReturnService = new OrderReturnService(
+                securityHelper,
+                orderRepository,
+                paymentRepository,
+                voucherRepository,
+                inventoryService,
+                orderStateService,
                 ordersQueryService,
                 java.time.Clock.systemDefaultZone()
+        );
+
+        ordersService = new OrdersService(
+                orderCreationService,
+                ordersQueryService,
+                orderFulfillmentService,
+                orderCancellationService,
+                orderReturnService
         );
 
         paymentService = new PaymentService(
