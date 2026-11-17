@@ -824,6 +824,42 @@ public class OrdersService {
     }
 
     /**
+     * Chuyển trạng thái đơn hàng sang Đang chuẩn bị hàng (PREPARING) & Đẩy sang Vận đơn
+     */
+    @Transactional
+    public OrderDetailResponse prepareOrder(Long id) {
+        User operator = securityHelper.authenticateStaffOrAdmin();
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
+
+        String currentStatus = order.getStatus();
+        if (!"CONFIRMED".equalsIgnoreCase(currentStatus) && !"PREPARING".equalsIgnoreCase(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Đơn hàng phải ở trạng thái Đã xác nhận (CONFIRMED) để chuyển sang chuẩn bị hàng!");
+        }
+
+        order.setStatus("PREPARING");
+        order.setUpdatedAt(LocalDateTime.now());
+        orderRepository.save(order);
+
+        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                .order(order)
+                .changedBy(operator)
+                .previousStatus(currentStatus)
+                .newStatus("PREPARING")
+                .note("Bộ phận kho đang chuẩn bị hàng, kiểm đếm đóng gói và hệ thống đã đẩy sang bảng Vận đơn.")
+                .build());
+
+        try {
+            auditLogRepository.log(operator, "PREPARE_ORDER", "Orders", order.getOrderId(),
+                    "status: " + currentStatus, "status: PREPARING");
+        } catch (Exception e) {
+            log.warn("Không thể ghi audit log prepareOrder: {}", e.getMessage());
+        }
+
+        return getOrderDetail(order.getOrderCode());
+    }
+
+    /**
      * API 8.7: [POST] /api/v1/admin/orders/{id}/pack-export — Đóng gói & Xuất kho vật lý MB03 (STAFF / ADMIN)
      */
     @Transactional
@@ -834,7 +870,7 @@ public class OrdersService {
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
-        if (!"CONFIRMED".equalsIgnoreCase(currentStatus) && !"PREPARING".equalsIgnoreCase(currentStatus)) {
+        if (!"CONFIRMED".equalsIgnoreCase(currentStatus) && !"PREPARING".equalsIgnoreCase(currentStatus) && !"PICKED_UP".equalsIgnoreCase(currentStatus)) {
             throw new AppException(ErrorCode.ERR_ORDER_NOT_CONFIRMED,
                     "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho MB03!");
         }

@@ -232,7 +232,12 @@ public class ShipmentsService {
                 exportOrderStockIfNotExported(order, operator);
             }
 
-            if (targetStatus == ShipmentStatus.PICKED || targetStatus == ShipmentStatus.IN_TRANSIT) {
+            if (targetStatus == ShipmentStatus.PICKED) {
+                synchronizedOrderStatus = "PICKED_UP";
+                order.setStatus("PICKED_UP");
+                order.setUpdatedAt(LocalDateTime.now());
+                orderRepository.save(order);
+            } else if (targetStatus == ShipmentStatus.IN_TRANSIT) {
                 synchronizedOrderStatus = "SHIPPING";
                 order.setStatus("SHIPPING");
                 order.setUpdatedAt(LocalDateTime.now());

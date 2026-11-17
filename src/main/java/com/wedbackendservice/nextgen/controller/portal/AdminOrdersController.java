@@ -46,6 +46,17 @@ public class AdminOrdersController {
     }
 
     /**
+     * API: [POST] /api/v1/admin/orders/{id}/prepare — Chuyển trạng thái đơn hàng sang Đang chuẩn bị hàng (PREPARING) (STAFF / ADMIN)
+     */
+    @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+    @PostMapping("/{id:[0-9]+}/prepare")
+    public ApiResponse<com.wedbackendservice.nextgen.dto.client.response.order.OrderDetailResponse> prepareOrder(
+            @PathVariable Long id) {
+        return ApiResponse.ok("Đã chuyển đơn hàng sang trạng thái Đang chuẩn bị hàng và đẩy sang Vận đơn!",
+                ordersService.prepareOrder(id));
+    }
+
+    /**
      * API 8.7: [POST] /api/v1/admin/orders/{id}/pack-export — Đóng gói & Xuất kho vật lý MB03 (STAFF / ADMIN)
      */
     @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
