@@ -111,6 +111,11 @@ public class OrderInventoryPaymentBusinessTest {
                 notificationRepository
         );
 
+        OrderStateService orderStateService = new OrderStateService(
+                orderStatusHistoryRepository,
+                java.time.Clock.systemDefaultZone()
+        );
+
         ordersService = new OrdersService(
                 securityHelper,
                 orderRepository,
@@ -135,6 +140,7 @@ public class OrderInventoryPaymentBusinessTest {
                 new ShippingFeeCalculator(),
                 orderExpirationService,
                 orderPostCommitService,
+                orderStateService,
                 java.time.Clock.systemDefaultZone()
         );
 

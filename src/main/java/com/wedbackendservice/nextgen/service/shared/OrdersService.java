@@ -76,6 +76,7 @@ public class OrdersService {
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderExpirationService orderExpirationService;
     private final OrderPostCommitService orderPostCommitService;
+    private final OrderStateService orderStateService;
     private final Clock clock;
     @Value("${payment.bank-transfer.expire-minutes:30}")
     private int paymentExpireMinutes = 30;
@@ -646,13 +647,13 @@ public class OrdersService {
             paymentRepository.save(payment);
         });
 
-        // Cập nhật đơn hàng
-        order.setStatus(OrderStatus.CANCELLED.name());
+        // Cập nhật đơn hàng qua OrderStateService
+        order.setCancelReason(request.getReason().trim());
         if (needRefund) {
             order.setPaymentStatus(PaymentStatus.REFUND_PENDING.name());
         }
-        order.setCancelReason(request.getReason().trim());
-        order.setUpdatedAt(now);
+        orderStateService.transition(order, OrderStatus.CANCELLED, currentUser,
+                "Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""));
         orderRepository.save(order);
 
         // Phát Outbox Event OrderCancelled / RefundRequested
@@ -669,14 +670,7 @@ public class OrdersService {
                 needRefund ? "RefundRequested" : "OrderCancelled",
                 "order-cancelled-topic", cancelPayload);
 
-        // Ghi lịch sử trạng thái
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(order)
-                .changedBy(currentUser)
-                .previousStatus(currentStatus)
-                .newStatus(OrderStatus.CANCELLED.name())
-                .note("Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""))
-                .build());
+// Lịch sử trạng thái đã được OrderStateService tự động ghi nhận
 
         // Gửi thông báo hủy đơn cho khách hàng
         if (order.getUser() != null) {
@@ -831,8 +825,8 @@ public class OrdersService {
 
         LocalDateTime now = LocalDateTime.now(clock);
 
-        order.setStatus("CONFIRMED");
-        order.setUpdatedAt(now);
+        String confirmNote = StringUtils.hasText(request.getNote()) ? request.getNote() : "Duyệt xác nhận đơn hàng MB02 thành công và tạo vận đơn vận chuyển (" + request.getCarrier().trim() + ")";
+        orderStateService.transition(order, OrderStatus.CONFIRMED, operator, confirmNote);
         orderRepository.save(order);
 
         // Sinh mã tracking vận đơn: GHN-YYYYMMDD-OrderId
@@ -855,14 +849,7 @@ public class OrdersService {
                 .build();
         Shipment savedShipment = shipmentRepository.save(shipment);
 
-        // Ghi lịch sử
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(order)
-                .changedBy(operator)
-                .previousStatus(currentStatus)
-                .newStatus("CONFIRMED")
-                .note(StringUtils.hasText(request.getNote()) ? request.getNote() : "Xác nhận đơn hàng MB02 và tạo vận đơn")
-                .build());
+// Lịch sử trạng thái đã được OrderStateService tự động ghi nhận
 
         // Ghi Audit Log
         auditLogRepository.log(operator, "CONFIRM_ORDER", "Orders", order.getOrderId(),
@@ -933,8 +920,8 @@ public class OrdersService {
         }
 
         LocalDateTime now = LocalDateTime.now(clock);
-        order.setStatus("PREPARING");
-        order.setUpdatedAt(now);
+        orderStateService.transition(order, OrderStatus.PREPARING, operator,
+                "Bộ phận kho đang chuẩn bị hàng, kiểm đếm đóng gói và hệ thống đã đẩy sang bảng Vận đơn.");
         orderRepository.save(order);
 
         // Đảm bảo khởi tạo bản ghi Vận đơn và đẩy sang Quản lý Vận đơn (Shipments)
@@ -963,13 +950,7 @@ public class OrdersService {
             shipmentRepository.save(shipment);
         }
 
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(order)
-                .changedBy(operator)
-                .previousStatus(currentStatus)
-                .newStatus("PREPARING")
-                .note("Bộ phận kho đang chuẩn bị hàng, kiểm đếm đóng gói và hệ thống đã đẩy sang bảng Vận đơn.")
-                .build());
+// Lịch sử trạng thái đã được OrderStateService tự động ghi nhận
 
         try {
             auditLogRepository.log(operator, "PREPARE_ORDER", "Orders", order.getOrderId(),
@@ -1005,9 +986,9 @@ public class OrdersService {
             throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT, "Xuất kho không thành công do thiếu tồn kho vật lý!");
         }
 
-        // Cập nhật trạng thái đơn sang SHIPPING
-        order.setStatus("SHIPPING");
-        order.setUpdatedAt(now);
+        // Cập nhật trạng thái đơn sang SHIPPING qua OrderStateService
+        String exportHistoryNote = "Đóng gói & Xuất kho MB03, bàn giao đơn vị vận chuyển" + (StringUtils.hasText(request.getAssignedShipper()) ? " (Tài xế: " + request.getAssignedShipper() + ")" : "");
+        orderStateService.transition(order, OrderStatus.SHIPPING, operator, exportHistoryNote);
         orderRepository.save(order);
 
         // Cập nhật trạng thái vận đơn sang IN_TRANSIT
@@ -1031,14 +1012,7 @@ public class OrdersService {
         }
         Shipment savedShipment = shipmentRepository.save(shipment);
 
-        // Ghi lịch sử
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(order)
-                .changedBy(operator)
-                .previousStatus(currentStatus)
-                .newStatus("SHIPPING")
-                .note("Đóng gói & Xuất kho MB03, bàn giao đơn vị vận chuyển" + (StringUtils.hasText(request.getAssignedShipper()) ? " (Tài xế: " + request.getAssignedShipper() + ")" : ""))
-                .build());
+// Lịch sử trạng thái đã được OrderStateService tự động ghi nhận
 
         // Ghi Audit Log
         auditLogRepository.log(operator, "PACK_EXPORT_ORDER", "Orders", order.getOrderId(),
@@ -1122,9 +1096,8 @@ public class OrdersService {
 
         LocalDateTime now = LocalDateTime.now(clock);
         order.setPaymentStatus("PAID");
-        String prevStatus = order.getStatus();
-        order.setStatus(OrderStatus.WAITING_CONFIRMATION.name());
-        order.setUpdatedAt(now);
+        String noteText = StringUtils.hasText(note) ? note.trim() : "Nhân viên xác nhận đã nhận tiền chuyển khoản ngân hàng";
+        orderStateService.transition(order, OrderStatus.WAITING_CONFIRMATION, operator, noteText);
         Order updated = orderRepository.save(order);
 
         // Cập nhật hoặc tạo mới bản ghi Payment với mã giao dịch duy nhất
@@ -1141,14 +1114,7 @@ public class OrdersService {
         payment.setPaidAt(now);
         paymentRepository.save(payment);
 
-        String noteText = StringUtils.hasText(note) ? note.trim() : "Nhân viên xác nhận đã nhận tiền chuyển khoản ngân hàng";
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(updated)
-                .changedBy(operator)
-                .previousStatus(prevStatus)
-                .newStatus(updated.getStatus())
-                .note(noteText)
-                .build());
+// Lịch sử trạng thái đã được OrderStateService tự động ghi nhận
 
         try {
             auditLogRepository.log(operator, "CONFIRM_PAYMENT", "Orders", orderId, "paymentStatus: UNPAID", "paymentStatus: PAID");
@@ -1282,12 +1248,11 @@ public class OrdersService {
         } else {
             order.setPaymentStatus(PaymentStatus.CANCELLED.name());
         }
-        order.setStatus(OrderStatus.CANCELLED.name());
-        order.setUpdatedAt(now);
         String finalReason = (note != null && !note.trim().isBlank())
                 ? note.trim()
                 : (order.getCancelReason() != null ? order.getCancelReason() : "Bưu tá hoàn hàng về kho");
         order.setCancelReason(finalReason);
+        orderStateService.transition(order, OrderStatus.CANCELLED, operator, "Xác nhận nhận hàng hoàn về kho (MB04): " + finalReason);
         Order saved = orderRepository.save(order);
 
         paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).ifPresent(payment -> {
