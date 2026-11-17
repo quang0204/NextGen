@@ -58,6 +58,7 @@ public class ReturnsService {
     private final VoucherRepository voucherRepository;
     private final SecurityHelper securityHelper;
     private final ObjectMapper objectMapper;
+    private final OutboxService outboxService;
 
     /**
      * API 11.1: [POST] /api/v1/returns — Khách hàng tạo phiếu yêu cầu đổi trả (Authenticated)
@@ -596,6 +597,18 @@ public class ReturnsService {
 
         auditLogRepository.log(currentUser, "RETURN_APPROVED", "ReturnRequests", returnRequest.getReturnId(),
                 "status: PENDING", "status: APPROVED, refundAmount: " + request.getRefundAmount());
+
+        // Ghi nhận sự kiện đổi trả & hoàn kho MB04 vào outbox_events
+        outboxService.saveProcessedEvent("RETURN", "RMA-" + returnRequest.getReturnId(), "ReturnApprovedMB04",
+                "return-approved-topic", Map.of(
+                        "returnId", returnRequest.getReturnId(),
+                        "orderId", order != null ? order.getOrderId() : 0,
+                        "orderCode", order != null ? order.getOrderCode() : "",
+                        "refundAmount", request.getRefundAmount() != null ? request.getRefundAmount() : BigDecimal.ZERO,
+                        "decision", "APPROVED",
+                        "formCode", "MB04",
+                        "restockedItemsCount", restockedList.size()
+                ));
 
         return InspectReturnResponse.builder()
                 .returnId(returnRequest.getReturnId())

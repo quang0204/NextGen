@@ -33,6 +33,7 @@ public class Order {
     @ManyToOne(fetch = FetchType.LAZY)
     Voucher voucher;
 
+    @Column(name = "order_code", nullable = false, unique = true, length = 64)
     String orderCode;
     BigDecimal totalAmount;
     BigDecimal discountAmount;
@@ -48,6 +49,9 @@ public class Order {
     String note;
     String cancelReason;
     LocalDateTime completedAt;
+
+    @Version
+    Long version;
 
     @CreatedDate
     LocalDateTime createdAt;

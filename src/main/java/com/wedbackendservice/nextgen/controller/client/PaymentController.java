@@ -36,4 +36,26 @@ public class PaymentController {
         return ApiResponse.ok("Xử lý callback thanh toán thành công",
                 paymentService.simulateCallback(request));
     }
+
+    /**
+     * API Giả lập thanh toán thành công (Simulate Success)
+     * POST /api/v1/payments/{paymentId}/simulate-success
+     */
+    @PostMapping("/{paymentId:[0-9]+}/simulate-success")
+    public ApiResponse<SimulateCallbackResponse> simulateSuccess(@PathVariable Long paymentId) {
+        return ApiResponse.ok("Giả lập thanh toán thành công",
+                paymentService.simulateSuccess(paymentId));
+    }
+
+    /**
+     * API Giả lập thanh toán thất bại (Simulate Failure)
+     * POST /api/v1/payments/{paymentId}/simulate-failure
+     */
+    @PostMapping("/{paymentId:[0-9]+}/simulate-failure")
+    public ApiResponse<SimulateCallbackResponse> simulateFailure(
+            @PathVariable Long paymentId,
+            @RequestParam(required = false, defaultValue = "Khách hàng hủy thanh toán") String reason) {
+        return ApiResponse.ok("Giả lập thanh toán thất bại",
+                paymentService.simulateFailure(paymentId, reason));
+    }
 }

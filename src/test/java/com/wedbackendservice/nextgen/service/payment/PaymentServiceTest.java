@@ -121,26 +121,17 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createPaymentIntent_cod_success() {
+    void createPaymentIntent_cod_rejected() {
         when(securityHelper.getCurrentUser()).thenReturn(customerUser);
         when(orderRepository.findById(10L)).thenReturn(Optional.of(sampleOrder));
-        when(paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(10L)).thenReturn(Optional.empty());
-        when(paymentRepository.save(any(Payment.class))).thenAnswer(inv -> {
-            Payment p = inv.getArgument(0);
-            p.setPaymentId(101L);
-            return p;
-        });
 
         CreatePaymentIntentRequest request = CreatePaymentIntentRequest.builder()
                 .orderId(10L)
                 .paymentMethod(PaymentMethod.COD)
                 .build();
 
-        PaymentIntentResponse response = paymentService.createPaymentIntent(request);
-
-        assertThat(response.getPaymentId()).isEqualTo(101L);
-        assertThat(response.getOrderId()).isEqualTo(10L);
-        assertThat(response.getPaymentMethod()).isEqualTo("COD");
-        assertThat(response.getStatus()).isEqualTo(PaymentStatus.PENDING.name());
+        assertThatThrownBy(() -> paymentService.createPaymentIntent(request))
+                .isInstanceOf(AppException.class)
+                .hasMessageContaining("COD");
     }
 }

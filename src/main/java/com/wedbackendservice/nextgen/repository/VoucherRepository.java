@@ -31,7 +31,7 @@ public interface VoucherRepository extends JpaRepository<Voucher, Long>, JpaSpec
     int incrementUsedCountAtomic(@Param("voucherId") Long voucherId);
 
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("UPDATE Voucher v SET v.usedCount = CASE WHEN COALESCE(v.usedCount, 0) > 0 THEN v.usedCount - 1 ELSE 0 END " +
-            "WHERE v.voucherId = :voucherId")
+    @Query("UPDATE Voucher v SET v.usedCount = v.usedCount - 1 " +
+            "WHERE v.voucherId = :voucherId AND COALESCE(v.usedCount, 0) > 0")
     int decrementUsedCountAtomic(@Param("voucherId") Long voucherId);
 }

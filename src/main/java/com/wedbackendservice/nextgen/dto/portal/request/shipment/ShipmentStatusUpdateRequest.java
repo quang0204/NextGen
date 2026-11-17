@@ -15,4 +15,6 @@ public class ShipmentStatusUpdateRequest {
     String status;
 
     String note;
+
+    Boolean codCollected;
 }

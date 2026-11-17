@@ -100,6 +100,19 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    @ExceptionHandler(value = org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOptimisticLocking(org.springframework.dao.OptimisticLockingFailureException exception) {
+        log.warn("Optimistic locking conflict: {}", exception.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<Void>builder()
+                        .success(false)
+                        .statusCode(HttpStatus.CONFLICT.value())
+                        .message("Đơn hàng đang được thao tác bởi tiến trình khác. Vui lòng tải lại trang và thử lại!")
+                        .error("ERR_ORDER_CONFLICT")
+                        .timestamp(Instant.now().toString())
+                        .build());
+    }
+
     @ExceptionHandler(value = org.springframework.dao.DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException exception) {
         log.error("Data integrity violation: ", exception);

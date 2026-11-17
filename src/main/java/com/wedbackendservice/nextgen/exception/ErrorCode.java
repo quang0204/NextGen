@@ -93,6 +93,8 @@ public enum     ErrorCode {
     ERR_ORDER_INVALID_STATE(1072, "Thao tác không hợp lệ đối với trạng thái hiện tại của đơn hàng!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_NOT_CONFIRMED(1073, "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho!", HttpStatus.BAD_REQUEST),
     ERR_ORDER_NOT_FOUND(1074, "Không tìm thấy đơn hàng!", HttpStatus.NOT_FOUND),
+    ERR_ORDER_PROCESSING(1075, "Yêu cầu tạo đơn hàng đang được xử lý, vui lòng chờ trong giây lát!", HttpStatus.CONFLICT),
+    ERR_ORDER_CONFLICT(1076, "Đơn hàng đang được thao tác bởi tiến trình khác, vui lòng thử lại!", HttpStatus.CONFLICT),
     INVALID_OTP_CODE(1083, "Mã xác thực OTP không chính xác. Vui lòng kiểm tra lại hộp thư email!", HttpStatus.BAD_REQUEST),
     OTP_EXPIRED(1084, "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!", HttpStatus.BAD_REQUEST),
     RESEND_COOLDOWN_ACTIVE(1086, "Vui lòng chờ trước khi bấm gửi lại mã!", HttpStatus.TOO_MANY_REQUESTS),

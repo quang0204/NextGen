@@ -14,6 +14,8 @@ import com.wedbackendservice.nextgen.enums.InventoryTransactionType;
 import com.wedbackendservice.nextgen.enums.PaymentMethod;
 import com.wedbackendservice.nextgen.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.enums.ShipmentStatus;
+import com.wedbackendservice.nextgen.event.saga.KafkaTopics;
+import com.wedbackendservice.nextgen.event.saga.OrderCreatedEvent;
 import com.wedbackendservice.nextgen.exception.AppException;
 import com.wedbackendservice.nextgen.exception.ErrorCode;
 import com.wedbackendservice.nextgen.mapper.OrderMapper;
@@ -22,6 +24,7 @@ import com.wedbackendservice.nextgen.security.SecurityHelper;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,11 +32,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -65,310 +71,385 @@ public class OrdersService {
     private final PaymentRepository paymentRepository;
     private final NotificationRepository notificationRepository;
     private final OrderMapper orderMapper;
-    @org.springframework.beans.factory.annotation.Value("${payment.bank-transfer.expire-minutes:30}")
+    private final OutboxService outboxService;
+    private final InventoryService inventoryService;
+    private final ShippingFeeCalculator shippingFeeCalculator;
+    private final OrderExpirationService orderExpirationService;
+    private final OrderPostCommitService orderPostCommitService;
+    private final Clock clock;
+    @Value("${payment.bank-transfer.expire-minutes:30}")
     private int paymentExpireMinutes = 30;
     private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
 
     /**
-     * API 8.1: [POST] /api/v1/orders — Đặt hàng Checkout (Khởi tạo MB01 & Giữ chỗ tồn kho) (Authenticated)
+     * API 8.1: [POST] /api/v1/orders — Đặt hàng Checkout (Khởi tạo MB01 & Giữ chỗ tồn kho đồng bộ) (Authenticated)
      */
     @Transactional
     public CreateOrderResponse createOrder(CreateOrderRequest request, String idempotencyKey) {
         User currentUser = securityHelper.getCurrentUser();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
-        // Kiểm tra Idempotency key nếu client gửi
+        // 1. Kiểm tra Idempotency key bằng SETNX chống race condition
+        String redisKey = null;
         if (StringUtils.hasText(idempotencyKey)) {
-            String redisKey = "idempotency:order:" + currentUser.getUserId() + ":" + idempotencyKey.trim();
-            String existingOrderCode = tokenRedisService.getValue(redisKey);
-            if (existingOrderCode != null) {
-                Order existing = orderRepository.findByOrderCode(existingOrderCode).orElse(null);
-                if (existing != null) {
-                    List<OrderItem> existingItems = orderItemRepository.findByOrderId(existing.getOrderId());
-                    return CreateOrderResponse.builder()
-                            .orderId(existing.getOrderId())
-                            .orderCode(existing.getOrderCode())
-                            .status(existing.getStatus())
-                            .subtotal(existing.getSubtotal())
-                            .voucherDiscount(existing.getVoucherDiscount())
-                            .shippingFee(existing.getShippingFee() != null ? existing.getShippingFee() : BigDecimal.ZERO)
-                            .totalAmount(existing.getFinalTotal())
-                            .paymentMethod(existing.getPaymentMethod())
-                            .paymentStatus(existing.getPaymentStatus())
-                            .itemsCount(existingItems != null ? existingItems.size() : 0)
-                            .createdAt(DateTimeUtil.formatIsoInstant(existing.getCreatedAt()))
-                            .build();
+            redisKey = "idempotency:order:" + currentUser.getUserId() + ":" + idempotencyKey.trim();
+            boolean acquired = tokenRedisService.setIfAbsent(redisKey, "PROCESSING", Duration.ofMinutes(2));
+            if (!acquired) {
+                String existingCode = tokenRedisService.getValue(redisKey);
+                if ("PROCESSING".equals(existingCode)) {
+                    throw new AppException(ErrorCode.ERR_ORDER_PROCESSING, "Yêu cầu tạo đơn hàng đang được xử lý, vui lòng chờ trong giây lát!");
+                }
+                if (StringUtils.hasText(existingCode)) {
+                    Optional<Order> existing = orderRepository.findByOrderCode(existingCode);
+                    if (existing.isPresent()) {
+                        List<OrderItem> existingItems = orderItemRepository.findByOrderId(existing.get().getOrderId());
+                        return toCreateOrderResponse(existing.get(), existingItems != null ? existingItems.size() : 0);
+                    }
+                }
+                throw new AppException(ErrorCode.ERR_ORDER_PROCESSING, "Yêu cầu tạo đơn hàng đang được xử lý hoặc đã hoàn tất!");
+            }
+        }
+        final String finalRedisKey = redisKey;
+
+        try {
+            // 2. Validate và gộp sản phẩm trùng lặp
+            Map<Long, Integer> consolidatedQty = validateAndConsolidateItems(request.getItems());
+
+            // 3. Batch load ProductVariants (Tránh N+1)
+            List<Long> variantIds = new ArrayList<>(consolidatedQty.keySet());
+            List<ProductVariant> variants = productVariantRepository.findAllById(variantIds);
+            if (variants == null || variants.size() != variantIds.size()) {
+                throw new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Có biến thể sản phẩm không tồn tại trong hệ thống!");
+            }
+
+            Map<Long, ProductVariant> variantMap = new HashMap<>();
+            for (ProductVariant v : variants) {
+                variantMap.put(v.getVariantId(), v);
+                if (v.getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getStatus())) {
+                    String prodName = v.getProduct() != null ? v.getProduct().getProductName() : v.getVariantName();
+                    throw new AppException(ErrorCode.PRODUCT_INACTIVE,
+                            String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinhdong!", prodName, v.getSku()));
+                }
+                if (v.getProduct() != null && v.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getProduct().getStatus())) {
+                    throw new AppException(ErrorCode.PRODUCT_INACTIVE,
+                            String.format("Sản phẩm '%s' hiện đã ngừng kinh doanh!", v.getProduct().getProductName()));
                 }
             }
-        }
 
-        // 1. Gộp các sản phẩm trùng lặp và kiểm tra tồn khả dụng
-        Map<Long, Integer> consolidatedQty = new LinkedHashMap<>();
-        if (request.getItems() != null) {
-            for (OrderItemRequest itemReq : request.getItems()) {
-                if (itemReq.getVariantId() != null && itemReq.getQuantity() != null && itemReq.getQuantity() > 0) {
-                    consolidatedQty.merge(itemReq.getVariantId(), itemReq.getQuantity(), Integer::sum);
+            // 4. Batch load Promotions (Lấy khuyến mãi thấp nhất, tránh N+1)
+            List<PromotionVariant> activePromos = promotionVariantRepository.findActivePromotionsForVariantIds(variantIds, now);
+            Map<Long, BigDecimal> bestPromoPriceMap = new HashMap<>();
+            if (activePromos != null) {
+                for (PromotionVariant pv : activePromos) {
+                    if (pv != null && pv.getVariant() != null && pv.getVariant().getVariantId() != null && pv.getPromotionalPrice() != null) {
+                        bestPromoPriceMap.merge(pv.getVariant().getVariantId(), pv.getPromotionalPrice(), BigDecimal::min);
+                    }
                 }
             }
-        }
-        if (consolidatedQty.isEmpty()) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Danh sách sản phẩm không hợp lệ!");
-        }
 
-        Map<ProductVariant, Integer> itemMap = new LinkedHashMap<>();
-        for (Map.Entry<Long, Integer> entry : consolidatedQty.entrySet()) {
-            Long variantId = entry.getKey();
-            int requestedQty = entry.getValue();
+            // 5. Tính tiền sản phẩm
+            BigDecimal subtotal = BigDecimal.ZERO;
+            List<OrderItem> orderItemsToSave = new ArrayList<>();
+            List<OrderCreatedEvent.OrderItemDto> eventItems = new ArrayList<>();
 
-            ProductVariant variant = productVariantRepository.findById(variantId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Không tìm thấy biến thể sản phẩm ID " + variantId + "!"));
+            for (Map.Entry<Long, Integer> entry : consolidatedQty.entrySet()) {
+                Long vId = entry.getKey();
+                int qty = entry.getValue();
+                ProductVariant variant = variantMap.get(vId);
 
-            if (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus())) {
-                String prodName = variant.getProduct() != null ? variant.getProduct().getProductName() : variant.getVariantName();
-                throw new AppException(ErrorCode.PRODUCT_INACTIVE,
-                        String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinh doanh!", prodName, variant.getSku()));
-            }
-
-            if (variant.getProduct() != null && variant.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getProduct().getStatus())) {
-                throw new AppException(ErrorCode.PRODUCT_INACTIVE,
-                        String.format("Sản phẩm '%s' hiện đã ngừng kinh doanh!", variant.getProduct().getProductName()));
-            }
-
-            Inventory inv = inventoryRepository.findByVariant_VariantId(variantId)
-                    .orElseGet(() -> Inventory.builder().variant(variant).quantity(0).reservedQuantity(0).minThreshold(5).build());
-
-            int available = inv.getAvailableQty();
-            if (available < requestedQty) {
-                String prodName = variant.getProduct() != null ? variant.getProduct().getProductName() : variant.getVariantName();
-                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                        String.format("Sản phẩm %s (SKU: %s) chỉ còn %d sản phẩm khả dụng trong kho!", prodName, variant.getSku(), available));
-            }
-
-            itemMap.put(variant, requestedQty);
-        }
-
-        // 2. Tính tiền (áp dụng Flash Sale nếu có)
-        BigDecimal subtotal = BigDecimal.ZERO;
-        List<OrderItem> orderItemsToSave = new ArrayList<>();
-
-        for (Map.Entry<ProductVariant, Integer> entry : itemMap.entrySet()) {
-            ProductVariant variant = entry.getKey();
-            int qty = entry.getValue();
-
-            BigDecimal unitPrice = variant.getPrice() != null ? variant.getPrice() : BigDecimal.ZERO;
-
-            // Kiểm tra xem có chương trình Flash Sale nào đang ACTIVE cho variant này không
-            List<PromotionVariant> activePromos = promotionVariantRepository.findActivePromotionsForVariant(variant.getVariantId(), now);
-            if (activePromos != null && !activePromos.isEmpty() && activePromos.get(0).getPromotionalPrice() != null) {
-                BigDecimal promoPrice = activePromos.get(0).getPromotionalPrice();
-                if (promoPrice.compareTo(unitPrice) < 0) {
+                BigDecimal unitPrice = variant.getPrice() != null ? variant.getPrice() : BigDecimal.ZERO;
+                BigDecimal promoPrice = bestPromoPriceMap.get(vId);
+                if (promoPrice != null && promoPrice.compareTo(unitPrice) < 0) {
                     unitPrice = promoPrice;
                 }
+
+                BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty));
+                subtotal = subtotal.add(lineTotal);
+
+                Product prod = variant.getProduct();
+                String prodName = prod != null
+                        ? prod.getProductName() + (variant.getVariantName() != null && !variant.getVariantName().isBlank() ? " (" + variant.getVariantName() + ")" : "")
+                        : variant.getVariantName();
+                String rom = variant.getRomGb() != null ? variant.getRomGb() + "GB" : null;
+
+                orderItemsToSave.add(OrderItem.builder()
+                        .variant(variant)
+                        .productNameSnapshot(prodName)
+                        .skuSnapshot(variant.getSku())
+                        .colorSnapshot(variant.getColor())
+                        .romSnapshot(rom)
+                        .imageUrl(variant.getImageUrl())
+                        .price(unitPrice)
+                        .quantity(qty)
+                        .totalPrice(lineTotal)
+                        .build());
+
+                eventItems.add(OrderCreatedEvent.OrderItemDto.builder()
+                        .variantId(vId)
+                        .quantity(qty)
+                        .unitPrice(unitPrice)
+                        .build());
             }
 
-            BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty));
-            subtotal = subtotal.add(lineTotal);
+            // 6. Áp dụng Voucher (nếu có)
+            BigDecimal voucherDiscount = BigDecimal.ZERO;
+            Voucher appliedVoucher = null;
+            if (StringUtils.hasText(request.getVoucherCode())) {
+                appliedVoucher = applyVoucherAtomic(request.getVoucherCode().trim(), subtotal, now);
+                voucherDiscount = calculateVoucherDiscount(appliedVoucher, subtotal);
+            }
 
-            Product prod = variant.getProduct();
-            String prodName = prod != null 
-                    ? prod.getProductName() + (variant.getVariantName() != null && !variant.getVariantName().isBlank() ? " (" + variant.getVariantName() + ")" : "")
-                    : variant.getVariantName();
-            String rom = variant.getRomGb() != null ? variant.getRomGb() + "GB" : null;
+            // 7. Tính phí ship độc lập từ Server (Không tin client shippingFee)
+            BigDecimal shippingFee = shippingFeeCalculator.calculateFee(request.getShippingMethod());
+            BigDecimal totalAmount = subtotal.subtract(voucherDiscount).add(shippingFee).max(BigDecimal.ZERO);
 
-            OrderItem orderItem = OrderItem.builder()
-                    .variant(variant)
-                    .productNameSnapshot(prodName)
-                    .skuSnapshot(variant.getSku())
-                    .colorSnapshot(variant.getColor())
-                    .romSnapshot(rom)
-                    .imageUrl(variant.getImageUrl())
-                    .price(unitPrice)
-                    .quantity(qty)
-                    .totalPrice(lineTotal)
+            // So khớp chính xác expectedTotalAmount nếu client gửi lên
+            if (request.getExpectedTotalAmount() != null && totalAmount.compareTo(request.getExpectedTotalAmount()) != 0) {
+                throw new AppException(ErrorCode.INVALID_REQUEST,
+                        String.format("Giá sản phẩm hoặc khuyến mãi vừa thay đổi (Tổng tiền mới: %sđ). Vui lòng xác nhận lại đơn hàng!",
+                                CURRENCY_FORMATTER.format(totalAmount)));
+            }
+
+            // 8. Validate Payment Method Whitelist (Chỉ COD hoặc BANK_TRANSFER)
+            String payMethod = validatePaymentMethod(request.getPaymentMethod());
+            boolean isTransfer = PaymentMethod.BANK_TRANSFER.name().equals(payMethod);
+            String initialStatus = isTransfer ? OrderStatus.PENDING_PAYMENT.name() : OrderStatus.WAITING_CONFIRMATION.name();
+
+            // 9. Lưu Order với mã đơn hàng duy nhất không đụng độ
+            Order savedOrder = saveOrder(currentUser, appliedVoucher, initialStatus, payMethod,
+                    request, subtotal, voucherDiscount, shippingFee, totalAmount);
+
+            // 10. Lưu Order Items
+            for (OrderItem oi : orderItemsToSave) {
+                oi.setOrder(savedOrder);
+                orderItemRepository.save(oi);
+            }
+
+            // 11. Tạo bản ghi Payment PENDING nếu là BANK_TRANSFER
+            if (isTransfer) {
+                Payment initialPayment = Payment.builder()
+                        .order(savedOrder)
+                        .paymentMethod(PaymentMethod.BANK_TRANSFER.name())
+                        .paymentProvider("VIETQR_DEMO")
+                        .amount(totalAmount)
+                        .status(PaymentStatus.PENDING.name())
+                        .build();
+                paymentRepository.save(initialPayment);
+            }
+
+            // 12. GIỮ KHO ĐỒNG BỘ NGUYÊN TỬ (Chốt phương án A.1)
+            // COD không hết hạn giữ chỗ thanh toán (holdMinutes = 0); BANK_TRANSFER giữ theo paymentExpireMinutes
+            int holdMinutes = isTransfer ? paymentExpireMinutes : 0;
+            boolean stockReserved = inventoryService.reserveStockForOrder(savedOrder.getOrderId(), eventItems, holdMinutes);
+            if (!stockReserved) {
+                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
+                        "Một số sản phẩm trong đơn hàng vừa hết hàng hoặc không đủ số lượng khả dụng!");
+            }
+
+            // 13. Ghi Outbox Event: OrderCreated
+            OrderCreatedEvent orderCreatedEvent = OrderCreatedEvent.builder()
+                    .orderId(savedOrder.getOrderId())
+                    .orderCode(savedOrder.getOrderCode())
+                    .userId(currentUser.getUserId())
+                    .recipientName(savedOrder.getRecipientName())
+                    .recipientPhone(savedOrder.getRecipientPhone())
+                    .shippingAddress(savedOrder.getShippingAddress())
+                    .paymentMethod(payMethod)
+                    .totalAmount(totalAmount)
+                    .items(eventItems)
                     .build();
 
-            orderItemsToSave.add(orderItem);
-        }
+            outboxService.saveEvent("ORDER", savedOrder.getOrderCode(), "OrderCreated",
+                    KafkaTopics.ORDER_CREATED, orderCreatedEvent);
 
-        // 3. Áp dụng mã Voucher (nếu có)
-        BigDecimal voucherDiscount = BigDecimal.ZERO;
-        Voucher appliedVoucher = null;
+            // 14. Ghi Order Status History
+            orderStatusHistoryRepository.save(OrderStatusHistory.builder()
+                    .order(savedOrder)
+                    .changedBy(currentUser)
+                    .previousStatus(null)
+                    .newStatus(initialStatus)
+                    .note("Khởi tạo đơn hàng " + initialStatus + " thành công. Đã khóa giữ chỗ tồn kho an toàn.")
+                    .build());
 
-        if (StringUtils.hasText(request.getVoucherCode())) {
-            String vCode = request.getVoucherCode().trim();
-            appliedVoucher = voucherRepository.findByVoucherCodeIgnoreCase(vCode)
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_VOUCHER_NOT_FOUND, "Mã giảm giá '" + vCode + "' không tồn tại!"));
+            // 15. Transaction Synchronization: Cập nhật Redis & Dọn giỏ hàng & Gửi thông báo AFTER_COMMIT
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            if (finalRedisKey != null) {
+                                tokenRedisService.setValue(finalRedisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
+                            }
+                        } catch (Exception ex) {
+                            log.warn("[OrdersService] Lưu Redis idempotency key sau commit thất bại: {}", ex.getMessage());
+                        }
 
-            if (!Boolean.TRUE.equals(appliedVoucher.getIsActive())) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' đã ngừng hoạt động!");
-            }
-            if (appliedVoucher.getStartDate() != null && now.isBefore(appliedVoucher.getStartDate())) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' chưa đến thời gian có hiệu lực!");
-            }
-            if (appliedVoucher.getEndDate() != null && now.isAfter(appliedVoucher.getEndDate())) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' đã hết hạn sử dụng!");
-            }
-            int used = appliedVoucher.getUsedCount() != null ? appliedVoucher.getUsedCount() : 0;
-            if (appliedVoucher.getUsageLimit() != null && used >= appliedVoucher.getUsageLimit()) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_LIMIT_REACHED, "Mã giảm giá '" + vCode + "' đã hết lượt sử dụng!");
-            }
-            if (appliedVoucher.getMinOrderValue() != null && subtotal.compareTo(appliedVoucher.getMinOrderValue()) < 0) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_MIN_ORDER,
-                        String.format("Đơn hàng chưa đạt giá trị tối thiểu %sđ để áp dụng mã %s!",
-                                CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()), appliedVoucher.getCode()));
-            }
+                        try {
+                            orderPostCommitService.cleanupCartAndSendNotification(
+                                    currentUser.getUserId(), consolidatedQty.keySet(),
+                                    savedOrder.getOrderId(), savedOrder.getOrderCode(),
+                                    isTransfer, paymentExpireMinutes);
+                        } catch (Exception ex) {
+                            log.warn("[OrdersService] Post-commit dọn cart & notification thất bại: {}", ex.getMessage());
+                        }
+                    }
 
-            String discType = appliedVoucher.getDiscountType() != null ? appliedVoucher.getDiscountType().trim().toUpperCase() : "FIXED";
-            if ("PERCENT".equals(discType) || "PERCENTAGE".equals(discType)) {
-                BigDecimal pct = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
-                voucherDiscount = subtotal.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
-                if (appliedVoucher.getMaxDiscount() != null && appliedVoucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
-                    voucherDiscount = voucherDiscount.min(appliedVoucher.getMaxDiscount());
-                }
-                voucherDiscount = voucherDiscount.min(subtotal);
+                    @Override
+                    public void afterCompletion(int status) {
+                        try {
+                            if (status != TransactionSynchronization.STATUS_COMMITTED && finalRedisKey != null) {
+                                tokenRedisService.deleteKey(finalRedisKey);
+                            }
+                        } catch (Exception ex) {
+                            log.warn("[OrdersService] Xóa Redis key sau rollback thất bại: {}", ex.getMessage());
+                        }
+                    }
+                });
             } else {
-                BigDecimal fixedVal = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
-                voucherDiscount = fixedVal.min(subtotal);
+                try {
+                    if (finalRedisKey != null) {
+                        tokenRedisService.setValue(finalRedisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
+                    }
+                } catch (Exception ex) {
+                    log.warn("[OrdersService] Lưu Redis idempotency key thất bại: {}", ex.getMessage());
+                }
+
+                try {
+                    orderPostCommitService.cleanupCartAndSendNotification(
+                            currentUser.getUserId(), consolidatedQty.keySet(),
+                            savedOrder.getOrderId(), savedOrder.getOrderCode(),
+                            isTransfer, paymentExpireMinutes);
+                } catch (Exception ex) {
+                    log.warn("[OrdersService] Post-commit dọn cart & notification thất bại: {}", ex.getMessage());
+                }
             }
 
-            // Tăng số lượt dùng voucher nguyên tử (chống race condition vượt usage_limit)
-            int voucherUpdated = voucherRepository.incrementUsedCountAtomic(appliedVoucher.getVoucherId());
-            if (voucherUpdated == 0) {
-                throw new AppException(ErrorCode.ERR_VOUCHER_LIMIT_REACHED, "Mã giảm giá '" + vCode + "' vừa hết lượt sử dụng!");
+            return toCreateOrderResponse(savedOrder, orderItemsToSave.size());
+        } catch (Exception ex) {
+            if (finalRedisKey != null) {
+                try {
+                    tokenRedisService.deleteKey(finalRedisKey);
+                } catch (Exception ignored) {}
+            }
+            throw ex;
+        }
+    }
+
+    private Map<Long, Integer> validateAndConsolidateItems(List<OrderItemRequest> items) {
+        Map<Long, Integer> consolidated = new LinkedHashMap<>();
+        if (items != null) {
+            for (OrderItemRequest req : items) {
+                if (req.getVariantId() != null && req.getQuantity() != null && req.getQuantity() > 0) {
+                    consolidated.merge(req.getVariantId(), req.getQuantity(), Integer::sum);
+                }
             }
         }
+        if (consolidated.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Danh sách sản phẩm không hợp lệ!");
+        }
+        return consolidated;
+    }
 
-        BigDecimal shippingFee;
-        if (request.getShippingFee() != null && request.getShippingFee().compareTo(BigDecimal.ZERO) >= 0) {
-            shippingFee = request.getShippingFee();
+    private Voucher applyVoucherAtomic(String vCode, BigDecimal subtotal, LocalDateTime now) {
+        Voucher appliedVoucher = voucherRepository.findByVoucherCodeIgnoreCase(vCode)
+                .orElseThrow(() -> new AppException(ErrorCode.ERR_VOUCHER_NOT_FOUND, "Mã giảm giá '" + vCode + "' không tồn tại!"));
+
+        if (!Boolean.TRUE.equals(appliedVoucher.getIsActive())) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' đã ngừng hoạt động!");
+        }
+        if (appliedVoucher.getStartDate() != null && now.isBefore(appliedVoucher.getStartDate())) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' chưa đến thời gian có hiệu lực!");
+        }
+        if (appliedVoucher.getEndDate() != null && now.isAfter(appliedVoucher.getEndDate())) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_EXPIRED, "Mã giảm giá '" + vCode + "' đã hết hạn sử dụng!");
+        }
+        if (appliedVoucher.getMinOrderValue() != null && subtotal.compareTo(appliedVoucher.getMinOrderValue()) < 0) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_MIN_ORDER,
+                    String.format("Đơn hàng chưa đạt giá trị tối thiểu %sđ để áp dụng mã %s!",
+                            CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()), appliedVoucher.getCode()));
+        }
+        if (appliedVoucher.getUsageLimit() != null && appliedVoucher.getUsedCount() != null && appliedVoucher.getUsedCount() >= appliedVoucher.getUsageLimit()) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_LIMIT_REACHED, "Mã giảm giá '" + vCode + "' đã hết lượt sử dụng trên hệ thống!");
+        }
+
+        int voucherUpdated = voucherRepository.incrementUsedCountAtomic(appliedVoucher.getVoucherId());
+        if (voucherUpdated == 0) {
+            throw new AppException(ErrorCode.ERR_VOUCHER_LIMIT_REACHED, "Mã giảm giá '" + vCode + "' vừa hết lượt sử dụng!");
+        }
+        return appliedVoucher;
+    }
+
+    private BigDecimal calculateVoucherDiscount(Voucher appliedVoucher, BigDecimal subtotal) {
+        if (appliedVoucher == null) return BigDecimal.ZERO;
+        String discType = appliedVoucher.getDiscountType() != null ? appliedVoucher.getDiscountType().trim().toUpperCase() : "FIXED";
+        BigDecimal voucherDiscount;
+        if ("PERCENT".equals(discType) || "PERCENTAGE".equals(discType)) {
+            BigDecimal pct = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
+            voucherDiscount = subtotal.multiply(pct).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP);
+            if (appliedVoucher.getMaxDiscount() != null && appliedVoucher.getMaxDiscount().compareTo(BigDecimal.ZERO) > 0) {
+                voucherDiscount = voucherDiscount.min(appliedVoucher.getMaxDiscount());
+            }
         } else {
-            shippingFee = "EXPRESS".equalsIgnoreCase(
-                    request.getShippingMethod() != null ? request.getShippingMethod().trim() : "")
-                    ? BigDecimal.valueOf(30000)
-                    : BigDecimal.ZERO;
+            BigDecimal fixedVal = appliedVoucher.getDiscountValue() != null ? appliedVoucher.getDiscountValue() : BigDecimal.ZERO;
+            voucherDiscount = fixedVal.min(subtotal);
         }
-        BigDecimal totalAmount = subtotal.subtract(voucherDiscount).add(shippingFee);
-        if (totalAmount.compareTo(BigDecimal.ZERO) < 0) {
-            totalAmount = BigDecimal.ZERO;
-        }
-        if (request.getExpectedTotalAmount() != null && totalAmount.compareTo(request.getExpectedTotalAmount()) > 0) {
-            throw new AppException(ErrorCode.INVALID_REQUEST,
-                    "Giá sản phẩm hoặc khuyến mãi vừa thay đổi (Tổng mới: " + CURRENCY_FORMATTER.format(totalAmount) + "đ). Vui lòng tải lại trang và xác nhận lại đơn hàng!");
-        }
+        return voucherDiscount.min(subtotal);
+    }
 
-        // 4. Sinh mã đơn hàng an toàn chống trùng lặp (#DH-YYYYMMDD-XXXXXX - Phiếu MB01)
-        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        long millis = System.currentTimeMillis() % 100000;
-        int rand = (int) (Math.random() * 9000) + 1000;
-        String orderCode = String.format("DH-%s-%05d%04d", dateStr, millis, rand);
-        int attempts = 0;
-        while (orderRepository.existsByOrderCode(orderCode) && attempts < 5) {
-            orderCode = String.format("DH-%s-%05d%04d", dateStr, (System.currentTimeMillis() + attempts) % 100000, (int) (Math.random() * 9000) + 1000);
-            attempts++;
+    private String validatePaymentMethod(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Phương thức thanh toán không được để trống!");
         }
+        String clean = raw.trim().toUpperCase();
+        if (PaymentMethod.COD.name().equals(clean)) {
+            return PaymentMethod.COD.name();
+        }
+        if (PaymentMethod.BANK_TRANSFER.name().equals(clean) || "SIMULATED_TRANSFER".equals(clean)) {
+            return PaymentMethod.BANK_TRANSFER.name();
+        }
+        throw new AppException(ErrorCode.INVALID_REQUEST, "Phương thức thanh toán '" + raw + "' không hợp lệ!");
+    }
 
-        String payMethod = StringUtils.hasText(request.getPaymentMethod()) ? request.getPaymentMethod().trim().toUpperCase() : "COD";
-        String payStatus = "UNPAID";
-        boolean isTransfer = "BANK_TRANSFER".equals(payMethod) || "SIMULATED_TRANSFER".equals(payMethod);
-        String initialStatus = isTransfer ? "PENDING_PAYMENT" : "WAITING_CONFIRMATION";
+    private Order saveOrder(User user, Voucher voucher, String status, String payMethod,
+                            CreateOrderRequest request, BigDecimal subtotal, BigDecimal discount,
+                            BigDecimal shippingFee, BigDecimal total) {
+        String dateStr = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        long timestampSuffix = System.currentTimeMillis() % 100000000L;
+        int randomPart = ThreadLocalRandom.current().nextInt(1000, 9999);
+        String code = String.format("DH-%s-%08d%04d", dateStr, timestampSuffix, randomPart);
 
         Order order = Order.builder()
-                .orderCode(orderCode)
-                .user(currentUser)
-                .voucher(appliedVoucher)
-                .status(initialStatus)
+                .orderCode(code)
+                .user(user)
+                .voucher(voucher)
+                .status(status)
                 .paymentMethod(payMethod)
-                .paymentStatus(payStatus)
-                .recipientName(request.getRecipientName().trim())
-                .recipientPhone(request.getRecipientPhone().trim())
-                .shippingAddress(request.getShippingAddress().trim())
+                .paymentStatus(PaymentStatus.UNPAID.name())
+                .recipientName(request.getRecipientName() != null ? request.getRecipientName().trim() : "")
+                .recipientPhone(request.getRecipientPhone() != null ? request.getRecipientPhone().trim() : "")
+                .shippingAddress(request.getShippingAddress() != null ? request.getShippingAddress().trim() : "")
                 .totalAmount(subtotal)
-                .discountAmount(voucherDiscount)
+                .discountAmount(discount)
                 .shippingFee(shippingFee)
-                .finalAmount(totalAmount)
+                .finalAmount(total)
                 .note(request.getNote())
                 .build();
+        return orderRepository.save(order);
+    }
 
-        Order savedOrder = orderRepository.save(order);
-
-        // Khởi tạo bản ghi thanh toán chuyển khoản ban đầu để theo dõi giao dịch
-        if (isTransfer) {
-            String txnRef = "TXN-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")) + "-" + ThreadLocalRandom.current().nextInt(1000, 9999);
-            paymentRepository.save(Payment.builder()
-                    .order(savedOrder)
-                    .paymentMethod(PaymentMethod.BANK_TRANSFER.name())
-                    .paymentProvider("SIMULATED_QR")
-                    .amount(totalAmount)
-                    .transactionRef(txnRef)
-                    .status(PaymentStatus.PENDING.name())
-                    .build());
-        }
-
-        // 5. Lưu Order Items & TỰ ĐỘNG GIỮ CHỖ KHO NGUYÊN TỬ (Chống bán khống / overselling)
-        for (OrderItem oi : orderItemsToSave) {
-            oi.setOrder(savedOrder);
-            orderItemRepository.save(oi);
-
-            ProductVariant v = oi.getVariant();
-            int reserved = inventoryRepository.reserveStockAtomic(v.getVariantId(), oi.getQuantity(), now);
-            if (reserved == 0) {
-                Product prod = v.getProduct();
-                String prodName = prod != null ? prod.getProductName() : v.getVariantName();
-                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                        String.format("Sản phẩm %s (SKU: %s) vừa hết hàng khả dụng trong kho!", prodName, v.getSku()));
-            }
-        }
-
-        if (StringUtils.hasText(idempotencyKey)) {
-            String redisKey = "idempotency:order:" + currentUser.getUserId() + ":" + idempotencyKey.trim();
-            tokenRedisService.setValue(redisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
-        }
-
-        // 6. Ghi Order Status History
-        orderStatusHistoryRepository.save(OrderStatusHistory.builder()
-                .order(savedOrder)
-                .changedBy(currentUser)
-                .previousStatus(null)
-                .newStatus(initialStatus)
-                .note("Khởi tạo đơn hàng " + payMethod + " thành công (Phiếu MB01). Tồn kho đã được giữ chỗ.")
-                .build());
-
-        // Gửi thông báo nội bộ cho khách hàng về tiến trình đơn hàng
-        if (savedOrder.getUser() != null) {
-            String notifTitle = isTransfer ? "Đơn hàng đang chờ thanh toán" : "Đặt hàng thành công";
-            String notifContent = isTransfer
-                    ? "Đơn hàng " + savedOrder.getOrderCode() + " đã được tạo. Vui lòng hoàn tất thanh toán chuyển khoản."
-                    : "Đơn hàng " + savedOrder.getOrderCode() + " đã được tạo thành công và đang chờ xác nhận.";
-            notificationRepository.save(Notification.builder()
-                    .user(savedOrder.getUser())
-                    .order(savedOrder)
-                    .title(notifTitle)
-                    .content(notifContent)
-                    .isRead(false)
-                    .build());
-        }
-
-        // 7. Xóa món đã mua khỏi giỏ hàng
-        try {
-            cartRepository.findByUserId(currentUser.getUserId()).ifPresent(cart ->
-                    cartItemRepository.deleteByCartIdAndVariantIdIn(cart.getCartId(),
-                            itemMap.keySet().stream().map(ProductVariant::getVariantId).toList()));
-        } catch (Exception ex) {
-            log.warn("Không thể dọn giỏ hàng sau khi đặt hàng: {}", ex.getMessage());
-        }
-
+    private CreateOrderResponse toCreateOrderResponse(Order order, int itemsCount) {
         return CreateOrderResponse.builder()
-                .orderId(savedOrder.getOrderId())
-                .orderCode(savedOrder.getOrderCode())
-                .status(savedOrder.getStatus())
-                .subtotal(savedOrder.getSubtotal())
-                .voucherDiscount(savedOrder.getVoucherDiscount())
-                .shippingFee(savedOrder.getShippingFee() != null ? savedOrder.getShippingFee() : BigDecimal.ZERO)
-                .totalAmount(savedOrder.getFinalTotal())
-                .paymentMethod(savedOrder.getPaymentMethod())
-                .paymentStatus(savedOrder.getPaymentStatus())
-                .itemsCount(orderItemsToSave.size())
-                .createdAt(DateTimeUtil.formatIsoInstant(savedOrder.getCreatedAt() != null ? savedOrder.getCreatedAt() : now))
+                .orderId(order.getOrderId())
+                .orderCode(order.getOrderCode())
+                .status(order.getStatus())
+                .subtotal(order.getSubtotal())
+                .voucherDiscount(order.getVoucherDiscount())
+                .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
+                .totalAmount(order.getFinalTotal())
+                .paymentMethod(order.getPaymentMethod())
+                .paymentStatus(order.getPaymentStatus())
+                .itemsCount(itemsCount)
+                .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
                 .build();
     }
 
@@ -419,12 +500,7 @@ public class OrdersService {
         List<MyOrderItemResponse> items = orders.stream().map(order -> {
             Shipment shipment = myShipmentMap.get(order.getOrderId());
             ReturnRequest latestReturn = myReturnMap.get(order.getOrderId());
-            String payStatus = order.getPaymentStatus();
-            if ("COMPLETED".equalsIgnoreCase(order.getStatus())
-                    && !"REFUNDED".equalsIgnoreCase(payStatus)
-                    && !"PARTIALLY_REFUNDED".equalsIgnoreCase(payStatus)) {
-                payStatus = "PAID";
-            }
+            String payStatus = resolveDisplayPaymentStatus(order);
 
             return MyOrderItemResponse.builder()
                     .orderId(order.getOrderId())
@@ -495,15 +571,7 @@ public class OrdersService {
         String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
         ReturnRequest latestReturn = returnRequestRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).orElse(null);
 
-        String detailPaymentStatus = order.getPaymentStatus();
-        if ("COMPLETED".equalsIgnoreCase(order.getStatus())
-                && !"REFUNDED".equalsIgnoreCase(detailPaymentStatus)
-                && !"PARTIALLY_REFUNDED".equalsIgnoreCase(detailPaymentStatus)
-                && !"PAID".equalsIgnoreCase(detailPaymentStatus)) {
-            detailPaymentStatus = "PAID";
-            order.setPaymentStatus("PAID");
-            orderRepository.save(order);
-        }
+        String detailPaymentStatus = resolveDisplayPaymentStatus(order);
 
         return OrderDetailResponse.builder()
                 .orderId(order.getOrderId())
@@ -557,57 +625,79 @@ public class OrdersService {
                     "Không thể hủy đơn hàng do đơn đã được xác nhận hoặc đang trong quá trình giao hàng!");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
-        // Rollback giải phóng tồn giữ chỗ (reserved_qty -= quantity)
-        List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-        for (OrderItem item : items) {
-            ProductVariant v = item.getVariant();
-            if (v != null) {
-                inventoryRepository.releaseStockAtomic(v.getVariantId(), item.getQuantity(), now);
-            }
-        }
+        // Rollback giải phóng tồn giữ chỗ via InventoryService (đảm bảo chuyển StockReservation sang RELEASED)
+        boolean stockReleased = inventoryService.releaseStockForOrder(order.getOrderId(), request.getReason().trim());
 
-        // Hoàn trả lượt sử dụng voucher nếu có
+        // Hoàn trả lượt sử dụng voucher nếu có (chỉ hoàn trả 1 lần bằng conditional CAS)
         if (order.getVoucher() != null) {
             voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
         }
 
+        // Cập nhật trạng thái Payment sang CANCELLED hoặc REFUND_PENDING nếu đã thanh toán
+        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus()) || PaymentStatus.SUCCESS.name().equalsIgnoreCase(order.getPaymentStatus());
+        paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).ifPresent(payment -> {
+            if (needRefund) {
+                payment.setStatus(PaymentStatus.REFUND_PENDING.name());
+            } else if (PaymentStatus.PENDING.name().equalsIgnoreCase(payment.getStatus()) || PaymentStatus.UNPAID.name().equalsIgnoreCase(payment.getStatus())) {
+                payment.setStatus(PaymentStatus.CANCELLED.name());
+            }
+            paymentRepository.save(payment);
+        });
+
         // Cập nhật đơn hàng
-        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus());
-        order.setStatus("CANCELLED");
+        order.setStatus(OrderStatus.CANCELLED.name());
         if (needRefund) {
-            order.setPaymentStatus("REFUND_PENDING");
+            order.setPaymentStatus(PaymentStatus.REFUND_PENDING.name());
         }
         order.setCancelReason(request.getReason().trim());
         order.setUpdatedAt(now);
         orderRepository.save(order);
+
+        // Phát Outbox Event OrderCancelled / RefundRequested
+        Map<String, Object> cancelPayload = new HashMap<>();
+        cancelPayload.put("orderId", order.getOrderId());
+        cancelPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+        cancelPayload.put("cancelReason", request.getReason().trim());
+        cancelPayload.put("refundPending", needRefund);
+        cancelPayload.put("refundAmount", needRefund ? order.getFinalTotal() : BigDecimal.ZERO);
+        cancelPayload.put("refundRequestedAt", DateTimeUtil.formatIsoInstant(now));
+        cancelPayload.put("cancelledBy", currentUser.getEmail() != null ? currentUser.getEmail() : "USER");
+        outboxService.saveEvent("ORDER",
+                order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
+                needRefund ? "RefundRequested" : "OrderCancelled",
+                "order-cancelled-topic", cancelPayload);
 
         // Ghi lịch sử trạng thái
         orderStatusHistoryRepository.save(OrderStatusHistory.builder()
                 .order(order)
                 .changedBy(currentUser)
                 .previousStatus(currentStatus)
-                .newStatus("CANCELLED")
-                .note("Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
+                .newStatus(OrderStatus.CANCELLED.name())
+                .note("Hủy đơn hàng: " + request.getReason().trim() + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""))
                 .build());
 
         // Gửi thông báo hủy đơn cho khách hàng
         if (order.getUser() != null) {
-            notificationRepository.save(Notification.builder()
-                    .user(order.getUser())
-                    .order(order)
-                    .title("Đơn hàng đã bị hủy")
-                    .content("Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + request.getReason().trim())
-                    .isRead(false)
-                    .build());
+            try {
+                notificationRepository.save(Notification.builder()
+                        .user(order.getUser())
+                        .order(order)
+                        .title("Đơn hàng đã bị hủy")
+                        .content("Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + request.getReason().trim())
+                        .isRead(false)
+                        .build());
+            } catch (Exception notifEx) {
+                log.warn("Lỗi gửi thông báo hủy đơn: {}", notifEx.getMessage());
+            }
         }
 
         return CancelOrderResponse.builder()
                 .orderCode(order.getOrderCode())
-                .status("CANCELLED")
+                .status(OrderStatus.CANCELLED.name())
                 .cancelReason(request.getReason().trim())
-                .releasedHoldStock(true)
+                .releasedHoldStock(stockReleased)
                 .cancelledAt(DateTimeUtil.formatIsoInstant(now))
                 .build();
     }
@@ -665,12 +755,7 @@ public class OrdersService {
             Shipment shipment = shipmentMap.get(order.getOrderId());
             ReturnRequest latestReturn = adminReturnMap.get(order.getOrderId());
 
-            String adminPayStatus = order.getPaymentStatus();
-            if ("COMPLETED".equalsIgnoreCase(order.getStatus())
-                    && !"REFUNDED".equalsIgnoreCase(adminPayStatus)
-                    && !"PARTIALLY_REFUNDED".equalsIgnoreCase(adminPayStatus)) {
-                adminPayStatus = "PAID";
-            }
+            String adminPayStatus = resolveDisplayPaymentStatus(order);
 
             return AdminOrderItemResponse.builder()
                     .orderId(order.getOrderId())
@@ -739,23 +824,19 @@ public class OrdersService {
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + id + "!"));
 
         String currentStatus = order.getStatus();
-        boolean isWaitingConfirmation = "WAITING_CONFIRMATION".equalsIgnoreCase(currentStatus);
-        boolean isPaidPending = "PENDING_PAYMENT".equalsIgnoreCase(currentStatus) && "PAID".equalsIgnoreCase(order.getPaymentStatus());
-        if (!isWaitingConfirmation && !isPaidPending) {
+        if (!"WAITING_CONFIRMATION".equalsIgnoreCase(currentStatus)) {
             throw new AppException(ErrorCode.ERR_ORDER_INVALID_STATE,
-                    "PENDING_PAYMENT".equalsIgnoreCase(currentStatus)
-                            ? "Đơn hàng chuyển khoản chưa được thanh toán, không thể xác nhận giao hàng!"
-                            : "Chỉ có thể xác nhận đơn hàng đang ở trạng thái Chờ xác nhận!");
+                    "Chỉ có thể xác nhận đơn hàng đang ở trạng thái Chờ xác nhận (WAITING_CONFIRMATION)!");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
         order.setStatus("CONFIRMED");
         order.setUpdatedAt(now);
         orderRepository.save(order);
 
         // Sinh mã tracking vận đơn: GHN-YYYYMMDD-OrderId
-        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String dateStr = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String trackingCode = "GHN-" + dateStr + order.getOrderId();
 
         BigDecimal codAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? order.getFinalTotal() : BigDecimal.ZERO;
@@ -786,6 +867,20 @@ public class OrdersService {
         // Ghi Audit Log
         auditLogRepository.log(operator, "CONFIRM_ORDER", "Orders", order.getOrderId(),
                 "status: " + currentStatus, "status: CONFIRMED, tracking: " + trackingCode);
+
+        // Ghi nhận sự kiện xác nhận đơn hàng vào outbox_events để publish Kafka
+        Map<String, Object> confirmPayload = new HashMap<>();
+        confirmPayload.put("orderId", order.getOrderId());
+        confirmPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+        confirmPayload.put("trackingCode", trackingCode);
+        confirmPayload.put("status", "CONFIRMED");
+        confirmPayload.put("carrier", request.getCarrier().trim());
+        confirmPayload.put("confirmedBy", operator.getFullName() != null ? operator.getFullName() : (operator.getEmail() != null ? operator.getEmail() : "ADMIN"));
+
+        outboxService.saveEvent("ORDER",
+                order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
+                "OrderConfirmed",
+                "order-confirmed-topic", confirmPayload);
 
         // Gửi thông báo xác nhận đơn hàng cho khách hàng
         if (order.getUser() != null) {
@@ -837,9 +932,36 @@ public class OrdersService {
             throw new AppException(ErrorCode.INVALID_REQUEST, "Đơn hàng phải ở trạng thái Đã xác nhận (CONFIRMED) để chuyển sang chuẩn bị hàng!");
         }
 
+        LocalDateTime now = LocalDateTime.now(clock);
         order.setStatus("PREPARING");
-        order.setUpdatedAt(LocalDateTime.now());
+        order.setUpdatedAt(now);
         orderRepository.save(order);
+
+        // Đảm bảo khởi tạo bản ghi Vận đơn và đẩy sang Quản lý Vận đơn (Shipments)
+        Shipment shipment = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId()).orElse(null);
+        if (shipment == null) {
+            String dateStr = LocalDate.now(clock).format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            String trackingCode = "GHN-" + dateStr + order.getOrderId();
+            BigDecimal codAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? order.getFinalTotal() : BigDecimal.ZERO;
+
+            shipment = Shipment.builder()
+                    .order(order)
+                    .carrierName("Giao Hàng Nhanh (GHN)")
+                    .trackingNumber(trackingCode)
+                    .shippingStatus(ShipmentStatus.READY_TO_PICK.name())
+                    .recipientName(order.getRecipientName())
+                    .recipientPhone(order.getRecipientPhone())
+                    .shippingAddress(order.getShippingAddress())
+                    .codAmount(codAmt)
+                    .notes("Đơn hàng đang chuẩn bị và đã đẩy sang bộ phận vận đơn")
+                    .updatedBy(operator)
+                    .build();
+            shipmentRepository.save(shipment);
+        } else {
+            shipment.setShippingStatus(ShipmentStatus.READY_TO_PICK.name());
+            shipment.setUpdatedAt(now);
+            shipmentRepository.save(shipment);
+        }
 
         orderStatusHistoryRepository.save(OrderStatusHistory.builder()
                 .order(order)
@@ -875,44 +997,12 @@ public class OrdersService {
                     "Đơn hàng phải được duyệt xác nhận (CONFIRMED) trước khi thực hiện xuất kho MB03!");
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-        List<ExportedItemResponse> exportedItems = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now(clock);
 
-        for (OrderItem item : items) {
-            ProductVariant v = item.getVariant();
-            if (v == null) continue;
-
-            Inventory inv = inventoryRepository.findByVariant_VariantId(v.getVariantId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                            "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
-
-            int onHandBefore = inv.getOnHandQty();
-            int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
-            if (updatedRows == 0) {
-                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                        "Tồn kho vật lý của SKU " + v.getSku() + " không đủ để xuất kho (cần " + item.getQuantity() + ", hiện có " + onHandBefore + ")!");
-            }
-            int onHandAfter = onHandBefore - item.getQuantity();
-
-            // Ghi sổ cái bất biến Inventory_Transactions (MB03 EXPORT)
-            inventoryTransactionRepository.save(InventoryTransaction.builder()
-                    .variant(v)
-                    .order(order)
-                    .performedBy(operator)
-                    .transactionType("EXPORT")
-                    .formCode("MB03")
-                    .quantity(-item.getQuantity())
-                    .qtyBefore(onHandBefore)
-                    .qtyAfter(onHandAfter)
-                    .reason("Xuất kho giao đơn #" + order.getOrderCode() + (StringUtils.hasText(request.getExportNote()) ? ": " + request.getExportNote() : ""))
-                    .build());
-
-            exportedItems.add(ExportedItemResponse.builder()
-                    .sku(v.getSku())
-                    .quantity(item.getQuantity())
-                    .remainingOnHand(onHandAfter)
-                    .build());
+        // Xuất kho vật lý MB03 nguyên tử (trừ tồn kho vật lý và trừ reserved, chuyển reservation sang CONFIRMED)
+        List<ExportedItemResponse> exportedItems = inventoryService.exportStockForOrderWithDetails(order.getOrderId(), operator, request.getExportNote());
+        if (exportedItems == null || exportedItems.isEmpty()) {
+            throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT, "Xuất kho không thành công do thiếu tồn kho vật lý!");
         }
 
         // Cập nhật trạng thái đơn sang SHIPPING
@@ -921,8 +1011,17 @@ public class OrdersService {
         orderRepository.save(order);
 
         // Cập nhật trạng thái vận đơn sang IN_TRANSIT
+        BigDecimal fallbackCodAmt = "COD".equalsIgnoreCase(order.getPaymentMethod()) ? order.getFinalTotal() : BigDecimal.ZERO;
         Shipment shipment = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId())
-                .orElseGet(() -> Shipment.builder().order(order).carrierName("Giao Hàng Nhanh Express").trackingNumber("GHN-" + order.getOrderId()).build());
+                .orElseGet(() -> Shipment.builder()
+                        .order(order)
+                        .carrierName("Giao Hàng Nhanh Express")
+                        .trackingNumber("GHN-" + order.getOrderId())
+                        .recipientName(order.getRecipientName())
+                        .recipientPhone(order.getRecipientPhone())
+                        .shippingAddress(order.getShippingAddress())
+                        .codAmount(fallbackCodAmt)
+                        .build());
 
         shipment.setShippingStatus("IN_TRANSIT");
         shipment.setShippedAt(now);
@@ -1011,25 +1110,35 @@ public class OrdersService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
+        if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Không thể xác nhận thanh toán vì đơn hàng đang ở trạng thái " + order.getStatus() + "!");
+        }
+
+        Optional<Payment> paymentOpt = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId);
+        if (paymentOpt.isPresent() && PaymentStatus.SUCCESS.name().equalsIgnoreCase(paymentOpt.get().getStatus())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Giao dịch thanh toán này đã được xác nhận thành công trước đó!");
+        }
+
+        LocalDateTime now = LocalDateTime.now(clock);
         order.setPaymentStatus("PAID");
         String prevStatus = order.getStatus();
-        if ("PENDING_PAYMENT".equalsIgnoreCase(prevStatus)) {
-            order.setStatus("WAITING_CONFIRMATION");
-        }
-        order.setUpdatedAt(LocalDateTime.now());
+        order.setStatus(OrderStatus.WAITING_CONFIRMATION.name());
+        order.setUpdatedAt(now);
         Order updated = orderRepository.save(order);
 
-        // Cập nhật hoặc tạo mới bản ghi Payment
-        Payment payment = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId)
-                .orElseGet(() -> Payment.builder()
-                        .order(updated)
-                        .paymentMethod(updated.getPaymentMethod() != null ? updated.getPaymentMethod() : "BANK_TRANSFER")
-                        .paymentProvider("SIMULATED_QR")
-                        .amount(updated.getFinalTotal())
-                        .transactionRef("TXN-" + System.currentTimeMillis())
-                        .build());
+        // Cập nhật hoặc tạo mới bản ghi Payment với mã giao dịch duy nhất
+        String txRef = "TXN-" + System.currentTimeMillis() + "-" + ThreadLocalRandom.current().nextInt(1000, 9999);
+        Payment payment = paymentOpt.orElseGet(() -> Payment.builder()
+                .order(updated)
+                .paymentMethod(updated.getPaymentMethod() != null ? updated.getPaymentMethod() : "BANK_TRANSFER")
+                .paymentProvider("SIMULATED_QR")
+                .amount(updated.getFinalTotal())
+                .build());
+        payment.setAmount(updated.getFinalTotal());
+        payment.setTransactionRef(txRef);
         payment.setStatus(PaymentStatus.SUCCESS.name());
-        payment.setPaidAt(LocalDateTime.now());
+        payment.setPaidAt(now);
         paymentRepository.save(payment);
 
         String noteText = StringUtils.hasText(note) ? note.trim() : "Nhân viên xác nhận đã nhận tiền chuyển khoản ngân hàng";
@@ -1047,15 +1156,29 @@ public class OrdersService {
             log.warn("Không thể ghi audit log confirmOrderPayment: {}", e.getMessage());
         }
 
-        // Gửi thông báo xác nhận thanh toán cho khách hàng
+        outboxService.saveEvent("PAYMENT", updated.getOrderCode(), "PaymentSucceeded",
+                "payment-events-topic", Map.of(
+                        "orderId", updated.getOrderId(),
+                        "orderCode", updated.getOrderCode(),
+                        "amount", updated.getFinalTotal(),
+                        "paymentMethod", updated.getPaymentMethod(),
+                        "confirmedBy", operator.getEmail() != null ? operator.getEmail() : "STAFF"
+                ));
+
+        // Khôi phục gửi thông báo xác nhận thanh toán thành công cho khách hàng
         if (updated.getUser() != null) {
-            notificationRepository.save(Notification.builder()
-                    .user(updated.getUser())
-                    .order(updated)
-                    .title("Xác nhận thanh toán thành công")
-                    .content("Đơn hàng " + updated.getOrderCode() + " đã được xác nhận thanh toán thành công và chuyển sang trạng thái chờ chuẩn bị.")
-                    .isRead(false)
-                    .build());
+            try {
+                notificationRepository.save(Notification.builder()
+                        .user(updated.getUser())
+                        .order(updated)
+                        .title("Thanh toán thành công")
+                        .content("Đơn hàng " + updated.getOrderCode() + " đã được xác nhận thanh toán thành công số tiền "
+                                + CURRENCY_FORMATTER.format(updated.getFinalTotal()) + "đ.")
+                        .isRead(false)
+                        .build());
+            } catch (Exception ex) {
+                log.warn("Gửi thông báo thanh toán thành công thất bại: {}", ex.getMessage());
+            }
         }
 
         return getOrderDetail(updated.getOrderCode());
@@ -1070,23 +1193,31 @@ public class OrdersService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
-        boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
-        if (!isStaffOrAdmin && (order.getUser() == null || !order.getUser().getUserId().equals(currentUser.getUserId()))) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền thao tác trên đơn hàng này!");
+        // Chỉ chủ đơn mới được gửi thông báo, không cho staff bypass
+        if (order.getUser() == null || !order.getUser().getUserId().equals(currentUser.getUserId())) {
+            throw new AppException(ErrorCode.UNAUTHORIZED, "Chỉ chủ sở hữu đơn hàng mới có thể gửi thông báo chuyển khoản!");
+        }
+
+        if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus()) || !"BANK_TRANSFER".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new AppException(ErrorCode.INVALID_REQUEST, "Đơn hàng không thuộc diện chờ chuyển khoản ngân hàng!");
         }
 
         if (!"PAID".equalsIgnoreCase(order.getPaymentStatus())) {
-            order.setPaymentStatus("PENDING"); // Đang chờ kế toán/nhân viên đối soát sao kê
-            order.setUpdatedAt(LocalDateTime.now());
+            order.setPaymentStatus("CUSTOMER_NOTIFIED");
+            order.setUpdatedAt(LocalDateTime.now(clock));
             orderRepository.save(order);
 
-            String noteText = StringUtils.hasText(note) ? note.trim() : "Khách hàng đã xác nhận chuyển khoản thành công, chờ kiểm tra giao dịch";
+            paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(orderId).ifPresent(p -> {
+                p.setStatus("CUSTOMER_NOTIFIED");
+                paymentRepository.save(p);
+            });
+
             orderStatusHistoryRepository.save(OrderStatusHistory.builder()
                     .order(order)
                     .changedBy(currentUser)
                     .previousStatus(order.getStatus())
                     .newStatus(order.getStatus())
-                    .note(noteText)
+                    .note("Khách hàng thông báo đã chuyển khoản thành công" + (StringUtils.hasText(note) ? ": " + note.trim() : ""))
                     .build());
         }
 
@@ -1094,65 +1225,28 @@ public class OrdersService {
     }
 
     /**
-     * Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn, giải phóng tồn kho
+     * Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn (Mỗi đơn chạy trong transaction độc lập)
      */
-    @Transactional
     public int cancelExpiredOrders() {
         int expireMins = paymentExpireMinutes > 0 ? paymentExpireMinutes : 30;
-        LocalDateTime expiredBefore = LocalDateTime.now().minusMinutes(expireMins);
+        LocalDateTime expiredBefore = LocalDateTime.now(clock).minusMinutes(expireMins);
         List<Order> expiredOrders = orderRepository.findExpiredPendingOrders(expiredBefore);
         if (expiredOrders.isEmpty()) {
             return 0;
         }
 
-        LocalDateTime now = LocalDateTime.now();
-        List<Long> expiredOrderIds = expiredOrders.stream().map(Order::getOrderId).toList();
-        Map<Long, List<OrderItem>> itemsByOrderId = orderItemRepository.findByOrderIdIn(expiredOrderIds).stream()
-                .collect(Collectors.groupingBy(oi -> oi.getOrder().getOrderId()));
-        List<OrderStatusHistory> historiesToSave = new ArrayList<>(expiredOrders.size());
-
+        int successCount = 0;
         for (Order order : expiredOrders) {
-            // 1. Rollback giải phóng tồn giữ chỗ (reserved_qty -= quantity)
-            for (OrderItem item : itemsByOrderId.getOrDefault(order.getOrderId(), List.of())) {
-                ProductVariant v = item.getVariant();
-                if (v != null) {
-                    inventoryRepository.releaseStockAtomic(v.getVariantId(), item.getQuantity(), now);
+            try {
+                boolean cancelled = orderExpirationService.cancelSingleExpiredOrder(order.getOrderId(), expireMins);
+                if (cancelled) {
+                    successCount++;
                 }
-            }
-
-            // 2. Hoàn trả voucher nếu có
-            if (order.getVoucher() != null) {
-                voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
-            }
-
-            // 3. Cập nhật trạng thái CANCELLED
-            order.setStatus("CANCELLED");
-            order.setCancelReason("Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ " + expireMins + " phút) - Hệ thống tự động hủy đơn và giải phóng tồn kho");
-            order.setUpdatedAt(now);
-
-            // 4. Ghi lịch sử OrderStatusHistory
-            historiesToSave.add(OrderStatusHistory.builder()
-                    .order(order)
-                    .changedBy(null)
-                    .previousStatus("PENDING_PAYMENT")
-                    .newStatus("CANCELLED")
-                    .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR " + expireMins + " phút và đã nhả toàn bộ tồn kho giữ chỗ.")
-                    .build());
-
-            // 5. Gửi thông báo hết hạn cho khách hàng
-            if (order.getUser() != null) {
-                notificationRepository.save(Notification.builder()
-                        .user(order.getUser())
-                        .order(order)
-                        .title("Đơn hàng đã tự động bị hủy")
-                        .content("Đơn hàng " + order.getOrderCode() + " đã tự động hủy do quá thời hạn thanh toán " + expireMins + " phút.")
-                        .isRead(false)
-                        .build());
+            } catch (Exception ex) {
+                log.error("Lỗi khi hủy đơn hàng hết hạn ID {}: {}", order.getOrderId(), ex.getMessage(), ex);
             }
         }
-        orderRepository.saveAll(expiredOrders);
-        orderStatusHistoryRepository.saveAll(historiesToSave);
-        return expiredOrders.size();
+        return successCount;
     }
 
     /**
@@ -1165,57 +1259,45 @@ public class OrdersService {
                 .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng ID " + orderId + "!"));
 
         String currentStatus = order.getStatus();
-        if (!OrderStatus.RETURNING.name().equalsIgnoreCase(currentStatus) && !"SHIPPING".equalsIgnoreCase(currentStatus)) {
-            throw new AppException(ErrorCode.INVALID_REQUEST, "Chỉ có thể xác nhận nhận hàng hoàn cho đơn hàng đang ở trạng thái RETURNING hoặc SHIPPING!");
+        if (!OrderStatus.RETURNING.name().equalsIgnoreCase(currentStatus)) {
+            throw new AppException(ErrorCode.INVALID_REQUEST,
+                    "Chỉ có thể xác nhận nhận hàng hoàn cho đơn hàng đang ở trạng thái RETURNING (Bưu tá giao không thành công)!");
         }
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
-        // Kiểm tra và thực hiện hoàn kho nếu chưa hoàn (MB04)
-        boolean alreadyReturned = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
-                order.getOrderId(), InventoryTransactionType.RETURN.name());
+        // Kiểm tra và thực hiện hoàn kho nếu chưa hoàn (MB04) qua InventoryService
+        inventoryService.restockReturnOrder(order.getOrderId(), operator, note);
 
-        if (!alreadyReturned) {
-            boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
-                    order.getOrderId(), InventoryTransactionType.EXPORT.name());
-            List<OrderItem> items = orderItemRepository.findByOrderId(order.getOrderId());
-            for (OrderItem item : items) {
-                ProductVariant variant = item.getVariant();
-                if (variant != null) {
-                    if (wasExported) {
-                        Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
-                        int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
-                        inventoryRepository.increaseQuantityAtomic(variant.getVariantId(), item.getQuantity(), now);
-                        inventoryTransactionRepository.save(InventoryTransaction.builder()
-                                .variant(variant)
-                                .order(order)
-                                .performedBy(operator)
-                                .transactionType(InventoryTransactionType.RETURN.name())
-                                .formCode("MB04")
-                                .quantity(item.getQuantity())
-                                .qtyBefore(qtyBefore)
-                                .qtyAfter(qtyBefore + item.getQuantity())
-                                .reason("Thủ kho xác nhận nhập hoàn kho: " + (note != null ? note.trim() : "Hàng chuyển hoàn"))
-                                .build());
-                    } else {
-                        inventoryRepository.releaseStockAtomic(variant.getVariantId(), item.getQuantity(), now);
-                    }
-                }
-            }
+        // Hoàn trả voucher nếu có
+        if (order.getVoucher() != null) {
+            voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
         }
 
+        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus())
+                || PaymentStatus.SUCCESS.name().equalsIgnoreCase(order.getPaymentStatus())
+                || PaymentStatus.REFUND_PENDING.name().equalsIgnoreCase(order.getPaymentStatus());
+        if (needRefund) {
+            order.setPaymentStatus(PaymentStatus.REFUND_PENDING.name());
+        } else {
+            order.setPaymentStatus(PaymentStatus.CANCELLED.name());
+        }
         order.setStatus(OrderStatus.CANCELLED.name());
         order.setUpdatedAt(now);
         String finalReason = (note != null && !note.trim().isBlank())
                 ? note.trim()
                 : (order.getCancelReason() != null ? order.getCancelReason() : "Bưu tá hoàn hàng về kho");
         order.setCancelReason(finalReason);
-
-        boolean needRefund = "PAID".equalsIgnoreCase(order.getPaymentStatus()) || "REFUND_PENDING".equalsIgnoreCase(order.getPaymentStatus());
-        if (needRefund) {
-            order.setPaymentStatus("REFUND_PENDING");
-        }
         Order saved = orderRepository.save(order);
+
+        paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).ifPresent(payment -> {
+            if (needRefund) {
+                payment.setStatus(PaymentStatus.REFUND_PENDING.name());
+            } else {
+                payment.setStatus(PaymentStatus.CANCELLED.name());
+            }
+            paymentRepository.save(payment);
+        });
 
         orderStatusHistoryRepository.save(OrderStatusHistory.builder()
                 .order(saved)
@@ -1238,6 +1320,20 @@ public class OrdersService {
             }
         }
 
+        // Ghi nhận sự kiện hoàn hàng về kho (MB04) vào outbox_events để publish Kafka
+        Map<String, Object> returnPayload = new HashMap<>();
+        returnPayload.put("orderId", saved.getOrderId());
+        returnPayload.put("orderCode", saved.getOrderCode() != null ? saved.getOrderCode() : "");
+        returnPayload.put("status", "CANCELLED");
+        returnPayload.put("formCode", "MB04");
+        returnPayload.put("receivedBy", operator != null && operator.getFullName() != null ? operator.getFullName() : (operator != null && operator.getEmail() != null ? operator.getEmail() : "ADMIN"));
+        returnPayload.put("reason", finalReason);
+
+        outboxService.saveEvent("ORDER",
+                saved.getOrderCode() != null ? saved.getOrderCode() : String.valueOf(saved.getOrderId()),
+                "ReturnReceivedMB04",
+                "order-return-topic", returnPayload);
+
         if (order.getUser() != null) {
             notificationRepository.save(Notification.builder()
                     .user(order.getUser())
@@ -1249,5 +1345,18 @@ public class OrdersService {
         }
 
         return getOrderDetail(order.getOrderCode());
+    }
+
+    private String resolveDisplayPaymentStatus(Order order) {
+        if (order == null) return PaymentStatus.UNPAID.name();
+        String currentPayStatus = order.getPaymentStatus();
+        if ("PAID".equalsIgnoreCase(currentPayStatus)
+                || PaymentStatus.SUCCESS.name().equalsIgnoreCase(currentPayStatus)
+                || ("COMPLETED".equalsIgnoreCase(order.getStatus())
+                    && !"REFUNDED".equalsIgnoreCase(currentPayStatus)
+                    && !"PARTIALLY_REFUNDED".equalsIgnoreCase(currentPayStatus))) {
+            return "PAID";
+        }
+        return currentPayStatus != null ? currentPayStatus : PaymentStatus.UNPAID.name();
     }
 }

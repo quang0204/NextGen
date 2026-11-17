@@ -1,11 +1,14 @@
 package com.wedbackendservice.nextgen.enums;
 
 public enum PaymentStatus {
+    UNPAID,
     PENDING,
+    CUSTOMER_NOTIFIED,
     SUCCESS,
     FAILED,
-    REFUNDED,
+    EXPIRED,
     CANCELLED,
-    PARTIALLY_REFUNDED,
-    REFUND_PENDING
+    REFUND_PENDING,
+    REFUNDED,
+    PARTIALLY_REFUNDED
 }

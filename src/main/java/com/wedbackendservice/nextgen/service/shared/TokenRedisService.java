@@ -208,6 +208,12 @@ public class TokenRedisService {
         redisTemplate.opsForValue().set(key, value, ttl);
     }
 
+    public void deleteKey(String key) {
+        if (key != null && !key.isBlank()) {
+            delete(key);
+        }
+    }
+
     // ===== STORAGE UPLOAD SESSION & PENDING ZSET =====
 
     public void saveUploadSession(String uploadId, UploadSessionData data, Duration ttl) {

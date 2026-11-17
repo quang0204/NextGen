@@ -59,6 +59,18 @@ class OrdersServiceTest {
     private TokenRedisService tokenRedisService;
     @Mock
     private PaymentRepository paymentRepository;
+    @Mock
+    private OutboxService outboxService;
+    @Mock
+    private InventoryService inventoryService;
+    @Mock
+    private ShippingFeeCalculator shippingFeeCalculator;
+    @Mock
+    private OrderExpirationService orderExpirationService;
+    @Mock
+    private OrderPostCommitService orderPostCommitService;
+    @Spy
+    private java.time.Clock clock = java.time.Clock.systemDefaultZone();
     @Spy
     private OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
@@ -73,13 +85,7 @@ class OrdersServiceTest {
         Order order = Order.builder().orderId(10L).orderCode("DH10").status("CONFIRMED").build();
         when(orderRepository.findById(10L)).thenReturn(Optional.of(order));
 
-        ProductVariant variant = ProductVariant.builder().variantId(55L).sku("SKU-55").build();
-        OrderItem item = OrderItem.builder().orderItemId(1L).order(order).variant(variant).quantity(3).build();
-        when(orderItemRepository.findByOrderId(10L)).thenReturn(List.of(item));
-
-        Inventory inv = Inventory.builder().variant(variant).quantity(2).reservedQuantity(2).build();
-        when(inventoryRepository.findByVariant_VariantId(55L)).thenReturn(Optional.of(inv));
-        when(inventoryRepository.deductStockAndReservedAtomic(eq(55L), eq(3), any(LocalDateTime.class))).thenReturn(0);
+        when(inventoryService.exportStockForOrderWithDetails(eq(10L), eq(staff), any())).thenReturn(java.util.List.of());
 
         assertThatThrownBy(() -> ordersService.packAndExportOrder(10L, new PackExportOrderRequest()))
                 .isInstanceOf(AppException.class)

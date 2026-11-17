@@ -27,6 +27,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -45,6 +46,8 @@ public class ShipmentsService {
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final NotificationRepository notificationRepository;
     private final ShipmentMapper shipmentMapper;
+    private final OutboxService outboxService;
+    private final InventoryService inventoryService;
 
     /**
      * API 9.1: Khách hàng tra cứu hành trình vận chuyển (Public)
@@ -243,36 +246,61 @@ public class ShipmentsService {
                 order.setUpdatedAt(LocalDateTime.now());
                 orderRepository.save(order);
             } else if (targetStatus == ShipmentStatus.DELIVERED) {
-                synchronizedOrderStatus = "COMPLETED";
-                order.setStatus("COMPLETED");
-                if (order.getCompletedAt() == null) {
-                    order.setCompletedAt(LocalDateTime.now());
-                }
-                order.setUpdatedAt(LocalDateTime.now());
-
                 LocalDateTime paidNow = LocalDateTime.now();
-                Optional<Payment> paymentOpt = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
-                if (paymentOpt.isPresent()) {
-                    Payment payment = paymentOpt.get();
-                    payment.setStatus(PaymentStatus.SUCCESS.name());
-                    if (payment.getPaidAt() == null) {
-                        payment.setPaidAt(paidNow);
+                boolean isCod = "COD".equalsIgnoreCase(order.getPaymentMethod());
+                boolean isAlreadyPaid = "PAID".equalsIgnoreCase(order.getPaymentStatus());
+                boolean confirmPaid = isAlreadyPaid || (request.getCodCollected() == null || request.getCodCollected());
+
+                if (confirmPaid) {
+                    synchronizedOrderStatus = "COMPLETED";
+                    order.setStatus("COMPLETED");
+                    if (order.getCompletedAt() == null) {
+                        order.setCompletedAt(paidNow);
                     }
-                    paymentRepository.save(payment);
+                    order.setPaymentStatus("PAID");
+
+                    Optional<Payment> paymentOpt = paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
+                    if (paymentOpt.isPresent()) {
+                        Payment payment = paymentOpt.get();
+                        payment.setStatus(PaymentStatus.SUCCESS.name());
+                        if (payment.getPaidAt() == null) {
+                            payment.setPaidAt(paidNow);
+                        }
+                        paymentRepository.save(payment);
+                    } else {
+                        paymentRepository.save(Payment.builder()
+                                .order(order)
+                                .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
+                                .paymentProvider("COD_SHIPPER")
+                                .amount(order.getFinalTotal())
+                                .status(PaymentStatus.SUCCESS.name())
+                                .transactionRef("COD-" + order.getOrderCode())
+                                .paidAt(paidNow)
+                                .build());
+                    }
+                    isPaymentCompleted = true;
                 } else {
-                    paymentRepository.save(Payment.builder()
-                            .order(order)
-                            .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
-                            .paymentProvider("COD_SHIPPER")
-                            .amount(order.getFinalTotal())
-                            .status(PaymentStatus.SUCCESS.name())
-                            .transactionRef("COD-" + order.getOrderCode())
-                            .paidAt(paidNow)
-                            .build());
+                    // Đơn COD giao thành công nhưng chưa xác nhận thu tiền công nợ
+                    synchronizedOrderStatus = "DELIVERED";
+                    order.setStatus("DELIVERED");
+                    order.setPaymentStatus("UNPAID");
                 }
-                order.setPaymentStatus("PAID");
-                isPaymentCompleted = true;
+                order.setUpdatedAt(paidNow);
                 orderRepository.save(order);
+
+                // Ghi nhận sự kiện giao hàng thành công & cập nhật trạng thái đơn hàng vào outbox_events
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("orderId", order.getOrderId());
+                payload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+                payload.put("trackingCode", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "");
+                payload.put("status", synchronizedOrderStatus);
+                payload.put("paymentStatus", order.getPaymentStatus() != null ? order.getPaymentStatus() : "UNPAID");
+                payload.put("totalAmount", order.getFinalTotal() != null ? order.getFinalTotal() : BigDecimal.ZERO);
+                payload.put("deliveredAt", paidNow.toString());
+
+                outboxService.saveProcessedEvent("ORDER",
+                        order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
+                        "OrderDelivered", "order-delivered-topic", payload);
             } else if (targetStatus == ShipmentStatus.FAILED_DELIVERY) {
                 synchronizedOrderStatus = OrderStatus.RETURNING.name();
                 order.setStatus(OrderStatus.RETURNING.name());
@@ -286,6 +314,17 @@ public class ShipmentsService {
                 order.setUpdatedAt(LocalDateTime.now());
                 orderRepository.save(order);
                 restockOrderInventory(order, operator, failReason);
+
+                // Ghi nhận sự kiện giao hàng thất bại vào outbox_events
+                outboxService.saveProcessedEvent("SHIPMENT", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : String.valueOf(id), "DeliveryFailed",
+                        "shipment-failed-topic", Map.of(
+                                "shipmentId", id,
+                                "orderId", order.getOrderId(),
+                                "orderCode", order.getOrderCode(),
+                                "trackingCode", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "",
+                                "failReason", failReason,
+                                "status", "FAILED_DELIVERY"
+                        ));
             }
 
             if (synchronizedOrderStatus != null && !synchronizedOrderStatus.equals(fromStatus)) {
@@ -409,6 +448,17 @@ public class ShipmentsService {
                         .isRead(false)
                         .build());
             }
+
+            // Ghi nhận sự kiện giao hàng thất bại vào outbox_events
+            outboxService.saveProcessedEvent("SHIPMENT", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : String.valueOf(id), "DeliveryFailed",
+                    "shipment-failed-topic", Map.of(
+                            "shipmentId", id,
+                            "orderId", order.getOrderId(),
+                            "orderCode", order.getOrderCode(),
+                            "trackingCode", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "",
+                            "failReason", reason,
+                            "status", "FAILED_DELIVERY"
+                    ));
         }
 
         return ShipmentFailDeliveryResponse.builder()
@@ -424,41 +474,16 @@ public class ShipmentsService {
 
     public int restockOrderInventory(Order order, User operator, String reason) {
         if (order == null) return 0;
-        int restockedCount = 0;
-        boolean wasExported = inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
-                order.getOrderId(), InventoryTransactionType.EXPORT.name());
-        LocalDateTime restockNow = LocalDateTime.now();
-        List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
-        for (OrderItem item : orderItems) {
-            ProductVariant variant = item.getVariant();
-            if (variant != null) {
-                if (wasExported) {
-                    Inventory inv = inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
-                    int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
-                    int updatedRows = inventoryRepository.increaseQuantityAtomic(
-                            variant.getVariantId(), item.getQuantity(), restockNow);
-                    if (updatedRows > 0) {
-                        restockedCount++;
-                    }
-                    inventoryTransactionRepository.save(InventoryTransaction.builder()
-                            .variant(variant)
-                            .order(order)
-                            .performedBy(operator)
-                            .transactionType(InventoryTransactionType.RETURN.name())
-                            .formCode("MB04")
-                            .quantity(item.getQuantity())
-                            .qtyBefore(qtyBefore)
-                            .qtyAfter(qtyBefore + item.getQuantity())
-                            .reason("Nhập hoàn kho: " + (reason != null ? reason : "Giao hàng thất bại"))
-                            .build());
-                } else {
-                    int released = inventoryRepository.releaseStockAtomic(
-                            variant.getVariantId(), item.getQuantity(), restockNow);
-                    if (released > 0) {
-                        restockedCount++;
-                    }
-                }
-            }
+        int restockedCount = inventoryService.restockReturnOrder(order.getOrderId(), operator, reason);
+        if (restockedCount > 0) {
+            outboxService.saveProcessedEvent("INVENTORY", order.getOrderCode(), "StockRestockedMB04",
+                    "inventory-return-topic", Map.of(
+                            "orderId", order.getOrderId(),
+                            "orderCode", order.getOrderCode(),
+                            "formCode", "MB04",
+                            "restockedItemsCount", restockedCount,
+                            "reason", reason != null ? reason : "Hoàn tồn kho MB04"
+                    ));
         }
         return restockedCount;
     }
@@ -572,34 +597,7 @@ public class ShipmentsService {
     }
 
     private void exportOrderStockIfNotExported(Order order, User operator) {
-        if (inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
-                order.getOrderId(), InventoryTransactionType.EXPORT.name())) {
-            return;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        for (OrderItem item : orderItemRepository.findByOrderId(order.getOrderId())) {
-            ProductVariant v = item.getVariant();
-            if (v == null) continue;
-            Inventory inv = inventoryRepository.findWithLockByVariantId(v.getVariantId())
-                    .orElseThrow(() -> new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                            "Không tìm thấy tồn kho cho SKU " + v.getSku() + "!"));
-            int onHandBefore = inv.getOnHandQty();
-            int updatedRows = inventoryRepository.deductStockAndReservedAtomic(v.getVariantId(), item.getQuantity(), now);
-            if (updatedRows == 0) {
-                throw new AppException(ErrorCode.ERR_STOCK_INSUFFICIENT,
-                        "Tồn kho vật lý của SKU " + v.getSku() + " không đủ để xuất kho!");
-            }
-            inventoryTransactionRepository.save(InventoryTransaction.builder()
-                    .variant(v)
-                    .order(order)
-                    .performedBy(operator)
-                    .transactionType(InventoryTransactionType.EXPORT.name())
-                    .formCode("MB03")
-                    .quantity(-item.getQuantity())
-                    .qtyBefore(onHandBefore)
-                    .qtyAfter(onHandBefore - item.getQuantity())
-                    .reason("Xuất kho tự động khi bàn giao vận chuyển đơn #" + order.getOrderCode())
-                    .build());
-        }
+        inventoryService.exportStockForOrder(order.getOrderId(), operator,
+                "Xuất kho tự động khi bàn giao vận chuyển đơn #" + order.getOrderCode());
     }
 }

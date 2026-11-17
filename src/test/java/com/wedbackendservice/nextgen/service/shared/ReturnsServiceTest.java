@@ -76,6 +76,9 @@ class ReturnsServiceTest {
     @Mock
     private SecurityHelper securityHelper;
 
+    @Mock
+    private OutboxService outboxService;
+
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 

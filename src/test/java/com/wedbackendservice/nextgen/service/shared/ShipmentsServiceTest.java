@@ -63,6 +63,12 @@ class ShipmentsServiceTest {
     @Mock
     private NotificationRepository notificationRepository;
 
+    @Mock
+    private InventoryService inventoryService;
+
+    @Mock
+    private OutboxService outboxService;
+
     @Spy
     private ShipmentMapper shipmentMapper = Mappers.getMapper(ShipmentMapper.class);
 
@@ -156,7 +162,6 @@ class ShipmentsServiceTest {
     void updateShipmentStatus_Delivered_CompletesOrderAndPayment() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
         when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
-        when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(100L, "EXPORT")).thenReturn(true);
 
         Payment payment = Payment.builder()
                 .paymentId(1L)
@@ -189,9 +194,7 @@ class ShipmentsServiceTest {
     void failDelivery_Success_RestocksInventory() {
         when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
         when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
-        when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(100L, "EXPORT")).thenReturn(true);
-        when(orderItemRepository.findByOrderId(100L)).thenReturn(List.of(orderItem));
-        when(inventoryRepository.increaseQuantityAtomic(eq(50L), eq(2), any(LocalDateTime.class))).thenReturn(1);
+        when(inventoryService.restockReturnOrder(eq(100L), eq(staffUser), any())).thenReturn(1);
 
         ShipmentFailDeliveryRequest req = ShipmentFailDeliveryRequest.builder()
                 .failReason("Khách không nghe máy sau 3 lần gọi")
@@ -206,8 +209,6 @@ class ShipmentsServiceTest {
         assertThat(res.getRestockedItemsCount()).isEqualTo(1);
 
         assertThat(order.getStatus()).isEqualTo("RETURNING");
-        verify(inventoryRepository).increaseQuantityAtomic(eq(50L), eq(2), any(LocalDateTime.class));
-        verify(inventoryTransactionRepository).save(any(InventoryTransaction.class));
         verify(notificationRepository).save(any(Notification.class));
     }
 
