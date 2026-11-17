@@ -77,6 +77,8 @@ public class OrdersService {
     private final OrderExpirationService orderExpirationService;
     private final OrderPostCommitService orderPostCommitService;
     private final OrderStateService orderStateService;
+    private final OrderPricingService orderPricingService;
+    private final OrdersQueryService ordersQueryService;
     private final Clock clock;
     @Value("${payment.bank-transfer.expire-minutes:30}")
     private int paymentExpireMinutes = 30;
@@ -113,103 +115,22 @@ public class OrdersService {
         final String finalRedisKey = redisKey;
 
         try {
-            // 2. Validate và gộp sản phẩm trùng lặp
-            Map<Long, Integer> consolidatedQty = validateAndConsolidateItems(request.getItems());
+            // 2-7. Tính toán giá, khuyến mãi, voucher và phí ship qua OrderPricingService
+            OrderPricingService.PricingResult pricing = orderPricingService.calculatePricing(
+                    request.getItems(),
+                    request.getVoucherCode(),
+                    request.getShippingMethod(),
+                    request.getExpectedTotalAmount(),
+                    now);
 
-            // 3. Batch load ProductVariants (Tránh N+1)
-            List<Long> variantIds = new ArrayList<>(consolidatedQty.keySet());
-            List<ProductVariant> variants = productVariantRepository.findAllById(variantIds);
-            if (variants == null || variants.size() != variantIds.size()) {
-                throw new AppException(ErrorCode.ERR_VARIANT_NOT_FOUND, "Có biến thể sản phẩm không tồn tại trong hệ thống!");
-            }
-
-            Map<Long, ProductVariant> variantMap = new HashMap<>();
-            for (ProductVariant v : variants) {
-                variantMap.put(v.getVariantId(), v);
-                if (v.getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getStatus())) {
-                    String prodName = v.getProduct() != null ? v.getProduct().getProductName() : v.getVariantName();
-                    throw new AppException(ErrorCode.PRODUCT_INACTIVE,
-                            String.format("Biến thể '%s' (SKU: %s) hiện đã ngừng kinhdong!", prodName, v.getSku()));
-                }
-                if (v.getProduct() != null && v.getProduct().getStatus() != null && !"ACTIVE".equalsIgnoreCase(v.getProduct().getStatus())) {
-                    throw new AppException(ErrorCode.PRODUCT_INACTIVE,
-                            String.format("Sản phẩm '%s' hiện đã ngừng kinh doanh!", v.getProduct().getProductName()));
-                }
-            }
-
-            // 4. Batch load Promotions (Lấy khuyến mãi thấp nhất, tránh N+1)
-            List<PromotionVariant> activePromos = promotionVariantRepository.findActivePromotionsForVariantIds(variantIds, now);
-            Map<Long, BigDecimal> bestPromoPriceMap = new HashMap<>();
-            if (activePromos != null) {
-                for (PromotionVariant pv : activePromos) {
-                    if (pv != null && pv.getVariant() != null && pv.getVariant().getVariantId() != null && pv.getPromotionalPrice() != null) {
-                        bestPromoPriceMap.merge(pv.getVariant().getVariantId(), pv.getPromotionalPrice(), BigDecimal::min);
-                    }
-                }
-            }
-
-            // 5. Tính tiền sản phẩm
-            BigDecimal subtotal = BigDecimal.ZERO;
-            List<OrderItem> orderItemsToSave = new ArrayList<>();
-            List<OrderCreatedEvent.OrderItemDto> eventItems = new ArrayList<>();
-
-            for (Map.Entry<Long, Integer> entry : consolidatedQty.entrySet()) {
-                Long vId = entry.getKey();
-                int qty = entry.getValue();
-                ProductVariant variant = variantMap.get(vId);
-
-                BigDecimal unitPrice = variant.getPrice() != null ? variant.getPrice() : BigDecimal.ZERO;
-                BigDecimal promoPrice = bestPromoPriceMap.get(vId);
-                if (promoPrice != null && promoPrice.compareTo(unitPrice) < 0) {
-                    unitPrice = promoPrice;
-                }
-
-                BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(qty));
-                subtotal = subtotal.add(lineTotal);
-
-                Product prod = variant.getProduct();
-                String prodName = prod != null
-                        ? prod.getProductName() + (variant.getVariantName() != null && !variant.getVariantName().isBlank() ? " (" + variant.getVariantName() + ")" : "")
-                        : variant.getVariantName();
-                String rom = variant.getRomGb() != null ? variant.getRomGb() + "GB" : null;
-
-                orderItemsToSave.add(OrderItem.builder()
-                        .variant(variant)
-                        .productNameSnapshot(prodName)
-                        .skuSnapshot(variant.getSku())
-                        .colorSnapshot(variant.getColor())
-                        .romSnapshot(rom)
-                        .imageUrl(variant.getImageUrl())
-                        .price(unitPrice)
-                        .quantity(qty)
-                        .totalPrice(lineTotal)
-                        .build());
-
-                eventItems.add(OrderCreatedEvent.OrderItemDto.builder()
-                        .variantId(vId)
-                        .quantity(qty)
-                        .unitPrice(unitPrice)
-                        .build());
-            }
-
-            // 6. Áp dụng Voucher (nếu có)
-            BigDecimal voucherDiscount = BigDecimal.ZERO;
-            Voucher appliedVoucher = null;
-            if (StringUtils.hasText(request.getVoucherCode())) {
-                appliedVoucher = applyVoucherAtomic(request.getVoucherCode().trim(), subtotal, now);
-                voucherDiscount = calculateVoucherDiscount(appliedVoucher, subtotal);
-            }
-
-            // 7. Tính phí ship độc lập từ Server (Không tin client shippingFee)
-            BigDecimal shippingFee = shippingFeeCalculator.calculateFee(request.getShippingMethod());
-            BigDecimal totalAmount = subtotal.subtract(voucherDiscount).add(shippingFee).max(BigDecimal.ZERO);
-
-            // So khớp chính xác expectedTotalAmount nếu client gửi lên
-            if (request.getExpectedTotalAmount() != null && totalAmount.compareTo(request.getExpectedTotalAmount()) != 0) {
-                throw new AppException(ErrorCode.INVALID_REQUEST,
-                        String.format("Giá sản phẩm hoặc khuyến mãi vừa thay đổi (Tổng tiền mới: %sđ). Vui lòng xác nhận lại đơn hàng!",
-                                CURRENCY_FORMATTER.format(totalAmount)));
-            }
+            Map<Long, Integer> consolidatedQty = pricing.getConsolidatedQty();
+            List<OrderItem> orderItemsToSave = pricing.getOrderItemsToSave();
+            List<OrderCreatedEvent.OrderItemDto> eventItems = pricing.getEventItems();
+            BigDecimal subtotal = pricing.getSubtotal();
+            Voucher appliedVoucher = pricing.getAppliedVoucher();
+            BigDecimal voucherDiscount = pricing.getVoucherDiscount();
+            BigDecimal shippingFee = pricing.getShippingFee();
+            BigDecimal totalAmount = pricing.getTotalAmount();
 
             // 8. Validate Payment Method Whitelist (Chỉ COD hoặc BANK_TRANSFER)
             String payMethod = validatePaymentMethod(request.getPaymentMethod());
@@ -459,88 +380,7 @@ public class OrdersService {
      */
     @Transactional(readOnly = true)
     public PageResponse<MyOrderItemResponse> getMyOrders(int page, int size, String status) {
-        User currentUser = securityHelper.getCurrentUser();
-
-        int safePage = Math.max(page, 1) - 1;
-        int safeSize = (size <= 0 || size > 100) ? 5 : size;
-        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-
-        Specification<Order> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("user").get("userId"), currentUser.getUserId()));
-
-            if (StringUtils.hasText(status) && !status.equalsIgnoreCase("ALL")) {
-                predicates.add(cb.equal(cb.upper(root.get("status")), status.trim().toUpperCase()));
-            }
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-
-        Page<Order> pageResult = orderRepository.findAll(spec, pageable);
-        List<Order> orders = pageResult.getContent();
-        List<Long> orderIds = orders.stream().map(Order::getOrderId).toList();
-        Map<Long, List<OrderItemResponse>> itemsByOrderId = orderIds.isEmpty() ? Map.of() :
-                orderItemRepository.findByOrderIdIn(orderIds).stream()
-                        .collect(Collectors.groupingBy(
-                                oi -> oi.getOrder().getOrderId(),
-                                Collectors.mapping(orderMapper::toOrderItemResponse, Collectors.toList())
-                        ));
-        Map<Long, List<OrderStatusHistoryResponse>> historiesByOrderId = orderIds.isEmpty() ? Map.of() :
-                orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
-                        .collect(Collectors.groupingBy(
-                                h -> h.getOrder().getOrderId(),
-                                Collectors.mapping(orderMapper::toOrderStatusHistoryResponse, Collectors.toList())
-                        ));
-        Map<Long, Shipment> myShipmentMap = orderIds.isEmpty() ? Map.of() :
-                shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
-                        .collect(Collectors.toMap(s -> s.getOrder().getOrderId(), s -> s, (s1, s2) -> s1));
-        Map<Long, ReturnRequest> myReturnMap = orderIds.isEmpty() ? Map.of() :
-                returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
-                        .collect(Collectors.toMap(r -> r.getOrder().getOrderId(), r -> r, (r1, r2) -> r1));
-
-        List<MyOrderItemResponse> items = orders.stream().map(order -> {
-            Shipment shipment = myShipmentMap.get(order.getOrderId());
-            ReturnRequest latestReturn = myReturnMap.get(order.getOrderId());
-            String payStatus = resolveDisplayPaymentStatus(order);
-
-            return MyOrderItemResponse.builder()
-                    .orderId(order.getOrderId())
-                    .orderCode(order.getOrderCode())
-                    .status(order.getStatus())
-                    .recipientName(order.getRecipientName())
-                    .recipientPhone(order.getRecipientPhone())
-                    .shippingAddress(order.getShippingAddress())
-                    .subtotal(order.getSubtotal())
-                    .voucherDiscount(order.getVoucherDiscount())
-                    .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                    .totalAmount(order.getFinalTotal())
-                    .paymentMethod(order.getPaymentMethod())
-                    .paymentStatus(payStatus)
-                    .carrier(shipment != null ? shipment.getCarrier() : null)
-                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
-                    .cancelReason(order.getCancelReason())
-                    .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
-                    .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
-                    .returnReason(latestReturn != null ? latestReturn.getReason() : null)
-                    .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
-                    .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
-                    .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
-                    .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
-                    .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
-                    .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
-                    .items(itemsByOrderId.getOrDefault(order.getOrderId(), List.of()))
-                    .statusHistory(historiesByOrderId.getOrDefault(order.getOrderId(), List.of()))
-                    .build();
-        }).toList();
-
-        return PageResponse.<MyOrderItemResponse>builder()
-                .content(items)
-                .page(pageResult.getNumber() + 1)
-                .size(pageResult.getSize())
-                .totalElements(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .hasNext(pageResult.hasNext())
-                .build();
+        return ordersQueryService.getMyOrders(page, size, status);
     }
 
     /**
@@ -548,60 +388,7 @@ public class OrdersService {
      */
     @Transactional(readOnly = true)
     public OrderDetailResponse getOrderDetail(String orderCode) {
-        User currentUser = securityHelper.getCurrentUser();
-
-        Order order = orderRepository.findByOrderCode(orderCode.trim())
-                .orElseThrow(() -> new AppException(ErrorCode.ERR_ORDER_NOT_FOUND, "Không tìm thấy đơn hàng có mã " + orderCode + "!"));
-
-        // Kiểm tra quyền: STAFF/ADMIN hoặc chủ đơn hàng
-        boolean isStaffOrAdmin = currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
-        if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
-            throw new AppException(ErrorCode.UNAUTHORIZED, "Bạn không có quyền truy cập vào thông tin đơn hàng này!");
-        }
-
-        List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());
-        List<OrderItemResponse> itemResponses = orderItems.stream().map(orderMapper::toOrderItemResponse).toList();
-
-        List<OrderStatusHistoryResponse> historyResponses = orderStatusHistoryRepository
-                .findByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).stream()
-                .map(orderMapper::toOrderStatusHistoryResponse)
-                .toList();
-
-        Optional<Shipment> shipmentOpt = shipmentRepository.findFirstByOrder_OrderId(order.getOrderId());
-        String carrier = shipmentOpt.map(Shipment::getCarrier).orElse(null);
-        String trackingCode = shipmentOpt.map(Shipment::getTrackingCode).orElse(null);
-        ReturnRequest latestReturn = returnRequestRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId()).orElse(null);
-
-        String detailPaymentStatus = resolveDisplayPaymentStatus(order);
-
-        return OrderDetailResponse.builder()
-                .orderId(order.getOrderId())
-                .orderCode(order.getOrderCode())
-                .status(order.getStatus())
-                .recipientName(order.getRecipientName())
-                .recipientPhone(order.getRecipientPhone())
-                .shippingAddress(order.getShippingAddress())
-                .paymentMethod(order.getPaymentMethod())
-                .paymentStatus(detailPaymentStatus)
-                .subtotal(order.getSubtotal())
-                .voucherDiscount(order.getVoucherDiscount())
-                .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                .totalAmount(order.getFinalTotal())
-                .carrier(carrier)
-                .trackingCode(trackingCode)
-                .cancelReason(order.getCancelReason())
-                .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
-                .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
-                .returnReason(latestReturn != null ? latestReturn.getReason() : null)
-                .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
-                .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
-                .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
-                .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
-                .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
-                .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
-                .items(itemResponses)
-                .statusHistory(historyResponses)
-                .build();
+        return ordersQueryService.getOrderDetail(orderCode);
     }
 
     /**
@@ -701,110 +488,7 @@ public class OrdersService {
      */
     @Transactional(readOnly = true)
     public AdminOrderListResponse getAdminOrders(int page, int size, String status, String paymentStatus) {
-        securityHelper.authenticateStaffOrAdmin();
-
-        int safePage = Math.max(page, 1) - 1;
-        int safeSize = (size <= 0 || size > 100) ? 10 : size;
-        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-
-        Specification<Order> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-
-            if (StringUtils.hasText(status) && !status.equalsIgnoreCase("ALL")) {
-                predicates.add(cb.equal(cb.upper(root.get("status")), status.trim().toUpperCase()));
-            }
-
-            if (StringUtils.hasText(paymentStatus) && !paymentStatus.equalsIgnoreCase("ALL")) {
-                predicates.add(cb.equal(cb.upper(root.get("paymentStatus")), paymentStatus.trim().toUpperCase()));
-            }
-
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-
-        Page<Order> pageResult = orderRepository.findAll(spec, pageable);
-        List<Order> orders = pageResult.getContent();
-        List<Long> orderIds = orders.stream().map(Order::getOrderId).toList();
-
-        Map<Long, List<OrderItem>> orderItemsMap = orderIds.isEmpty() ? Map.of() :
-                orderItemRepository.findByOrderIdIn(orderIds).stream()
-                        .collect(Collectors.groupingBy(oi -> oi.getOrder().getOrderId()));
-
-        Map<Long, Shipment> shipmentMap = orderIds.isEmpty() ? Map.of() :
-                shipmentRepository.findByOrder_OrderIdIn(orderIds).stream()
-                        .collect(Collectors.toMap(s -> s.getOrder().getOrderId(), s -> s, (s1, s2) -> s1));
-        Map<Long, List<OrderStatusHistoryResponse>> historiesMap = orderIds.isEmpty() ? Map.of() :
-                orderStatusHistoryRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
-                        .collect(Collectors.groupingBy(
-                                h -> h.getOrder().getOrderId(),
-                                Collectors.mapping(orderMapper::toOrderStatusHistoryResponse, Collectors.toList())
-                        ));
-
-        Map<Long, ReturnRequest> adminReturnMap = orderIds.isEmpty() ? Map.of() :
-                returnRequestRepository.findByOrder_OrderIdInOrderByCreatedAtDesc(orderIds).stream()
-                        .collect(Collectors.toMap(r -> r.getOrder().getOrderId(), r -> r, (r1, r2) -> r1));
-
-        List<AdminOrderItemResponse> items = orders.stream().map(order -> {
-            List<OrderItem> orderItems = orderItemsMap.getOrDefault(order.getOrderId(), List.of());
-            String itemsSummary = buildItemsSummary(orderItems);
-            Shipment shipment = shipmentMap.get(order.getOrderId());
-            ReturnRequest latestReturn = adminReturnMap.get(order.getOrderId());
-
-            String adminPayStatus = resolveDisplayPaymentStatus(order);
-
-            return AdminOrderItemResponse.builder()
-                    .orderId(order.getOrderId())
-                    .orderCode(order.getOrderCode())
-                    .recipientName(order.getRecipientName())
-                    .recipientPhone(order.getRecipientPhone())
-                    .shippingAddress(order.getShippingAddress())
-                    .paymentMethod(order.getPaymentMethod())
-                    .paymentStatus(adminPayStatus)
-                    .subtotal(order.getSubtotal())
-                    .voucherDiscount(order.getVoucherDiscount())
-                    .shippingFee(order.getShippingFee() != null ? order.getShippingFee() : BigDecimal.ZERO)
-                    .totalAmount(order.getFinalTotal())
-                    .status(order.getStatus())
-                    .carrier(shipment != null ? shipment.getCarrier() : null)
-                    .trackingCode(shipment != null ? shipment.getTrackingCode() : null)
-                    .cancelReason(order.getCancelReason())
-                    .returnId(latestReturn != null ? latestReturn.getReturnId() : null)
-                    .returnStatus(latestReturn != null ? latestReturn.getStatus() : null)
-                    .returnReason(latestReturn != null ? latestReturn.getReason() : null)
-                    .returnRejectReason(latestReturn != null ? latestReturn.getRejectReason() : null)
-                    .returnInspectionResult(latestReturn != null ? latestReturn.getInspectionResult() : null)
-                    .returnRefundAmount(latestReturn != null ? latestReturn.getRefundAmount() : null)
-                    .itemsSummary(itemsSummary)
-                    .createdAt(DateTimeUtil.formatIsoInstant(order.getCreatedAt()))
-                    .updatedAt(DateTimeUtil.formatIsoInstant(order.getUpdatedAt()))
-                    .completedAt(DateTimeUtil.formatIsoInstant(order.getCompletedAt()))
-                    .items(orderItems.stream().map(orderMapper::toOrderItemResponse).toList())
-                    .statusHistory(historiesMap.getOrDefault(order.getOrderId(), List.of()))
-                    .build();
-        }).toList();
-
-        Map<String, Long> statusCounts = orderRepository.countGroupByStatus().stream()
-                .filter(r -> r != null && r[0] != null && r[1] != null)
-                .collect(Collectors.toMap(r -> (String) r[0], r -> ((Number) r[1]).longValue(), (a, b) -> a));
-
-        PipelineSummaryResponse pipeline = PipelineSummaryResponse.builder()
-                .pendingPayment(statusCounts.getOrDefault("PENDING_PAYMENT", 0L))
-                .waitingConfirmation(statusCounts.getOrDefault("WAITING_CONFIRMATION", 0L))
-                .confirmed(statusCounts.getOrDefault("CONFIRMED", 0L))
-                .preparing(statusCounts.getOrDefault("PREPARING", 0L))
-                .shipping(statusCounts.getOrDefault("SHIPPING", 0L))
-                .completed(statusCounts.getOrDefault("COMPLETED", 0L))
-                .cancelled(statusCounts.getOrDefault("CANCELLED", 0L))
-                .build();
-
-        return AdminOrderListResponse.builder()
-                .content(items)
-                .page(pageResult.getNumber() + 1)
-                .size(pageResult.getSize())
-                .totalElements(pageResult.getTotalElements())
-                .totalPages(pageResult.getTotalPages())
-                .hasNext(pageResult.hasNext())
-                .pipelineSummary(pipeline)
-                .build();
+        return ordersQueryService.getAdminOrders(page, size, status, paymentStatus);
     }
 
     /**

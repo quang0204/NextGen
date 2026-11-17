@@ -116,6 +116,24 @@ public class OrderInventoryPaymentBusinessTest {
                 java.time.Clock.systemDefaultZone()
         );
 
+        ShippingFeeCalculator shippingFeeCalc = new ShippingFeeCalculator();
+        OrderPricingService orderPricingService = new OrderPricingService(
+                productVariantRepository,
+                promotionVariantRepository,
+                voucherRepository,
+                shippingFeeCalc
+        );
+
+        OrdersQueryService ordersQueryService = new OrdersQueryService(
+                securityHelper,
+                orderRepository,
+                orderItemRepository,
+                orderStatusHistoryRepository,
+                shipmentRepository,
+                null,
+                orderMapper
+        );
+
         ordersService = new OrdersService(
                 securityHelper,
                 orderRepository,
@@ -137,10 +155,12 @@ public class OrderInventoryPaymentBusinessTest {
                 orderMapper,
                 outboxService,
                 inventoryService,
-                new ShippingFeeCalculator(),
+                shippingFeeCalc,
                 orderExpirationService,
                 orderPostCommitService,
                 orderStateService,
+                orderPricingService,
+                ordersQueryService,
                 java.time.Clock.systemDefaultZone()
         );
 
