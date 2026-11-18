@@ -374,6 +374,65 @@ public class ProductsService {
       Integer ram,
       Integer rom,
       String sortBy) {
+    return fetchProductsInternal(
+        page,
+        limit,
+        search,
+        brandId,
+        categoryId,
+        minPrice,
+        maxPrice,
+        ram,
+        rom,
+        "ACTIVE",
+        sortBy,
+        false);
+  }
+
+  // =========================================================================
+  // 4.10 GET /api/v1/admin/products - Danh sách sản phẩm cho quản trị viên (Portal)
+  // =========================================================================
+  @Transactional(readOnly = true)
+  public ProductListResponse getAdminProducts(
+      int page,
+      int limit,
+      String search,
+      Long brandId,
+      Long categoryId,
+      BigDecimal minPrice,
+      BigDecimal maxPrice,
+      Integer ram,
+      Integer rom,
+      String status,
+      String sortBy) {
+    return fetchProductsInternal(
+        page,
+        limit,
+        search,
+        brandId,
+        categoryId,
+        minPrice,
+        maxPrice,
+        ram,
+        rom,
+        status,
+        sortBy,
+        true);
+  }
+
+  private ProductListResponse fetchProductsInternal(
+      int page,
+      int limit,
+      String search,
+      Long brandId,
+      Long categoryId,
+      BigDecimal minPrice,
+      BigDecimal maxPrice,
+      Integer ram,
+      Integer rom,
+      String status,
+      String sortBy,
+      boolean isAdmin) {
     int pageNumber = Math.max(1, page);
     int pageSize = Math.min(50, Math.max(1, limit));
 
@@ -391,7 +450,13 @@ public class ProductsService {
     Specification<Product> spec =
         (root, query, cb) -> {
           List<Predicate> predicates = new ArrayList<>();
-          predicates.add(cb.equal(root.get("status"), "ACTIVE"));
+          if (!isAdmin) {
+            predicates.add(cb.equal(root.get("status"), "ACTIVE"));
+          } else if (status != null
+              && !status.isBlank()
+              && !"ALL".equalsIgnoreCase(status.trim())) {
+            predicates.add(cb.equal(root.get("status"), status.trim().toUpperCase()));
+          }
 
           var categoryJoin = root.join("category", jakarta.persistence.criteria.JoinType.LEFT);
           var parentCategoryJoin =
@@ -490,7 +555,9 @@ public class ProductsService {
             List<Predicate> variantPredicates = new ArrayList<>();
             variantPredicates.add(
                 cb.equal(variantRoot.get("product").get("productId"), root.get("productId")));
-            variantPredicates.add(cb.equal(variantRoot.get("status"), "ACTIVE"));
+            if (!isAdmin) {
+              variantPredicates.add(cb.equal(variantRoot.get("status"), "ACTIVE"));
+            }
 
             if (effectiveMinPrice != null) {
               variantPredicates.add(
@@ -546,9 +613,11 @@ public class ProductsService {
 
     List<Long> productIds = products.stream().map(Product::getProductId).toList();
 
-    // Batch load active variants
+    // Batch load variants: admin gets ALL variants (ACTIVE + INACTIVE), client gets ACTIVE only
     List<ProductVariant> variants =
-        productVariantRepository.findByProduct_ProductIdInAndStatus(productIds, "ACTIVE");
+        isAdmin
+            ? productVariantRepository.findByProduct_ProductIdIn(productIds)
+            : productVariantRepository.findByProduct_ProductIdInAndStatus(productIds, "ACTIVE");
     Map<Long, List<ProductVariant>> variantsByProduct =
         variants.stream().collect(Collectors.groupingBy(v -> v.getProduct().getProductId()));
 
@@ -597,12 +666,15 @@ public class ProductsService {
               .toList();
 
       boolean isAvailable =
-          pVariants.stream()
-              .anyMatch(
-                  v -> {
-                    Inventory inv = inventoryByVariant.get(v.getVariantId());
-                    return inv != null && inv.getAvailableQty() > 0;
-                  });
+          !"INACTIVE".equalsIgnoreCase(product.getStatus())
+              && pVariants.stream()
+                  .anyMatch(
+                      v -> {
+                        Inventory inv = inventoryByVariant.get(v.getVariantId());
+                        return inv != null
+                            && inv.getAvailableQty() > 0
+                            && "ACTIVE".equalsIgnoreCase(v.getStatus());
+                      });
 
       // Primary image
       List<ProductImage> pImages =
@@ -655,6 +727,7 @@ public class ProductsService {
               .soldCount(soldMap.getOrDefault(product.getProductId(), 0))
               .availableColors(availableColors)
               .isAvailable(isAvailable)
+              .status(product.getStatus())
               .variants(variantSummaries)
               .build());
     }

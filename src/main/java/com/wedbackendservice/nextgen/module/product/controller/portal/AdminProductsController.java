@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.module.product.controller.portal;
 
 import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductListResponse;
 import com.wedbackendservice.nextgen.module.product.dto.portal.request.CreateProductRequest;
 import com.wedbackendservice.nextgen.module.product.dto.portal.request.CreateVariantRequest;
 import com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateProductRequest;
@@ -14,6 +15,7 @@ import com.wedbackendservice.nextgen.module.product.dto.portal.response.UpdateVa
 import com.wedbackendservice.nextgen.module.product.dto.portal.response.VariantCreatedResponse;
 import com.wedbackendservice.nextgen.module.product.service.ProductsService;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,6 +27,40 @@ import org.springframework.web.bind.annotation.*;
 public class AdminProductsController {
 
   private final ProductsService productsService;
+
+  /**
+   * API 4.10: Quản trị danh sách sản phẩm (STAFF / ADMIN) Lấy toàn bộ sản phẩm (kể cả ACTIVE và
+   * INACTIVE) cùng đầy đủ ma trận biến thể
+   */
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+  @GetMapping
+  public ApiResponse<ProductListResponse> getAdminProducts(
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "50") int limit,
+      @RequestParam(required = false) String search,
+      @RequestParam(required = false) Long brandId,
+      @RequestParam(required = false) Long categoryId,
+      @RequestParam(required = false) BigDecimal minPrice,
+      @RequestParam(required = false) BigDecimal maxPrice,
+      @RequestParam(required = false) Integer ram,
+      @RequestParam(required = false) Integer rom,
+      @RequestParam(required = false) String status,
+      @RequestParam(defaultValue = "newest") String sortBy) {
+    return ApiResponse.ok(
+        "Lấy danh sách sản phẩm quản trị thành công!",
+        productsService.getAdminProducts(
+            page,
+            limit,
+            search,
+            brandId,
+            categoryId,
+            minPrice,
+            maxPrice,
+            ram,
+            rom,
+            status,
+            sortBy));
+  }
 
   /**
    * API 4.4: Lấy chi tiết sản phẩm đầy đủ cho Admin (STAFF / ADMIN) bất kể trạng thái ACTIVE hay
