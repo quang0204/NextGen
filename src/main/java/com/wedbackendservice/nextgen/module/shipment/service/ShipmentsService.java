@@ -13,11 +13,11 @@ import com.wedbackendservice.nextgen.module.notification.entity.Notification;
 import com.wedbackendservice.nextgen.module.notification.repository.NotificationRepository;
 import com.wedbackendservice.nextgen.module.order.entity.Order;
 import com.wedbackendservice.nextgen.module.order.entity.OrderItem;
-import com.wedbackendservice.nextgen.module.order.entity.OrderStatusHistory;
 import com.wedbackendservice.nextgen.module.order.enums.OrderStatus;
 import com.wedbackendservice.nextgen.module.order.repository.OrderItemRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderStatusHistoryRepository;
+import com.wedbackendservice.nextgen.module.order.service.OrderStateService;
 import com.wedbackendservice.nextgen.module.payment.entity.Payment;
 import com.wedbackendservice.nextgen.module.payment.enums.PaymentStatus;
 import com.wedbackendservice.nextgen.module.payment.repository.PaymentRepository;
@@ -66,6 +66,7 @@ public class ShipmentsService {
   private final ShipmentMapper shipmentMapper;
   private final OutboxService outboxService;
   private final InventoryService inventoryService;
+  private final OrderStateService orderStateService;
 
   /**
    * API 9.1: Khách hàng tra cứu hành trình vận chuyển (Public) Bảo vệ PII: Che tên người nhận, che
@@ -287,13 +288,25 @@ public class ShipmentsService {
 
       if (targetStatus == ShipmentStatus.PICKED) {
         synchronizedOrderStatus = "PICKED_UP";
-        order.setStatus("PICKED_UP");
-        order.setUpdatedAt(LocalDateTime.now());
+        orderStateService.transition(
+            order,
+            OrderStatus.PICKED_UP,
+            operator,
+            "Đồng bộ trạng thái từ Vận chuyển: "
+                + getStatusLabel(targetStatus.name())
+                + (request.getNote() != null ? " (" + request.getNote() + ")" : ""));
+        order.setStatus(synchronizedOrderStatus);
         orderRepository.save(order);
       } else if (targetStatus == ShipmentStatus.IN_TRANSIT) {
         synchronizedOrderStatus = "SHIPPING";
-        order.setStatus("SHIPPING");
-        order.setUpdatedAt(LocalDateTime.now());
+        orderStateService.transition(
+            order,
+            OrderStatus.SHIPPING,
+            operator,
+            "Đồng bộ trạng thái từ Vận chuyển: "
+                + getStatusLabel(targetStatus.name())
+                + (request.getNote() != null ? " (" + request.getNote() + ")" : ""));
+        order.setStatus(synchronizedOrderStatus);
         orderRepository.save(order);
       } else if (targetStatus == ShipmentStatus.DELIVERED) {
         LocalDateTime paidNow = LocalDateTime.now();
@@ -304,7 +317,6 @@ public class ShipmentsService {
 
         if (confirmPaid) {
           synchronizedOrderStatus = "COMPLETED";
-          order.setStatus("COMPLETED");
           if (order.getCompletedAt() == null) {
             order.setCompletedAt(paidNow);
           }
@@ -333,11 +345,22 @@ public class ShipmentsService {
                     .build());
           }
           isPaymentCompleted = true;
+          orderStateService.transition(
+              order,
+              OrderStatus.COMPLETED,
+              operator,
+              "Giao hàng thành công" + (isCod ? " & Hoàn tất thu tiền COD" : ""));
+          order.setStatus(synchronizedOrderStatus);
         } else {
           // Đơn COD giao thành công nhưng chưa xác nhận thu tiền công nợ
           synchronizedOrderStatus = "DELIVERED";
-          order.setStatus("DELIVERED");
           order.setPaymentStatus("UNPAID");
+          orderStateService.transition(
+              order,
+              OrderStatus.DELIVERED,
+              operator,
+              "Giao hàng thành công (Chờ kế toán xác nhận công nợ COD)");
+          order.setStatus(synchronizedOrderStatus);
         }
         order.setUpdatedAt(paidNow);
         orderRepository.save(order);
@@ -367,7 +390,6 @@ public class ShipmentsService {
             payload);
       } else if (targetStatus == ShipmentStatus.FAILED_DELIVERY) {
         synchronizedOrderStatus = OrderStatus.RETURNING.name();
-        order.setStatus(OrderStatus.RETURNING.name());
         String failReason =
             (request.getNote() != null && !request.getNote().trim().isBlank())
                 ? request.getNote().trim()
@@ -377,6 +399,11 @@ public class ShipmentsService {
         if ("PAID".equalsIgnoreCase(order.getPaymentStatus())) {
           order.setPaymentStatus("REFUND_PENDING");
         }
+        orderStateService.transition(
+            order,
+            OrderStatus.RETURNING,
+            operator,
+            "Giao hàng thất bại - Đang hoàn về: " + failReason);
         order.setUpdatedAt(LocalDateTime.now());
         orderRepository.save(order);
         restockOrderInventory(order, operator, failReason);
@@ -402,20 +429,6 @@ public class ShipmentsService {
                 failReason,
                 "status",
                 "FAILED_DELIVERY"));
-      }
-
-      if (synchronizedOrderStatus != null && !synchronizedOrderStatus.equals(fromStatus)) {
-        orderStatusHistoryRepository.save(
-            OrderStatusHistory.builder()
-                .order(order)
-                .changedBy(operator)
-                .previousStatus(fromStatus)
-                .newStatus(synchronizedOrderStatus)
-                .note(
-                    "Đồng bộ trạng thái từ Vận chuyển: "
-                        + getStatusLabel(targetStatus.name())
-                        + (request.getNote() != null ? " (" + request.getNote() + ")" : ""))
-                .build());
       }
 
       // Gửi thông báo cập nhật tiến trình vận chuyển cho khách hàng
@@ -529,8 +542,6 @@ public class ShipmentsService {
     int restockedCount = 0;
 
     if (order != null) {
-      String fromStatus = order.getStatus();
-      order.setStatus(OrderStatus.RETURNING.name());
       order.setCancelReason("Giao hàng thất bại: " + reason);
 
       // Kiểm tra xử lý hoàn tiền nếu đơn hàng đã thanh toán online
@@ -538,19 +549,15 @@ public class ShipmentsService {
       if (needRefund) {
         order.setPaymentStatus("REFUND_PENDING");
       }
+      orderStateService.transition(
+          order,
+          OrderStatus.RETURNING,
+          operator,
+          "Giao hàng thất bại - Đang hoàn về: "
+              + reason
+              + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""));
+      order.setStatus(OrderStatus.RETURNING.name());
       orderRepository.save(order);
-
-      orderStatusHistoryRepository.save(
-          OrderStatusHistory.builder()
-              .order(order)
-              .changedBy(operator)
-              .previousStatus(fromStatus)
-              .newStatus(OrderStatus.RETURNING.name())
-              .note(
-                  "Giao hàng thất bại - Đang hoàn về: "
-                      + reason
-                      + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""))
-              .build());
 
       restockedCount = restockOrderInventory(order, operator, reason);
 

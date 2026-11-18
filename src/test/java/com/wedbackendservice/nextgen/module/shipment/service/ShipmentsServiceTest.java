@@ -18,10 +18,11 @@ import com.wedbackendservice.nextgen.module.notification.entity.Notification;
 import com.wedbackendservice.nextgen.module.notification.repository.NotificationRepository;
 import com.wedbackendservice.nextgen.module.order.entity.Order;
 import com.wedbackendservice.nextgen.module.order.entity.OrderItem;
-import com.wedbackendservice.nextgen.module.order.entity.OrderStatusHistory;
+import com.wedbackendservice.nextgen.module.order.enums.OrderStatus;
 import com.wedbackendservice.nextgen.module.order.repository.OrderItemRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderStatusHistoryRepository;
+import com.wedbackendservice.nextgen.module.order.service.OrderStateService;
 import com.wedbackendservice.nextgen.module.payment.entity.Payment;
 import com.wedbackendservice.nextgen.module.payment.repository.PaymentRepository;
 import com.wedbackendservice.nextgen.module.product.entity.ProductVariant;
@@ -67,6 +68,8 @@ class ShipmentsServiceTest {
   @Mock private InventoryTransactionRepository inventoryTransactionRepository;
 
   @Mock private NotificationRepository notificationRepository;
+
+  @Mock private OrderStateService orderStateService;
 
   @Mock private InventoryService inventoryService;
 
@@ -175,7 +178,7 @@ class ShipmentsServiceTest {
     verify(shipmentRepository).save(shipment);
     verify(orderRepository, atLeastOnce()).save(order);
     verify(paymentRepository).save(payment);
-    verify(orderStatusHistoryRepository).save(any(OrderStatusHistory.class));
+    verify(orderStateService).transition(eq(order), eq(OrderStatus.COMPLETED), any(), any());
   }
 
   @Test

@@ -78,10 +78,14 @@ public class OrderFulfillmentService {
 
     LocalDateTime now = LocalDateTime.now(clock);
 
+    String orderCode =
+        order.getOrderCode() != null ? order.getOrderCode() : ("#" + order.getOrderId());
     String confirmNote =
         StringUtils.hasText(request.getNote())
             ? request.getNote()
-            : "Duyệt xác nhận đơn hàng MB02 thành công và tạo vận đơn vận chuyển ("
+            : "Duyệt xác nhận đơn hàng "
+                + orderCode
+                + " thành công và tạo vận đơn vận chuyển ("
                 + request.getCarrier().trim()
                 + ")";
     orderStateService.transition(order, OrderStatus.CONFIRMED, operator, confirmNote);
@@ -145,8 +149,8 @@ public class OrderFulfillmentService {
           order.getOrderId(),
           "Đơn hàng đã được xác nhận",
           "Đơn hàng "
-              + order.getOrderCode()
-              + " đã được xác nhận (MB02) và đang được chuẩn bị để giao cho "
+              + orderCode
+              + " đã được xác nhận và đang được chuẩn bị để giao cho "
               + request.getCarrier().trim()
               + ".");
     }

@@ -42,7 +42,8 @@ public class VouchersService {
   private final SecurityHelper securityHelper;
   private final VoucherRepository voucherRepository;
   private final AuditLogRepository auditLogRepository;
-  private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
+  private static final ThreadLocal<DecimalFormat> CURRENCY_FORMATTER =
+      ThreadLocal.withInitial(() -> new DecimalFormat("#,###"));
 
   private String normalizeDiscountType(String rawType) {
     if (!StringUtils.hasText(rawType)) {
@@ -138,7 +139,7 @@ public class VouchersService {
 
     BigDecimal subtotal = request.getSubtotal();
     if (voucher.getMinOrderValue() != null && subtotal.compareTo(voucher.getMinOrderValue()) < 0) {
-      String minOrderFormatted = CURRENCY_FORMATTER.format(voucher.getMinOrderValue()) + "đ";
+      String minOrderFormatted = CURRENCY_FORMATTER.get().format(voucher.getMinOrderValue()) + "đ";
       throw new AppException(
           ErrorCode.ERR_VOUCHER_MIN_ORDER,
           String.format(

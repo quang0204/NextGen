@@ -423,4 +423,13 @@ public class ReviewsService {
     }
     return image.getImageUrl();
   }
+
+  @Transactional(readOnly = true)
+  public List<Long> getMyReviewedItemIds() {
+    User user = securityHelper.getCurrentUser();
+    if (user == null || user.getUserId() == null) {
+      return List.of();
+    }
+    return reviewRepository.findReviewedOrderItemIdsByUserId(user.getUserId());
+  }
 }

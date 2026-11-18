@@ -48,4 +48,13 @@ public interface ReviewRepository
               AND r.status = 'VISIBLE'
             """)
   Double averageRatingByProductId(@Param("productId") Long productId);
+
+  @Query(
+      """
+            SELECT r.orderItem.orderItemId
+            FROM Review r
+            WHERE r.orderItem.order.user.userId = :userId
+              AND r.orderItem.orderItemId IS NOT NULL
+            """)
+  java.util.List<Long> findReviewedOrderItemIdsByUserId(@Param("userId") Long userId);
 }

@@ -32,7 +32,8 @@ public class OrderPricingService {
   private final VoucherPort voucherPort;
   private final ShippingFeeCalculator shippingFeeCalculator;
 
-  private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
+  private static final ThreadLocal<DecimalFormat> CURRENCY_FORMATTER =
+      ThreadLocal.withInitial(() -> new DecimalFormat("#,###"));
 
   @Getter
   @Builder
@@ -130,7 +131,7 @@ public class OrderPricingService {
           String.format(
               "Giá sản phẩm hoặc khuyến mãi vừa thay đổi (Tổng tiền mới: %sđ). Vui lòng xác nhận lại"
                   + " đơn hàng!",
-              CURRENCY_FORMATTER.format(totalAmount)));
+              CURRENCY_FORMATTER.get().format(totalAmount)));
     }
 
     return PricingResult.builder()

@@ -272,7 +272,8 @@ public class OrderInventoryPaymentBusinessTest {
             notificationRepository,
             null,
             outboxService,
-            inventoryService);
+            inventoryService,
+            orderStateService);
 
     customer = User.builder().userId(1L).email("user@example.com").role(Role.CUSTOMER).build();
     staff = User.builder().userId(2L).email("staff@example.com").role(Role.STAFF).build();

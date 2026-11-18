@@ -17,7 +17,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class VoucherPersistenceAdapter implements VoucherPort {
 
-  private static final DecimalFormat CURRENCY_FORMATTER = new DecimalFormat("#,###");
+  private static final ThreadLocal<DecimalFormat> CURRENCY_FORMATTER =
+      ThreadLocal.withInitial(() -> new DecimalFormat("#,###"));
   private final VoucherRepository voucherRepository;
 
   @Override
@@ -55,7 +56,7 @@ public class VoucherPersistenceAdapter implements VoucherPort {
           ErrorCode.ERR_VOUCHER_MIN_ORDER,
           String.format(
               "Đơn hàng chưa đạt giá trị tối thiểu %sđ để áp dụng mã %s!",
-              CURRENCY_FORMATTER.format(appliedVoucher.getMinOrderValue()),
+              CURRENCY_FORMATTER.get().format(appliedVoucher.getMinOrderValue()),
               appliedVoucher.getCode()));
     }
     if (appliedVoucher.getUsageLimit() != null

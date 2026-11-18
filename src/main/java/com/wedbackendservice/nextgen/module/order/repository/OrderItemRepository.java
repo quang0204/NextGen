@@ -10,10 +10,12 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
-  @Query("SELECT oi FROM OrderItem oi WHERE oi.order.orderId = :orderId")
+  @Query(
+      "SELECT oi FROM OrderItem oi LEFT JOIN FETCH oi.variant v LEFT JOIN FETCH v.product WHERE oi.order.orderId = :orderId")
   List<OrderItem> findByOrderId(@Param("orderId") Long orderId);
 
-  @Query("SELECT oi FROM OrderItem oi WHERE oi.order.orderId IN :orderIds")
+  @Query(
+      "SELECT oi FROM OrderItem oi LEFT JOIN FETCH oi.variant v LEFT JOIN FETCH v.product WHERE oi.order.orderId IN :orderIds")
   List<OrderItem> findByOrderIdIn(@Param("orderIds") Collection<Long> orderIds);
 
   @Query(
