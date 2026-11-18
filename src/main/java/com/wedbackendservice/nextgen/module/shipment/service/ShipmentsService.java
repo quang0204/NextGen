@@ -243,7 +243,11 @@ public class ShipmentsService {
       }
       if (!currentStatus.canTransitionTo(targetStatus)) {
         log.warn("Không thể chuyển đổi trạng thái từ {} sang {}", currentStatus, targetStatus);
-        throw new AppException(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
+        throw new AppException(
+            ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION,
+            String.format(
+                "Tiến trình vận đơn không được nhảy cóc hoặc lùi lại! Không thể chuyển từ '%s' sang '%s'.",
+                getStatusLabel(currentStatus.name()), getStatusLabel(targetStatus.name())));
       }
     }
     if (targetStatus == ShipmentStatus.FAILED_DELIVERY
@@ -496,6 +500,23 @@ public class ShipmentsService {
     if ("FAILED_DELIVERY".equalsIgnoreCase(shipment.getShippingStatus())) {
       throw new AppException(
           ErrorCode.INVALID_REQUEST, "Vận đơn này đã được xử lý giao hàng thất bại trước đó.");
+    }
+
+    ShipmentStatus currentStatus = null;
+    if (shipment.getShippingStatus() != null && !shipment.getShippingStatus().isBlank()) {
+      try {
+        currentStatus = ShipmentStatus.valueOf(shipment.getShippingStatus().trim().toUpperCase());
+      } catch (IllegalArgumentException ignored) {
+      }
+    }
+
+    if (currentStatus != null && !currentStatus.canTransitionTo(ShipmentStatus.FAILED_DELIVERY)) {
+      log.warn("Không thể chuyển đổi trạng thái từ {} sang FAILED_DELIVERY", currentStatus);
+      throw new AppException(
+          ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION,
+          String.format(
+              "Vận đơn đang ở trạng thái '%s', chỉ khi đang giao hàng (IN_TRANSIT) mới có thể ghi nhận giao thất bại!",
+              getStatusLabel(currentStatus.name())));
     }
 
     String reason = request.getFailReason().trim();

@@ -217,4 +217,78 @@ class ShipmentsServiceTest {
 
     verify(inventoryRepository, never()).increaseQuantityAtomic(anyLong(), anyInt(), any());
   }
+
+  @Test
+  void updateShipmentStatus_SkipStep_ThrowsException() {
+    shipment.setShippingStatus("READY_TO_PICK");
+    when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+    when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+
+    // Thử nhảy cóc từ READY_TO_PICK sang IN_TRANSIT
+    ShipmentStatusUpdateRequest reqInTransit =
+        ShipmentStatusUpdateRequest.builder().status("IN_TRANSIT").build();
+
+    assertThatThrownBy(() -> shipmentsService.updateShipmentStatus(10L, reqInTransit))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
+
+    // Thử nhảy cóc từ READY_TO_PICK sang DELIVERED
+    ShipmentStatusUpdateRequest reqDelivered =
+        ShipmentStatusUpdateRequest.builder().status("DELIVERED").build();
+
+    assertThatThrownBy(() -> shipmentsService.updateShipmentStatus(10L, reqDelivered))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
+  }
+
+  @Test
+  void updateShipmentStatus_BackwardStep_ThrowsException() {
+    shipment.setShippingStatus("IN_TRANSIT");
+    when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+    when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+
+    // Thử lùi lại từ IN_TRANSIT về PICKED
+    ShipmentStatusUpdateRequest req =
+        ShipmentStatusUpdateRequest.builder().status("PICKED").build();
+
+    assertThatThrownBy(() -> shipmentsService.updateShipmentStatus(10L, req))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
+  }
+
+  @Test
+  void updateShipmentStatus_StepByStep_Success() {
+    shipment.setShippingStatus("READY_TO_PICK");
+    when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+    when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+
+    // Chuyển đúng 1 bước: READY_TO_PICK -> PICKED
+    ShipmentStatusUpdateRequest reqPicked =
+        ShipmentStatusUpdateRequest.builder().status("PICKED").build();
+
+    ShipmentStatusSyncResponse res = shipmentsService.updateShipmentStatus(10L, reqPicked);
+
+    assertThat(res).isNotNull();
+    assertThat(res.getShipmentStatus()).isEqualTo("PICKED");
+    assertThat(res.getSynchronizedOrderStatus()).isEqualTo("PICKED_UP");
+    verify(shipmentRepository).save(shipment);
+  }
+
+  @Test
+  void failDelivery_WhenReadyToPick_ThrowsException() {
+    shipment.setShippingStatus("READY_TO_PICK");
+    when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+    when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
+
+    ShipmentFailDeliveryRequest req =
+        ShipmentFailDeliveryRequest.builder().failReason("Chưa giao mà đã báo fail").build();
+
+    assertThatThrownBy(() -> shipmentsService.failDelivery(10L, req))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
+  }
 }
