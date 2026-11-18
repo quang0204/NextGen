@@ -27,6 +27,7 @@ public class ReviewsController {
 
   /** API 12.2: Gửi đánh giá. */
   @PostMapping
+  @ResponseStatus(org.springframework.http.HttpStatus.CREATED)
   public ApiResponse<ReviewResponse> createReview(@Valid @RequestBody ReviewCreateRequest request) {
     return ApiResponse.created("Gửi đánh giá thành công", reviewsService.createReview(request));
   }

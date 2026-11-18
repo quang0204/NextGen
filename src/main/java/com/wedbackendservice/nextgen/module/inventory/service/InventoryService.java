@@ -250,11 +250,14 @@ public class InventoryService {
     List<ExportedItemResponse> result = new ArrayList<>();
     for (OrderItem oi : items) {
       ProductVariant v = oi.getVariant();
-      if (v == null) continue;
-      Inventory inv = inventoryRepository.findByVariant_VariantId(v.getVariantId()).orElse(null);
+      String sku = (v != null && v.getSku() != null) ? v.getSku() : oi.getSkuSnapshot();
+      Inventory inv =
+          v != null
+              ? inventoryRepository.findByVariant_VariantId(v.getVariantId()).orElse(null)
+              : null;
       result.add(
           ExportedItemResponse.builder()
-              .sku(v.getSku())
+              .sku(sku != null ? sku : "SP-" + oi.getOrderItemId())
               .quantity(oi.getQuantity())
               .remainingOnHand(inv != null ? inv.getOnHandQty() : 0)
               .build());

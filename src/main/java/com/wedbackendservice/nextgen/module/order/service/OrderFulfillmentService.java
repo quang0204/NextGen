@@ -220,6 +220,9 @@ public class OrderFulfillmentService {
 
   @Transactional
   public PackExportOrderResponse packAndExportOrder(Long id, PackExportOrderRequest request) {
+    if (request == null) {
+      request = new PackExportOrderRequest();
+    }
     User operator = securityHelper.authenticateStaffOrAdmin();
 
     Order order =
@@ -443,10 +446,12 @@ public class OrderFulfillmentService {
   private String resolveCarrierPrefix(String carrier) {
     if (!StringUtils.hasText(carrier)) return "GHN-";
     String c = carrier.trim().toUpperCase();
-    if (c.contains("VIETTEL") || c.contains("VTP")) return "VTP-";
     if (c.contains("GHTK") || c.contains("TIẾT KIỆM") || c.contains("TIET KIEM")) return "GHTK-";
-    if (c.contains("VNPOST") || c.contains("EMS")) return "VNPOST-";
+    if (c.contains("VIETTEL") || c.contains("VTP")) return "VTP-";
+    if (c.contains("VNPOST") || c.contains("EMS") || c.contains("BƯU ĐIỆN")) return "VNPOST-";
     if (c.contains("J&T") || c.contains("JT")) return "JT-";
-    return "GHN-";
+    if (c.contains("GHN") || c.contains("NHANH")) return "GHN-";
+    String sanitized = c.replaceAll("[^A-Z0-9]", "");
+    return (sanitized.isEmpty() ? "GHN" : sanitized) + "-";
   }
 }

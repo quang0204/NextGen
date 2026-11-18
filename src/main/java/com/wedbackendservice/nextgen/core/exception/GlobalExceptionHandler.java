@@ -157,4 +157,46 @@ public class GlobalExceptionHandler {
                 .timestamp(Instant.now().toString())
                 .build());
   }
+
+  @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+  public ResponseEntity<ApiResponse<Void>> handleNoResourceFound(
+      org.springframework.web.servlet.resource.NoResourceFoundException exception) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(
+            ApiResponse.<Void>builder()
+                .success(false)
+                .statusCode(HttpStatus.NOT_FOUND.value())
+                .message("Đường dẫn không tồn tại: " + exception.getResourcePath())
+                .error("NOT_FOUND")
+                .timestamp(Instant.now().toString())
+                .build());
+  }
+
+  @ExceptionHandler(org.springframework.web.servlet.NoHandlerFoundException.class)
+  public ResponseEntity<ApiResponse<Void>> handleNoHandlerFound(
+      org.springframework.web.servlet.NoHandlerFoundException exception) {
+    return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        .body(
+            ApiResponse.<Void>builder()
+                .success(false)
+                .statusCode(HttpStatus.NOT_FOUND.value())
+                .message("Đường dẫn không tồn tại: " + exception.getRequestURL())
+                .error("NOT_FOUND")
+                .timestamp(Instant.now().toString())
+                .build());
+  }
+
+  @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+  public ResponseEntity<ApiResponse<Void>> handleMethodNotSupported(
+      org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+    return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+        .body(
+            ApiResponse.<Void>builder()
+                .success(false)
+                .statusCode(HttpStatus.METHOD_NOT_ALLOWED.value())
+                .message("Phương thức HTTP không được hỗ trợ: " + exception.getMethod())
+                .error("METHOD_NOT_ALLOWED")
+                .timestamp(Instant.now().toString())
+                .build());
+  }
 }

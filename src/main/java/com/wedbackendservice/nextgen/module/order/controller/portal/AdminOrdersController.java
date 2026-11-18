@@ -43,9 +43,14 @@ public class AdminOrdersController {
   @PostMapping("/{id:[0-9]+}/confirm")
   public ApiResponse<ConfirmOrderResponse> confirmOrder(
       @PathVariable Long id, @Valid @RequestBody ConfirmOrderRequest request) {
+    ConfirmOrderResponse response = ordersService.confirmOrder(id, request);
+    String orderCode =
+        response != null && response.getOrderCode() != null
+            ? response.getOrderCode()
+            : String.valueOf(id);
     return ApiResponse.ok(
-        "Đã duyệt xác nhận đơn hàng MB02 và tự động tạo vận đơn giao hàng!",
-        ordersService.confirmOrder(id, request));
+        String.format("Đã duyệt xác nhận đơn hàng %s và tự động tạo vận đơn giao hàng!", orderCode),
+        response);
   }
 
   /**
@@ -69,10 +74,11 @@ public class AdminOrdersController {
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/pack-export")
   public ApiResponse<PackExportOrderResponse> packAndExportOrder(
-      @PathVariable Long id, @Valid @RequestBody PackExportOrderRequest request) {
+      @PathVariable Long id, @RequestBody(required = false) PackExportOrderRequest request) {
     return ApiResponse.ok(
         "Đã hoàn tất đóng gói, lập phiếu xuất kho MB03 và bàn giao đơn vị vận chuyển thành công!",
-        ordersService.packAndExportOrder(id, request));
+        ordersService.packAndExportOrder(
+            id, request != null ? request : new PackExportOrderRequest()));
   }
 
   /**
