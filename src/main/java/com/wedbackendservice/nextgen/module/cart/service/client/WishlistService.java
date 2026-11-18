@@ -1,0 +1,142 @@
+package com.wedbackendservice.nextgen.module.cart.service.client;
+
+import com.wedbackendservice.nextgen.core.dto.PageResponse;
+import com.wedbackendservice.nextgen.core.exception.AppException;
+import com.wedbackendservice.nextgen.core.exception.ErrorCode;
+import com.wedbackendservice.nextgen.core.security.SecurityHelper;
+import com.wedbackendservice.nextgen.module.cart.dto.client.request.WishlistToggleRequest;
+import com.wedbackendservice.nextgen.module.cart.dto.client.response.WishlistListResponse;
+import com.wedbackendservice.nextgen.module.cart.dto.client.response.WishlistToggleResponse;
+import com.wedbackendservice.nextgen.module.cart.entity.Wishlist;
+import com.wedbackendservice.nextgen.module.cart.mapper.WishlistMapper;
+import com.wedbackendservice.nextgen.module.cart.repository.WishlistRepository;
+import com.wedbackendservice.nextgen.module.product.entity.Product;
+import com.wedbackendservice.nextgen.module.product.entity.ProductImage;
+import com.wedbackendservice.nextgen.module.product.entity.ProductVariant;
+import com.wedbackendservice.nextgen.module.product.repository.ProductImageRepository;
+import com.wedbackendservice.nextgen.module.product.repository.ProductRepository;
+import com.wedbackendservice.nextgen.module.product.repository.ProductSpecRepository;
+import com.wedbackendservice.nextgen.module.product.repository.ProductVariantRepository;
+import com.wedbackendservice.nextgen.module.user.entity.User;
+import java.util.*;
+import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class WishlistService {
+
+  private final WishlistRepository wishlistRepository;
+  private final ProductRepository productRepository;
+  private final ProductImageRepository productImageRepository;
+  private final ProductSpecRepository productSpecRepository;
+  private final ProductVariantRepository productVariantRepository;
+  private final SecurityHelper securityHelper;
+  private final WishlistMapper wishlistMapper;
+
+  /** API 13.1: danh sách sản phẩm yêu thích. */
+  @Transactional(readOnly = true)
+  public WishlistListResponse getMyWishlist(int page, int size) {
+    User user = securityHelper.getCurrentUser();
+    int safePage = Math.max(page, 1);
+    int safeSize = Math.min(Math.max(size, 1), 100);
+    Pageable pageable =
+        PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+    Page<Wishlist> result = wishlistRepository.findByUser_UserId(user.getUserId(), pageable);
+    List<Wishlist> wishlists = result.getContent();
+
+    List<Long> productIds =
+        wishlists.stream()
+            .map(Wishlist::getProduct)
+            .filter(Objects::nonNull)
+            .map(Product::getProductId)
+            .distinct()
+            .toList();
+
+    Map<Long, List<String>> imagesByProduct =
+        productIds.isEmpty()
+            ? Map.of()
+            : productImageRepository.findByProduct_ProductIdInAndIsPrimaryTrue(productIds).stream()
+                .filter(img -> img.getProduct() != null)
+                .collect(
+                    Collectors.groupingBy(
+                        img -> img.getProduct().getProductId(),
+                        Collectors.mapping(ProductImage::getImageUrl, Collectors.toList())));
+
+    Map<Long, List<String>> specsByProduct =
+        productIds.isEmpty()
+            ? Map.of()
+            : productSpecRepository.findByProduct_ProductIdIn(productIds).stream()
+                .filter(s -> s.getProduct() != null)
+                .collect(
+                    Collectors.groupingBy(
+                        s -> s.getProduct().getProductId(),
+                        Collectors.mapping(
+                            s -> s.getSpecName() + ": " + s.getSpecValue(), Collectors.toList())));
+
+    Map<Long, List<ProductVariant>> variantsByProduct =
+        productIds.isEmpty()
+            ? Map.of()
+            : productVariantRepository.findByProduct_ProductIdIn(productIds).stream()
+                .filter(v -> v.getProduct() != null)
+                .collect(Collectors.groupingBy(v -> v.getProduct().getProductId()));
+
+    return WishlistListResponse.builder()
+        .items(
+            wishlists.stream()
+                .map(
+                    w -> {
+                      Long pid = w.getProduct() != null ? w.getProduct().getProductId() : null;
+                      return wishlistMapper.toResponse(
+                          w,
+                          pid != null ? imagesByProduct.getOrDefault(pid, List.of()) : List.of(),
+                          pid != null ? specsByProduct.getOrDefault(pid, List.of()) : List.of(),
+                          pid != null ? variantsByProduct.getOrDefault(pid, List.of()) : List.of());
+                    })
+                .toList())
+        .total(result.getTotalElements())
+        .pageInfo(PageResponse.of(safePage, safeSize, result))
+        .build();
+  }
+
+  /** API 13.2: thêm hoặc bỏ yêu thích. */
+  @Transactional
+  public WishlistToggleResponse toggle(WishlistToggleRequest request) {
+    User user = securityHelper.getCurrentUser();
+    Product product =
+        productRepository
+            .findById(request.getProductId())
+            .orElseThrow(
+                () -> new AppException(ErrorCode.INVALID_REQUEST, "Sản phẩm không tồn tại."));
+
+    return wishlistRepository
+        .findByUser_UserIdAndProduct_ProductId(user.getUserId(), product.getProductId())
+        .map(
+            existing -> {
+              wishlistRepository.delete(existing);
+              return WishlistToggleResponse.builder()
+                  .productId(product.getProductId())
+                  .isFavorite(false)
+                  .message("Đã bỏ sản phẩm khỏi danh sách yêu thích.")
+                  .build();
+            })
+        .orElseGet(
+            () -> {
+              wishlistRepository.save(Wishlist.builder().user(user).product(product).build());
+              return WishlistToggleResponse.builder()
+                  .productId(product.getProductId())
+                  .isFavorite(true)
+                  .message("Đã thêm sản phẩm vào danh sách yêu thích.")
+                  .build();
+            });
+  }
+}

@@ -1,0 +1,33 @@
+package com.wedbackendservice.nextgen.module.cart.entity;
+
+import com.wedbackendservice.nextgen.module.product.entity.Product;
+import com.wedbackendservice.nextgen.module.user.entity.User;
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+@Entity
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name = "wishlists")
+@EntityListeners(AuditingEntityListener.class)
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class Wishlist {
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long wishlistId;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  User user;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  Product product;
+
+  @CreatedDate LocalDateTime createdAt;
+}

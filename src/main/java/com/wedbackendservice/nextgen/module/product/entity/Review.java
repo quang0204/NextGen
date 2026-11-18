@@ -1,0 +1,42 @@
+package com.wedbackendservice.nextgen.module.product.entity;
+
+import com.wedbackendservice.nextgen.module.order.entity.OrderItem;
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+@Entity
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name = "reviews")
+@EntityListeners(AuditingEntityListener.class)
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class Review {
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  Long reviewId;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  OrderItem orderItem;
+
+  @Column(nullable = false)
+  Integer rating;
+
+  String comment;
+  Boolean isVerifiedPurchase;
+
+  @Builder.Default String status = "VISIBLE";
+  String reply;
+  LocalDateTime repliedAt;
+
+  @CreatedDate LocalDateTime createdAt;
+
+  @LastModifiedDate LocalDateTime updatedAt;
+}

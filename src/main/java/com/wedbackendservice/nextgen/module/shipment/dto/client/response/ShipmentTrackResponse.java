@@ -1,0 +1,29 @@
+package com.wedbackendservice.nextgen.module.shipment.dto.client.response;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.LocalDateTime;
+import java.util.List;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ShipmentTrackResponse {
+  Long shipmentId;
+  String trackingCode;
+  String orderCode;
+  String carrier;
+  String status;
+  String statusLabel;
+  String recipientName;
+  String recipientPhone;
+  String shippingAddress;
+  LocalDateTime estimatedDeliveryDate;
+  List<ShipmentTrackItem> items;
+  List<ShipmentTimelineItem> timeline;
+}

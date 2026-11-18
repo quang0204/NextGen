@@ -1,0 +1,34 @@
+package com.wedbackendservice.nextgen.module.product.dto.portal.request;
+
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.VariantSchemaField;
+import jakarta.validation.constraints.NotBlank;
+import java.util.List;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
+public class CategoryRequest {
+
+  Long parentId;
+
+  @JsonProperty("name")
+  @JsonAlias({"name", "categoryName"})
+  @NotBlank(message = "Tên danh mục không được để trống")
+  String name;
+
+  String slug;
+  String description;
+
+  List<VariantSchemaField> variantSchema;
+
+  @JsonProperty("isVisible")
+  @JsonAlias({"isVisible", "isActive"})
+  Boolean isVisible;
+}

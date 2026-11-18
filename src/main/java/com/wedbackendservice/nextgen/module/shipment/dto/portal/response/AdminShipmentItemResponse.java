@@ -1,0 +1,31 @@
+package com.wedbackendservice.nextgen.module.shipment.dto.portal.response;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import lombok.*;
+import lombok.experimental.FieldDefaults;
+
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@FieldDefaults(level = AccessLevel.PRIVATE)
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class AdminShipmentItemResponse {
+  Long shipmentId;
+  Long orderId;
+  String orderCode;
+  String carrier;
+  String trackingCode;
+  String status;
+  String failReason;
+  String recipientName;
+  String recipientPhone;
+  String shippingAddress;
+  BigDecimal orderTotalAmount;
+  String paymentMethod;
+  String updatedBy;
+  LocalDateTime updatedAt;
+}

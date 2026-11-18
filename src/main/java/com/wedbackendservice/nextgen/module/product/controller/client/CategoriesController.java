@@ -1,0 +1,40 @@
+package com.wedbackendservice.nextgen.module.product.controller.client;
+
+import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.CategoryResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.VariantSchemaField;
+import com.wedbackendservice.nextgen.module.product.service.CategoriesAndBrandsService;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/categories")
+@RequiredArgsConstructor
+public class CategoriesController {
+
+  private final CategoriesAndBrandsService categoriesAndBrandsService;
+
+  /** API 3.1: Lấy cây danh mục phân cấp cha/con (Public) */
+  @GetMapping
+  public ApiResponse<List<CategoryResponse>> getCategoriesTree(
+      @RequestParam(defaultValue = "false") boolean includeHidden) {
+    return ApiResponse.ok(
+        "Lấy danh sách danh mục thành công",
+        categoriesAndBrandsService.getCategoriesTree(includeHidden));
+  }
+
+  /** API 3.2: Chi tiết 1 danh mục sản phẩm (Public) */
+  @GetMapping("/{id}")
+  public ApiResponse<CategoryResponse> getCategoryById(@PathVariable Long id) {
+    return ApiResponse.ok(categoriesAndBrandsService.getCategoryById(id));
+  }
+
+  /** API 3.6: Lấy schema biến thể hiệu lực của danh mục (Public / Admin) */
+  @GetMapping("/{id}/variant-schema")
+  public ApiResponse<List<VariantSchemaField>> getCategoryVariantSchema(@PathVariable Long id) {
+    return ApiResponse.ok(
+        "Lấy cấu hình biến thể danh mục thành công",
+        categoriesAndBrandsService.getCategoryVariantSchema(id));
+  }
+}

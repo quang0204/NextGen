@@ -1,0 +1,42 @@
+package com.wedbackendservice.nextgen.module.shipment.repository;
+
+import com.wedbackendservice.nextgen.module.shipment.entity.Shipment;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ShipmentRepository
+    extends JpaRepository<Shipment, Long>, JpaSpecificationExecutor<Shipment> {
+
+  Optional<Shipment> findFirstByOrder_OrderId(Long orderId);
+
+  List<Shipment> findByOrder_OrderIdIn(Collection<Long> orderIds);
+
+  @Query(
+      """
+    SELECT s FROM Shipment s
+    LEFT JOIN s.order o
+    WHERE s.trackingNumber = :code
+       OR o.orderCode = :code
+    ORDER BY s.createdAt DESC""")
+  List<Shipment> findListByTrackingCodeOrOrderCode(@Param("code") String code);
+
+  default Optional<Shipment> findByTrackingCodeOrOrderCode(String code) {
+    List<Shipment> list = findListByTrackingCodeOrOrderCode(code);
+    return list.isEmpty() ? Optional.empty() : Optional.of(list.get(0));
+  }
+
+  @Override
+  @EntityGraph(attributePaths = {"order", "updatedBy"})
+  Page<Shipment> findAll(Specification<Shipment> spec, Pageable pageable);
+}

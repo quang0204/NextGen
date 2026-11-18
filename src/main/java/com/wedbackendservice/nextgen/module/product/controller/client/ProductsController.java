@@ -1,0 +1,74 @@
+package com.wedbackendservice.nextgen.module.product.controller.client;
+
+import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductDetailResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductFeaturedResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductListResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductRelatedResponse;
+import com.wedbackendservice.nextgen.module.product.service.ProductsService;
+import java.math.BigDecimal;
+import java.util.List;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/products")
+@RequiredArgsConstructor
+public class ProductsController {
+
+  private final ProductsService productsService;
+
+  /** API 4.1: Danh sách sản phẩm dành cho khách hàng với bộ lọc đa tiêu chí (Public) */
+  @GetMapping
+  public ApiResponse<ProductListResponse> getProducts(
+      @RequestParam(defaultValue = "1") int page,
+      @RequestParam(defaultValue = "20") int limit,
+      @RequestParam(required = false) String search,
+      @RequestParam(required = false) Long brandId,
+      @RequestParam(required = false) Long categoryId,
+      @RequestParam(required = false) BigDecimal minPrice,
+      @RequestParam(required = false) BigDecimal maxPrice,
+      @RequestParam(required = false) Integer ram,
+      @RequestParam(required = false) Integer rom,
+      @RequestParam(defaultValue = "newest") String sortBy) {
+    return ApiResponse.ok(
+        "Lấy danh sách sản phẩm thành công!",
+        productsService.getProducts(
+            page, limit, search, brandId, categoryId, minPrice, maxPrice, ram, rom, sortBy));
+  }
+
+  /** API 4.2: Danh sách sản phẩm nổi bật (Flash Sale hoặc Bán chạy nhất) (Public) */
+  @GetMapping("/featured")
+  public ApiResponse<List<ProductFeaturedResponse>> getFeaturedProducts(
+      @RequestParam(defaultValue = "FLASH_SALE") String type,
+      @RequestParam(defaultValue = "8") int limit) {
+    return ApiResponse.ok(
+        "Lấy danh sách sản phẩm nổi bật thành công!",
+        productsService.getFeaturedProducts(type, limit));
+  }
+
+  /** API 4.3: Xem chi tiết sản phẩm kèm specs, images và variants (Public) */
+  @GetMapping("/{id}")
+  public ApiResponse<ProductDetailResponse> getProductDetail(@PathVariable Long id) {
+    return ApiResponse.ok(
+        "Lấy chi tiết sản phẩm thành công!", productsService.getProductDetail(id));
+  }
+
+  /** API 4.4: Gợi ý các sản phẩm liên quan (Public) */
+  @GetMapping("/{id}/related")
+  public ApiResponse<List<ProductRelatedResponse>> getRelatedProducts(
+      @PathVariable Long id, @RequestParam(defaultValue = "4") int limit) {
+    return ApiResponse.ok(
+        "Lấy sản phẩm liên quan thành công!", productsService.getRelatedProducts(id, limit));
+  }
+
+  /** Xóa ảnh sản phẩm (STAFF / ADMIN) */
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+  @DeleteMapping("/{productId}/images/{imageId}")
+  public ApiResponse<Void> deleteProductImage(
+      @PathVariable Long productId, @PathVariable Long imageId) {
+    productsService.deleteProductImage(productId, imageId);
+    return ApiResponse.ok("Xóa ảnh sản phẩm thành công!", null);
+  }
+}
