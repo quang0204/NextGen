@@ -99,6 +99,9 @@ public class PaymentService {
               .status(PaymentStatus.PENDING.name())
               .build();
       payment = paymentRepository.save(payment);
+    } else if (payment.getTransactionRef() == null || payment.getTransactionRef().isBlank()) {
+      payment.setTransactionRef(generateTransactionRef());
+      payment = paymentRepository.save(payment);
     }
 
     PaymentIntentResponse.PaymentIntentResponseBuilder builder =

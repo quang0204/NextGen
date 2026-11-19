@@ -28,7 +28,10 @@ public class BankTransferConfig {
   public String buildTransferContent(String transactionRef) {
     String prefix =
         transferPrefix == null || transferPrefix.isBlank() ? "NG" : transferPrefix.trim();
-    return prefix + " " + transactionRef;
+    if (transactionRef == null || transactionRef.isBlank()) {
+      return prefix;
+    }
+    return prefix + " " + transactionRef.trim();
   }
 
   public String buildQrContent(String transactionRef) {

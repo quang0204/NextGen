@@ -58,7 +58,7 @@ public class OrderFulfillmentService {
 
   @Transactional
   public ConfirmOrderResponse confirmOrder(Long id, ConfirmOrderRequest request) {
-    User operator = securityHelper.authenticateStaffOrAdmin();
+    User operator = securityHelper.getCurrentUser();
 
     Order order =
         orderRepository
