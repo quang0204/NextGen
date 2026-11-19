@@ -233,53 +233,20 @@ public class ShipmentsService {
     if (currentStatusStr != null && !currentStatusStr.isBlank()) {
       try {
         currentStatus = ShipmentStatus.valueOf(currentStatusStr.trim().toUpperCase());
-      } catch (IllegalArgumentException ignored) {
+      } catch (IllegalArgumentException ex) {
+        log.debug(
+            "Trạng thái vận đơn hiện tại không khớp enum ShipmentStatus: {}", currentStatusStr);
       }
     }
 
-    if (currentStatus != null) {
-      if (currentStatus == targetStatus) {
-        throw new AppException(
-            ErrorCode.INVALID_REQUEST, "Vận đơn đã ở trạng thái " + newStatusStr + " trước đó.");
-      }
-      if (!currentStatus.canTransitionTo(targetStatus)) {
-        log.warn("Không thể chuyển đổi trạng thái từ {} sang {}", currentStatus, targetStatus);
-        throw new AppException(
-            ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION,
-            String.format(
-                "Tiến trình vận đơn không được nhảy cóc hoặc lùi lại! Không thể chuyển từ '%s' sang '%s'.",
-                getStatusLabel(currentStatus.name()), getStatusLabel(targetStatus.name())));
-      }
-    }
-    if (targetStatus == ShipmentStatus.FAILED_DELIVERY
-        && (request.getNote() == null || request.getNote().trim().isBlank())) {
-      throw new AppException(
-          ErrorCode.INVALID_REQUEST,
-          "Bắt buộc ghi nhận nguyên nhân khi giao hàng thất bại (sai địa chỉ, không nghe máy...).");
-    }
-
-    shipment.setShippingStatus(targetStatus.name());
-    shipment.setUpdatedBy(operator);
-
-    if (targetStatus == ShipmentStatus.PICKED || targetStatus == ShipmentStatus.IN_TRANSIT) {
-      if (shipment.getShippedAt() == null) {
-        shipment.setShippedAt(LocalDateTime.now());
-      }
-    } else if (targetStatus == ShipmentStatus.DELIVERED) {
-      if (shipment.getDeliveredAt() == null) {
-        shipment.setDeliveredAt(LocalDateTime.now());
-      }
-    }
-
-    shipmentRepository.save(shipment);
+    validateStatusTransition(currentStatus, targetStatus, newStatusStr, request);
+    updateShipmentTimestamps(shipment, targetStatus, operator);
 
     Order order = shipment.getOrder();
     String synchronizedOrderStatus = null;
     boolean isPaymentCompleted = false;
 
     if (order != null) {
-      String fromStatus = order.getStatus();
-
       if (targetStatus == ShipmentStatus.PICKED
           || targetStatus == ShipmentStatus.IN_TRANSIT
           || targetStatus == ShipmentStatus.DELIVERED) {
@@ -309,163 +276,15 @@ public class ShipmentsService {
         order.setStatus(synchronizedOrderStatus);
         orderRepository.save(order);
       } else if (targetStatus == ShipmentStatus.DELIVERED) {
-        LocalDateTime paidNow = LocalDateTime.now();
-        boolean isCod = "COD".equalsIgnoreCase(order.getPaymentMethod());
-        boolean isAlreadyPaid = "PAID".equalsIgnoreCase(order.getPaymentStatus());
-        boolean confirmPaid =
-            isAlreadyPaid || (request.getCodCollected() == null || request.getCodCollected());
-
-        if (confirmPaid) {
-          synchronizedOrderStatus = "COMPLETED";
-          if (order.getCompletedAt() == null) {
-            order.setCompletedAt(paidNow);
-          }
-          order.setPaymentStatus("PAID");
-
-          Optional<Payment> paymentOpt =
-              paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
-          if (paymentOpt.isPresent()) {
-            Payment payment = paymentOpt.get();
-            payment.setStatus(PaymentStatus.SUCCESS.name());
-            if (payment.getPaidAt() == null) {
-              payment.setPaidAt(paidNow);
-            }
-            paymentRepository.save(payment);
-          } else {
-            paymentRepository.save(
-                Payment.builder()
-                    .order(order)
-                    .paymentMethod(
-                        order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
-                    .paymentProvider("COD_SHIPPER")
-                    .amount(order.getFinalTotal())
-                    .status(PaymentStatus.SUCCESS.name())
-                    .transactionRef("COD-" + order.getOrderCode())
-                    .paidAt(paidNow)
-                    .build());
-          }
-          isPaymentCompleted = true;
-          orderStateService.transition(
-              order,
-              OrderStatus.COMPLETED,
-              operator,
-              "Giao hàng thành công" + (isCod ? " & Hoàn tất thu tiền COD" : ""));
-          order.setStatus(synchronizedOrderStatus);
-        } else {
-          // Đơn COD giao thành công nhưng chưa xác nhận thu tiền công nợ
-          synchronizedOrderStatus = "DELIVERED";
-          order.setPaymentStatus("UNPAID");
-          orderStateService.transition(
-              order,
-              OrderStatus.DELIVERED,
-              operator,
-              "Giao hàng thành công (Chờ kế toán xác nhận công nợ COD)");
-          order.setStatus(synchronizedOrderStatus);
-        }
-        order.setUpdatedAt(paidNow);
-        orderRepository.save(order);
-
-        // Ghi nhận sự kiện giao hàng thành công & cập nhật trạng thái đơn hàng vào outbox_events
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("orderId", order.getOrderId());
-        payload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
-        payload.put(
-            "trackingCode",
-            shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "");
-        payload.put("status", synchronizedOrderStatus);
-        payload.put(
-            "paymentStatus",
-            order.getPaymentStatus() != null ? order.getPaymentStatus() : "UNPAID");
-        payload.put(
-            "totalAmount", order.getFinalTotal() != null ? order.getFinalTotal() : BigDecimal.ZERO);
-        payload.put("deliveredAt", paidNow.toString());
-
-        outboxService.saveProcessedEvent(
-            "ORDER",
-            order.getOrderCode() != null
-                ? order.getOrderCode()
-                : String.valueOf(order.getOrderId()),
-            "OrderDelivered",
-            "order-delivered-topic",
-            payload);
+        isPaymentCompleted =
+            handleOrderDeliveredSync(order, shipment, request, operator, LocalDateTime.now());
+        synchronizedOrderStatus = order.getStatus();
       } else if (targetStatus == ShipmentStatus.FAILED_DELIVERY) {
-        synchronizedOrderStatus = OrderStatus.RETURNING.name();
-        String failReason =
-            (request.getNote() != null && !request.getNote().trim().isBlank())
-                ? request.getNote().trim()
-                : "Giao hàng không thành công";
-        order.setCancelReason("Giao hàng thất bại: " + failReason);
-        shipment.setFailReason(failReason);
-        if ("PAID".equalsIgnoreCase(order.getPaymentStatus())) {
-          order.setPaymentStatus("REFUND_PENDING");
-        }
-        orderStateService.transition(
-            order,
-            OrderStatus.RETURNING,
-            operator,
-            "Giao hàng thất bại - Đang hoàn về: " + failReason);
-        order.setUpdatedAt(LocalDateTime.now());
-        orderRepository.save(order);
-        restockOrderInventory(order, operator, failReason);
-
-        // Ghi nhận sự kiện giao hàng thất bại vào outbox_events
-        outboxService.saveProcessedEvent(
-            "SHIPMENT",
-            shipment.getTrackingNumber() != null
-                ? shipment.getTrackingNumber()
-                : String.valueOf(id),
-            "DeliveryFailed",
-            "shipment-failed-topic",
-            Map.of(
-                "shipmentId",
-                id,
-                "orderId",
-                order.getOrderId(),
-                "orderCode",
-                order.getOrderCode(),
-                "trackingCode",
-                shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "",
-                "failReason",
-                failReason,
-                "status",
-                "FAILED_DELIVERY"));
+        handleOrderFailedDeliverySync(order, shipment, request, operator, id);
+        synchronizedOrderStatus = order.getStatus();
       }
 
-      // Gửi thông báo cập nhật tiến trình vận chuyển cho khách hàng
-      if (order.getUser() != null) {
-        String notifTitle = null;
-        String notifContent = null;
-        if (targetStatus == ShipmentStatus.PICKED) {
-          notifTitle = "Đơn vị vận chuyển đã lấy hàng";
-          notifContent =
-              "Đơn hàng "
-                  + order.getOrderCode()
-                  + " đã được đơn vị vận chuyển tiếp nhận và chuẩn bị trung chuyển.";
-        } else if (targetStatus == ShipmentStatus.IN_TRANSIT) {
-          notifTitle = "Đơn hàng đang trên đường giao";
-          notifContent =
-              "Đơn hàng "
-                  + order.getOrderCode()
-                  + " đang được nhân viên giao hàng vận chuyển đến bạn.";
-        } else if (targetStatus == ShipmentStatus.DELIVERED) {
-          notifTitle = "Giao hàng thành công";
-          notifContent =
-              "Đơn hàng "
-                  + order.getOrderCode()
-                  + " đã được giao thành công. Cảm ơn bạn đã mua sắm tại NextGen!";
-        }
-
-        if (notifTitle != null) {
-          notificationRepository.save(
-              Notification.builder()
-                  .user(order.getUser())
-                  .order(order)
-                  .title(notifTitle)
-                  .content(notifContent)
-                  .isRead(false)
-                  .build());
-        }
-      }
+      sendShipmentNotification(order, targetStatus);
     }
 
     return ShipmentStatusSyncResponse.builder()
@@ -476,6 +295,210 @@ public class ShipmentsService {
         .synchronizedOrderStatus(synchronizedOrderStatus)
         .isPaymentCompleted(isPaymentCompleted)
         .build();
+  }
+
+  private void validateStatusTransition(
+      ShipmentStatus currentStatus,
+      ShipmentStatus targetStatus,
+      String newStatusStr,
+      ShipmentStatusUpdateRequest request) {
+    if (currentStatus != null) {
+      if (currentStatus == targetStatus) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST, "Vận đơn đã ở trạng thái " + newStatusStr + " trước đó.");
+      }
+      if (!currentStatus.canTransitionTo(targetStatus)) {
+        log.warn("Không thể chuyển đổi trạng thái từ {} sang {}", currentStatus, targetStatus);
+        throw new AppException(
+            ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION,
+            String.format(
+                "Tiến trình vận đơn không được nhảy cóc hoặc lùi lại! Không thể chuyển từ '%s' sang '%s'.",
+                getStatusLabel(currentStatus.name()), getStatusLabel(targetStatus.name())));
+      }
+    }
+    if (targetStatus == ShipmentStatus.FAILED_DELIVERY
+        && (request.getNote() == null || request.getNote().trim().isBlank())) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST,
+          "Bắt buộc ghi nhận nguyên nhân khi giao hàng thất bại (sai địa chỉ, không nghe máy...).");
+    }
+  }
+
+  private void updateShipmentTimestamps(
+      Shipment shipment, ShipmentStatus targetStatus, User operator) {
+    shipment.setShippingStatus(targetStatus.name());
+    shipment.setUpdatedBy(operator);
+
+    if (targetStatus == ShipmentStatus.PICKED || targetStatus == ShipmentStatus.IN_TRANSIT) {
+      if (shipment.getShippedAt() == null) {
+        shipment.setShippedAt(LocalDateTime.now());
+      }
+    } else if (targetStatus == ShipmentStatus.DELIVERED) {
+      if (shipment.getDeliveredAt() == null) {
+        shipment.setDeliveredAt(LocalDateTime.now());
+      }
+    }
+    shipmentRepository.save(shipment);
+  }
+
+  private boolean handleOrderDeliveredSync(
+      Order order,
+      Shipment shipment,
+      ShipmentStatusUpdateRequest request,
+      User operator,
+      LocalDateTime paidNow) {
+    boolean isCod = "COD".equalsIgnoreCase(order.getPaymentMethod());
+    boolean isAlreadyPaid = "PAID".equalsIgnoreCase(order.getPaymentStatus());
+    boolean confirmPaid =
+        isAlreadyPaid || (request.getCodCollected() == null || request.getCodCollected());
+    boolean isPaymentCompleted = false;
+
+    if (confirmPaid) {
+      if (order.getCompletedAt() == null) {
+        order.setCompletedAt(paidNow);
+      }
+      order.setPaymentStatus("PAID");
+
+      Optional<Payment> paymentOpt =
+          paymentRepository.findFirstByOrder_OrderIdOrderByCreatedAtDesc(order.getOrderId());
+      if (paymentOpt.isPresent()) {
+        Payment payment = paymentOpt.get();
+        payment.setStatus(PaymentStatus.SUCCESS.name());
+        if (payment.getPaidAt() == null) {
+          payment.setPaidAt(paidNow);
+        }
+        paymentRepository.save(payment);
+      } else {
+        paymentRepository.save(
+            Payment.builder()
+                .order(order)
+                .paymentMethod(order.getPaymentMethod() != null ? order.getPaymentMethod() : "COD")
+                .paymentProvider("COD_SHIPPER")
+                .amount(order.getFinalTotal())
+                .status(PaymentStatus.SUCCESS.name())
+                .transactionRef("COD-" + order.getOrderCode())
+                .paidAt(paidNow)
+                .build());
+      }
+      isPaymentCompleted = true;
+      orderStateService.transition(
+          order,
+          OrderStatus.COMPLETED,
+          operator,
+          "Giao hàng thành công" + (isCod ? " & Hoàn tất thu tiền COD" : ""));
+      order.setStatus("COMPLETED");
+    } else {
+      order.setPaymentStatus("UNPAID");
+      orderStateService.transition(
+          order,
+          OrderStatus.DELIVERED,
+          operator,
+          "Giao hàng thành công (Chờ kế toán xác nhận công nợ COD)");
+      order.setStatus("DELIVERED");
+    }
+    order.setUpdatedAt(paidNow);
+    orderRepository.save(order);
+
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("orderId", order.getOrderId());
+    payload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+    payload.put(
+        "trackingCode", shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "");
+    payload.put("status", order.getStatus());
+    payload.put(
+        "paymentStatus", order.getPaymentStatus() != null ? order.getPaymentStatus() : "UNPAID");
+    payload.put(
+        "totalAmount", order.getFinalTotal() != null ? order.getFinalTotal() : BigDecimal.ZERO);
+    payload.put("deliveredAt", paidNow.toString());
+
+    outboxService.saveProcessedEvent(
+        "ORDER",
+        order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
+        "OrderDelivered",
+        "order-delivered-topic",
+        payload);
+
+    return isPaymentCompleted;
+  }
+
+  private void handleOrderFailedDeliverySync(
+      Order order,
+      Shipment shipment,
+      ShipmentStatusUpdateRequest request,
+      User operator,
+      Long shipmentId) {
+    String failReason =
+        (request.getNote() != null && !request.getNote().trim().isBlank())
+            ? request.getNote().trim()
+            : "Giao hàng không thành công";
+    order.setCancelReason("Giao hàng thất bại: " + failReason);
+    shipment.setFailReason(failReason);
+    if ("PAID".equalsIgnoreCase(order.getPaymentStatus())) {
+      order.setPaymentStatus("REFUND_PENDING");
+    }
+    orderStateService.transition(
+        order, OrderStatus.RETURNING, operator, "Giao hàng thất bại - Đang hoàn về: " + failReason);
+    order.setStatus(OrderStatus.RETURNING.name());
+    order.setUpdatedAt(LocalDateTime.now());
+    orderRepository.save(order);
+    restockOrderInventory(order, operator, failReason);
+
+    outboxService.saveProcessedEvent(
+        "SHIPMENT",
+        shipment.getTrackingNumber() != null
+            ? shipment.getTrackingNumber()
+            : String.valueOf(shipmentId),
+        "DeliveryFailed",
+        "shipment-failed-topic",
+        Map.of(
+            "shipmentId",
+            shipmentId,
+            "orderId",
+            order.getOrderId(),
+            "orderCode",
+            order.getOrderCode(),
+            "trackingCode",
+            shipment.getTrackingNumber() != null ? shipment.getTrackingNumber() : "",
+            "failReason",
+            failReason,
+            "status",
+            "FAILED_DELIVERY"));
+  }
+
+  private void sendShipmentNotification(Order order, ShipmentStatus targetStatus) {
+    if (order.getUser() == null) {
+      return;
+    }
+    String notifTitle = null;
+    String notifContent = null;
+    if (targetStatus == ShipmentStatus.PICKED) {
+      notifTitle = "Đơn vị vận chuyển đã lấy hàng";
+      notifContent =
+          "Đơn hàng "
+              + order.getOrderCode()
+              + " đã được đơn vị vận chuyển tiếp nhận và chuẩn bị trung chuyển.";
+    } else if (targetStatus == ShipmentStatus.IN_TRANSIT) {
+      notifTitle = "Đơn hàng đang trên đường giao";
+      notifContent =
+          "Đơn hàng " + order.getOrderCode() + " đang được nhân viên giao hàng vận chuyển đến bạn.";
+    } else if (targetStatus == ShipmentStatus.DELIVERED) {
+      notifTitle = "Giao hàng thành công";
+      notifContent =
+          "Đơn hàng "
+              + order.getOrderCode()
+              + " đã được giao thành công. Cảm ơn bạn đã mua sắm tại NextGen!";
+    }
+
+    if (notifTitle != null) {
+      notificationRepository.save(
+          Notification.builder()
+              .user(order.getUser())
+              .order(order)
+              .title(notifTitle)
+              .content(notifContent)
+              .isRead(false)
+              .build());
+    }
   }
 
   /**
@@ -519,7 +542,10 @@ public class ShipmentsService {
     if (shipment.getShippingStatus() != null && !shipment.getShippingStatus().isBlank()) {
       try {
         currentStatus = ShipmentStatus.valueOf(shipment.getShippingStatus().trim().toUpperCase());
-      } catch (IllegalArgumentException ignored) {
+      } catch (IllegalArgumentException ex) {
+        log.debug(
+            "Trạng thái vận đơn hiện tại không khớp enum ShipmentStatus: {}",
+            shipment.getShippingStatus());
       }
     }
 
@@ -720,12 +746,7 @@ public class ShipmentsService {
   }
 
   public static String maskPhone(String phone) {
-    if (phone == null || phone.length() < 7) {
-      return "***";
-    }
-    // Giữ lại 3 số đầu và 2 số cuối, che 5 số ở giữa (e.g. 098*****21)
-    int len = phone.length();
-    return phone.substring(0, 3) + "*****" + phone.substring(len - 2);
+    return com.wedbackendservice.nextgen.core.util.TextUtil.maskPhone(phone);
   }
 
   public static String maskShippingAddress(String address) {

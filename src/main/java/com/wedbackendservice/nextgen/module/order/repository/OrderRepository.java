@@ -23,6 +23,13 @@ public interface OrderRepository
   List<Order> findExpiredPendingOrders(
       @Param("expiredBefore") java.time.LocalDateTime expiredBefore);
 
+  @Query("SELECT o FROM Order o WHERE o.status NOT IN ('CANCELLED', 'RETURNING')")
+  List<Order> findValidOrdersForReports();
+
+  @Query(
+      "SELECT o FROM Order o WHERE o.status NOT IN ('CANCELLED', 'RETURNING') AND o.createdAt >= :afterDate")
+  List<Order> findValidOrdersForReportsAfter(@Param("afterDate") java.time.LocalDateTime afterDate);
+
   Optional<Order> findByOrderCode(String orderCode);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

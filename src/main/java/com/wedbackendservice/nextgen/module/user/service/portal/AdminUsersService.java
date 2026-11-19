@@ -418,7 +418,9 @@ public class AdminUsersService {
         Date refreshExp =
             SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
         tokenRedisService.blacklistToken(userId, tokenPair, refreshExp);
-      } catch (Exception ignored) {
+      } catch (Exception ex) {
+        log.warn(
+            "Không thể blacklist token trong Redis cho userId {}: {}", userId, ex.getMessage());
       }
     }
     tokenRedisService.deleteToken(userId);

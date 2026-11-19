@@ -113,7 +113,8 @@ public class InventoriesService {
                 }
                 case OUT_OF_STOCK -> predicates.add(cb.lessThanOrEqualTo(availDiff, 0));
               }
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException ex) {
+              log.debug("Trạng thái tồn kho không hợp lệ để lọc: {}", status);
             }
           }
 

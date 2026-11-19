@@ -275,7 +275,11 @@ public class OrderCreationService {
       if (finalRedisKey != null) {
         try {
           tokenRedisService.deleteKey(finalRedisKey);
-        } catch (Exception ignored) {
+        } catch (Exception redisEx) {
+          log.warn(
+              "[OrderCreationService] Rollback xóa Redis key {} thất bại: {}",
+              finalRedisKey,
+              redisEx.getMessage());
         }
       }
       throw ex;

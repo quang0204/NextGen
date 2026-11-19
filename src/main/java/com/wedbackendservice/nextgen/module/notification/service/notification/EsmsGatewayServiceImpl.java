@@ -125,7 +125,7 @@ public class EsmsGatewayServiceImpl implements SmsGatewayService {
   }
 
   private String maskPhone(String p) {
-    return p.length() < 8 ? "***" : p.substring(0, 3) + "***" + p.substring(p.length() - 4);
+    return com.wedbackendservice.nextgen.core.util.TextUtil.maskPhone(p);
   }
 
   private String describeError(String code) {

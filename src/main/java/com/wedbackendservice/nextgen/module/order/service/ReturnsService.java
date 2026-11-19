@@ -459,80 +459,100 @@ public class ReturnsService {
     String inspector = resolveInspector(currentUser);
 
     if ("INSPECTING".equals(newStatus)) {
-      returnRequest.setStatus("INSPECTING");
-      returnRequest.setInspectionResult(request.getInspectionResult());
-      returnRequest.setInspectedBy(currentUser);
-      returnRequest.setInspectedAt(now);
-      returnRequestRepository.saveAndFlush(returnRequest);
-
-      auditLogRepository.log(
-          currentUser,
-          "RETURN_INSPECTING",
-          "ReturnRequests",
-          returnRequest.getReturnId(),
-          "status: PENDING",
-          "status: INSPECTING");
-
-      return InspectReturnResponse.builder()
-          .returnId(returnRequest.getReturnId())
-          .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
-          .orderCode(
-              returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderCode() : null)
-          .status("INSPECTING")
-          .inspectionResult(returnRequest.getInspectionResult())
-          .inspectedBy(inspector)
-          .inspectedAt(DateTimeUtil.formatIsoInstant(returnRequest.getInspectedAt()))
-          .inventoryRestocked(false)
-          .build();
+      return handleInspecting(returnRequest, request, currentUser, now, inspector);
     }
 
-    // Kịch bản TỪ CHỐI (REJECTED)
     if ("REJECTED".equals(newStatus)) {
-      if (!StringUtils.hasText(request.getRejectReason())) {
-        throw new AppException(ErrorCode.RETURN_REJECT_REASON_REQUIRED);
-      }
-
-      returnRequest.setStatus("REJECTED");
-      returnRequest.setInspectionResult(request.getInspectionResult());
-      returnRequest.setRejectReason(request.getRejectReason());
-      returnRequest.setInspectedBy(currentUser);
-      returnRequest.setInspectedAt(now);
-      returnRequestRepository.saveAndFlush(returnRequest);
-
-      String rejOrderCode =
-          returnRequest.getOrder() != null
-              ? returnRequest.getOrder().getOrderCode()
-              : String.valueOf(returnRequest.getReturnId());
-      recordCustomerReturnOutcome(
-          returnRequest,
-          returnRequest.getRequestedBy(),
-          "Yêu cầu đổi trả đơn #" + rejOrderCode + " bị từ chối",
-          "Yêu cầu đổi trả #RMA-"
-              + returnRequest.getReturnId()
-              + " bị từ chối: "
-              + request.getRejectReason());
-
-      auditLogRepository.log(
-          currentUser,
-          "RETURN_REJECTED",
-          "ReturnRequests",
-          returnRequest.getReturnId(),
-          "status: PENDING",
-          "status: REJECTED, reason: " + request.getRejectReason());
-
-      return InspectReturnResponse.builder()
-          .returnId(returnRequest.getReturnId())
-          .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
-          .status(ReturnStatus.REJECTED.name())
-          .inspectionResult(returnRequest.getInspectionResult())
-          .rejectReason(returnRequest.getRejectReason())
-          .inspectedBy(inspector)
-          .inspectedAt(DateTimeUtil.formatIsoInstant(returnRequest.getInspectedAt()))
-          .inventoryRestocked(false)
-          .build();
+      return handleRejected(returnRequest, request, currentUser, now, inspector);
     }
 
-    // Kịch bản CHẤP THUẬN (APPROVED)
+    return handleApproved(returnRequest, request, currentUser, now, inspector);
+  }
+
+  private InspectReturnResponse handleInspecting(
+      ReturnRequest returnRequest,
+      InspectReturnRequest request,
+      User currentUser,
+      LocalDateTime now,
+      String inspector) {
+    returnRequest.setStatus("INSPECTING");
+    returnRequest.setInspectionResult(request.getInspectionResult());
+    returnRequest.setInspectedBy(currentUser);
+    returnRequest.setInspectedAt(now);
+    returnRequestRepository.saveAndFlush(returnRequest);
+
+    auditLogRepository.log(
+        currentUser,
+        "RETURN_INSPECTING",
+        "ReturnRequests",
+        returnRequest.getReturnId(),
+        "status: PENDING",
+        "status: INSPECTING");
+
+    return InspectReturnResponse.builder()
+        .returnId(returnRequest.getReturnId())
+        .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
+        .orderCode(
+            returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderCode() : null)
+        .status("INSPECTING")
+        .inspectionResult(returnRequest.getInspectionResult())
+        .inspectedBy(inspector)
+        .inspectedAt(DateTimeUtil.formatIsoInstant(returnRequest.getInspectedAt()))
+        .inventoryRestocked(false)
+        .build();
+  }
+
+  private InspectReturnResponse handleRejected(
+      ReturnRequest returnRequest,
+      InspectReturnRequest request,
+      User currentUser,
+      LocalDateTime now,
+      String inspector) {
+    if (!StringUtils.hasText(request.getRejectReason())) {
+      throw new AppException(ErrorCode.RETURN_REJECT_REASON_REQUIRED);
+    }
+
+    returnRequest.setStatus("REJECTED");
+    returnRequest.setInspectionResult(request.getInspectionResult());
+    returnRequest.setRejectReason(request.getRejectReason());
+    returnRequest.setInspectedBy(currentUser);
+    returnRequest.setInspectedAt(now);
+    returnRequestRepository.saveAndFlush(returnRequest);
+
+    String rejOrderCode =
+        returnRequest.getOrder() != null
+            ? returnRequest.getOrder().getOrderCode()
+            : String.valueOf(returnRequest.getReturnId());
+    recordCustomerReturnOutcome(
+        returnRequest,
+        returnRequest.getRequestedBy(),
+        "Yêu cầu đổi trả đơn #" + rejOrderCode + " bị từ chối",
+        "Yêu cầu đổi trả #RMA-"
+            + returnRequest.getReturnId()
+            + " bị từ chối: "
+            + request.getRejectReason());
+
+    auditLogRepository.log(
+        currentUser,
+        "RETURN_REJECTED",
+        "ReturnRequests",
+        returnRequest.getReturnId(),
+        "status: PENDING",
+        "status: REJECTED, reason: " + request.getRejectReason());
+
+    return InspectReturnResponse.builder()
+        .returnId(returnRequest.getReturnId())
+        .orderId(returnRequest.getOrder() != null ? returnRequest.getOrder().getOrderId() : null)
+        .status(ReturnStatus.REJECTED.name())
+        .inspectionResult(returnRequest.getInspectionResult())
+        .rejectReason(returnRequest.getRejectReason())
+        .inspectedBy(inspector)
+        .inspectedAt(DateTimeUtil.formatIsoInstant(returnRequest.getInspectedAt()))
+        .inventoryRestocked(false)
+        .build();
+  }
+
+  private void validateApproval(ReturnRequest returnRequest, InspectReturnRequest request) {
     if (request.getRefundAmount() == null
         || request.getRefundAmount().compareTo(BigDecimal.ZERO) < 0) {
       throw new AppException(
@@ -614,30 +634,15 @@ public class ReturnsService {
         }
       }
     }
+  }
 
-    returnRequest.setStatus(ReturnStatus.APPROVED.name());
-    returnRequest.setInspectionResult(request.getInspectionResult());
-    returnRequest.setRefundAmount(request.getRefundAmount());
-    returnRequest.setInspectedBy(currentUser);
-    returnRequest.setInspectedAt(now);
-    returnRequest.setApprovedAt(now);
-
-    String restockedJson = null;
-    if (request.getRestockItems() != null && !request.getRestockItems().isEmpty()) {
-      try {
-        restockedJson = objectMapper.writeValueAsString(request.getRestockItems());
-      } catch (Exception e) {
-        log.warn("Cannot serialize restockItems: {}", e.getMessage());
-      }
-    }
-    returnRequest.setRestockedItems(restockedJson);
-    returnRequestRepository.saveAndFlush(returnRequest);
-
-    // 1. Tự động hoàn kho vật lý: tăng on_hand_qty và available_qty trong Inventories (atomic)
-    // 2. Ghi nhận sổ cái bất biến Inventory_Transactions với form_code = 'MB04' và txn_type =
-    // 'RETURN'
+  private List<RestockedItemResponse> executeRestockInventoryMB04(
+      ReturnRequest returnRequest,
+      List<RestockItemRequest> restockItems,
+      User currentUser,
+      LocalDateTime now) {
     List<RestockedItemResponse> restockedList = new ArrayList<>();
-    for (RestockItemRequest item : request.getRestockItems()) {
+    for (RestockItemRequest item : restockItems) {
       ProductVariant variant =
           productVariantRepository
               .findById(item.getVariantId())
@@ -696,54 +701,93 @@ public class ReturnsService {
               .newAvailableQty(inventory.getAvailableQty())
               .build());
     }
+    return restockedList;
+  }
 
-    // 3. Kích hoạt tiến trình hoàn tiền (refund_amount) qua phân hệ Payments
-    if (order != null) {
-      Payment refundPayment =
-          Payment.builder()
-              .order(order)
-              .paymentMethod(
-                  order.getPaymentMethod() != null ? order.getPaymentMethod() : "BANK_TRANSFER")
-              .paymentProvider("SYSTEM_REFUND")
-              .amount(request.getRefundAmount())
-              .status(PaymentStatus.REFUNDED.name())
-              .transactionRef(
-                  "REFUND-MB04-" + returnRequest.getReturnId() + "-" + System.currentTimeMillis())
-              .paidAt(now)
-              .build();
-      paymentRepository.save(refundPayment);
+  private void executePaymentRefund(
+      ReturnRequest returnRequest,
+      BigDecimal refundAmount,
+      Order order,
+      User currentUser,
+      LocalDateTime now) {
+    Payment refundPayment =
+        Payment.builder()
+            .order(order)
+            .paymentMethod(
+                order.getPaymentMethod() != null ? order.getPaymentMethod() : "BANK_TRANSFER")
+            .paymentProvider("SYSTEM_REFUND")
+            .amount(refundAmount)
+            .status(PaymentStatus.REFUNDED.name())
+            .transactionRef(
+                "REFUND-MB04-" + returnRequest.getReturnId() + "-" + System.currentTimeMillis())
+            .paidAt(now)
+            .build();
+    paymentRepository.save(refundPayment);
 
-      BigDecimal totalRefunded =
-          returnRequestRepository
-              .findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
-              .stream()
-              .filter(
-                  r -> "APPROVED".equalsIgnoreCase(r.getStatus()) && r.getRefundAmount() != null)
-              .map(ReturnRequest::getRefundAmount)
-              .reduce(BigDecimal.ZERO, BigDecimal::add)
-              .add(request.getRefundAmount());
+    BigDecimal totalRefunded =
+        returnRequestRepository
+            .findByOrder_OrderIdInOrderByCreatedAtDesc(List.of(order.getOrderId()))
+            .stream()
+            .filter(r -> "APPROVED".equalsIgnoreCase(r.getStatus()) && r.getRefundAmount() != null)
+            .map(ReturnRequest::getRefundAmount)
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .add(refundAmount);
 
-      boolean isPartial =
-          order.getFinalAmount() != null && totalRefunded.compareTo(order.getFinalAmount()) < 0;
-      order.setPaymentStatus(isPartial ? "PARTIALLY_REFUNDED" : PaymentStatus.REFUNDED.name());
-      order.setUpdatedAt(now);
-      orderRepository.save(order);
+    boolean isPartial =
+        order.getFinalAmount() != null && totalRefunded.compareTo(order.getFinalAmount()) < 0;
+    order.setPaymentStatus(isPartial ? "PARTIALLY_REFUNDED" : PaymentStatus.REFUNDED.name());
+    order.setUpdatedAt(now);
+    orderRepository.save(order);
 
-      // Hoàn trả lại lượt dùng voucher cho khách hàng nếu đơn hàng được hoàn trả toàn bộ
-      if (!isPartial && order.getVoucher() != null) {
-        voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
+    // Hoàn trả lại lượt dùng voucher cho khách hàng nếu đơn hàng được hoàn trả toàn bộ
+    if (!isPartial && order.getVoucher() != null) {
+      voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
+    }
+
+    auditLogRepository.log(
+        currentUser,
+        "PAYMENT_REFUND",
+        "Payments",
+        refundPayment.getPaymentId(),
+        null,
+        (isPartial ? "Hoàn trả một phần " : "Hoàn trả ")
+            + refundAmount
+            + " VND cho yêu cầu đổi trả #"
+            + returnRequest.getReturnId());
+  }
+
+  private InspectReturnResponse handleApproved(
+      ReturnRequest returnRequest,
+      InspectReturnRequest request,
+      User currentUser,
+      LocalDateTime now,
+      String inspector) {
+    validateApproval(returnRequest, request);
+
+    returnRequest.setStatus(ReturnStatus.APPROVED.name());
+    returnRequest.setInspectionResult(request.getInspectionResult());
+    returnRequest.setRefundAmount(request.getRefundAmount());
+    returnRequest.setInspectedBy(currentUser);
+    returnRequest.setInspectedAt(now);
+    returnRequest.setApprovedAt(now);
+
+    String restockedJson = null;
+    if (request.getRestockItems() != null && !request.getRestockItems().isEmpty()) {
+      try {
+        restockedJson = objectMapper.writeValueAsString(request.getRestockItems());
+      } catch (Exception e) {
+        log.warn("Cannot serialize restockItems: {}", e.getMessage());
       }
+    }
+    returnRequest.setRestockedItems(restockedJson);
+    returnRequestRepository.saveAndFlush(returnRequest);
 
-      auditLogRepository.log(
-          currentUser,
-          "PAYMENT_REFUND",
-          "Payments",
-          refundPayment.getPaymentId(),
-          null,
-          (isPartial ? "Hoàn trả một phần " : "Hoàn trả ")
-              + request.getRefundAmount()
-              + " VND cho yêu cầu đổi trả #"
-              + returnRequest.getReturnId());
+    List<RestockedItemResponse> restockedList =
+        executeRestockInventoryMB04(returnRequest, request.getRestockItems(), currentUser, now);
+
+    Order order = returnRequest.getOrder();
+    if (order != null) {
+      executePaymentRefund(returnRequest, request.getRefundAmount(), order, currentUser, now);
     }
 
     String appOrderCode =
@@ -763,6 +807,7 @@ public class ReturnsService {
         order != null
             && order.getFinalAmount() != null
             && totalRefundedSummary.compareTo(order.getFinalAmount()) < 0;
+
     recordCustomerReturnOutcome(
         returnRequest,
         returnRequest.getRequestedBy(),

@@ -56,30 +56,16 @@ public class AdminReportsService {
     String safeScope = StringUtils.hasText(scope) ? scope.trim().toUpperCase() : "VARIANT";
 
     // 1. Lọc đơn hàng hợp lệ (không tính các đơn CANCELLED hoặc RETURNING)
-    List<Order> validOrders =
-        orderRepository.findAll().stream()
-            .filter(
-                o ->
-                    !"CANCELLED".equalsIgnoreCase(o.getStatus())
-                        && !"RETURNING".equalsIgnoreCase(o.getStatus()))
-            .filter(
-                o -> {
-                  if (!StringUtils.hasText(timeRange) || "ALL".equalsIgnoreCase(timeRange)) {
-                    return true;
-                  }
-                  if (o.getCreatedAt() == null) {
-                    return true;
-                  }
-                  LocalDateTime now = LocalDateTime.now();
-                  if ("7DAYS".equalsIgnoreCase(timeRange)) {
-                    return o.getCreatedAt().isAfter(now.minusDays(7));
-                  }
-                  if ("MONTH".equalsIgnoreCase(timeRange)) {
-                    return o.getCreatedAt().isAfter(now.minusDays(30));
-                  }
-                  return true;
-                })
-            .toList();
+    List<Order> validOrders;
+    if ("7DAYS".equalsIgnoreCase(timeRange)) {
+      validOrders =
+          orderRepository.findValidOrdersForReportsAfter(LocalDateTime.now().minusDays(7));
+    } else if ("MONTH".equalsIgnoreCase(timeRange)) {
+      validOrders =
+          orderRepository.findValidOrdersForReportsAfter(LocalDateTime.now().minusDays(30));
+    } else {
+      validOrders = orderRepository.findValidOrdersForReports();
+    }
 
     if (validOrders.isEmpty()) {
       return Collections.emptyList();
@@ -319,13 +305,7 @@ public class AdminReportsService {
 
     // 1. Tính tổng số lượng đã bán của từng variant qua OrderItems hợp lệ
     Map<Long, Long> variantSoldMap = new HashMap<>();
-    List<Order> validOrders =
-        orderRepository.findAll().stream()
-            .filter(
-                o ->
-                    !"CANCELLED".equalsIgnoreCase(o.getStatus())
-                        && !"RETURNING".equalsIgnoreCase(o.getStatus()))
-            .toList();
+    List<Order> validOrders = orderRepository.findValidOrdersForReports();
 
     if (!validOrders.isEmpty()) {
       Set<Long> orderIds = validOrders.stream().map(Order::getOrderId).collect(Collectors.toSet());
@@ -341,7 +321,7 @@ public class AdminReportsService {
     }
 
     // 2. Quét các bản ghi tồn kho có hàng thực tế vật lý (onHandQty > 0)
-    List<Inventory> allInventories = inventoryRepository.findAll();
+    List<Inventory> allInventories = inventoryRepository.findWithStockPositive();
     List<SlowMovingItemResponse> slowItems = new ArrayList<>();
     LocalDateTime now = LocalDateTime.now();
 

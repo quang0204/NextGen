@@ -98,12 +98,7 @@ public class ProductsService {
   }
 
   private static String stripAccents(String input) {
-    if (input == null) return "";
-    String normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD);
-    return normalized
-        .replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
-        .replace('đ', 'd')
-        .replace('Đ', 'D')
+    return com.wedbackendservice.nextgen.core.util.TextUtil.stripAccents(input)
         .toLowerCase()
         .trim();
   }
@@ -154,7 +149,8 @@ public class ProductsService {
           return c.getCategoryId();
         }
       }
-    } catch (Exception ignored) {
+    } catch (Exception ex) {
+      log.debug("Lỗi tìm kiếm category ngầm định: {}", ex.getMessage());
     }
     return fallbackId;
   }
@@ -2212,7 +2208,8 @@ public class ProductsService {
       currentUser = securityHelper.getCurrentUser();
     } catch (AppException e) {
       throw e;
-    } catch (Exception ignored) {
+    } catch (Exception ex) {
+      log.debug("Không thể lấy currentUser trong phiên upload: {}", ex.getMessage());
     }
     if (currentUser != null
         && session.getOwnerId() != null

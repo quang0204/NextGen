@@ -29,6 +29,9 @@ public interface InventoryRepository
 
   List<Inventory> findByVariant_VariantIdIn(Collection<Long> variantIds);
 
+  @Query("SELECT i FROM Inventory i WHERE i.quantity > 0")
+  List<Inventory> findWithStockPositive();
+
   @Modifying(flushAutomatically = true)
   @Query(
       "UPDATE Inventory i SET i.quantity = :qty, i.updatedAt = :now WHERE i.variant.variantId = :variantId")

@@ -19,10 +19,8 @@ import com.wedbackendservice.nextgen.module.product.repository.CategoryRepositor
 import com.wedbackendservice.nextgen.module.product.repository.ProductRepository;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.user.enums.Role;
-import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -556,20 +554,7 @@ public class CategoriesAndBrandsService {
     return countMap;
   }
 
-  private static final Pattern NONLATIN = Pattern.compile("[^\\w-]");
-  private static final Pattern WHITESPACE = Pattern.compile("[\\s]");
-
   public static String toSlug(String input) {
-    if (input == null || input.isBlank()) {
-      return "";
-    }
-    String nowhitespace = WHITESPACE.matcher(input.trim()).replaceAll("-");
-    String normalized = Normalizer.normalize(nowhitespace, Normalizer.Form.NFD);
-    String slug =
-        Pattern.compile("\\p{InCombiningDiacriticalMarks}+").matcher(normalized).replaceAll("");
-    slug = slug.replace("đ", "d").replace("Đ", "d");
-    slug = NONLATIN.matcher(slug).replaceAll("");
-    slug = slug.replaceAll("-{2,}", "-");
-    return slug.toLowerCase(Locale.ENGLISH).replaceAll("^-|-$", "");
+    return com.wedbackendservice.nextgen.core.util.TextUtil.toSlug(input);
   }
 }
