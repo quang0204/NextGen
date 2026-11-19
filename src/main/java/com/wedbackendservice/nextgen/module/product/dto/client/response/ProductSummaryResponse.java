@@ -22,6 +22,8 @@ public class ProductSummaryResponse {
   BigDecimal maxPrice;
   Integer totalVariants;
   Integer soldCount;
+  Double rating;
+  Integer reviewCount;
   List<String> availableColors;
   Boolean isAvailable;
   String status;

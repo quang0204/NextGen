@@ -16,5 +16,7 @@ public class ProductRelatedResponse {
   String name;
   String primaryImage;
   BigDecimal minPrice;
+  Double rating;
+  Integer reviewCount;
   String brand;
 }

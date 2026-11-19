@@ -22,6 +22,8 @@ public class ProductDetailResponse {
   String warrantyPolicy;
   String status;
   Integer soldCount;
+  Double rating;
+  Integer reviewCount;
   List<ProductImageResponse> images;
   List<SpecGroupResponse> specs;
   List<VariantSchemaField> variantSchema;

@@ -41,6 +41,7 @@ import com.wedbackendservice.nextgen.module.product.repository.ProductImageRepos
 import com.wedbackendservice.nextgen.module.product.repository.ProductRepository;
 import com.wedbackendservice.nextgen.module.product.repository.ProductSpecRepository;
 import com.wedbackendservice.nextgen.module.product.repository.ProductVariantRepository;
+import com.wedbackendservice.nextgen.module.product.repository.ReviewRepository;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.voucher.entity.Promotion;
 import com.wedbackendservice.nextgen.module.voucher.entity.PromotionVariant;
@@ -82,6 +83,7 @@ public class ProductsService {
   private final PromotionVariantRepository promotionVariantRepository;
   private final AuditLogRepository auditLogRepository;
   private final OrderItemRepository orderItemRepository;
+  private final ReviewRepository reviewRepository;
   private final InventoryTransactionRepository inventoryTransactionRepository;
   private final SecurityHelper securityHelper;
   private final TokenRedisService tokenRedisService;
@@ -95,6 +97,24 @@ public class ProductsService {
     return orderItemRepository.countSoldByProductIds(productIds).stream()
         .filter(r -> r != null && r[0] != null && r[1] != null)
         .collect(Collectors.toMap(r -> (Long) r[0], r -> ((Number) r[1]).intValue(), (a, b) -> a));
+  }
+
+  public record ProductRatingStat(Double rating, Integer reviewCount) {}
+
+  private Map<Long, ProductRatingStat> getRatingStatsMap(Collection<Long> productIds) {
+    if (productIds == null || productIds.isEmpty()) return Map.of();
+    return reviewRepository.findRatingStatsByProductIds(productIds).stream()
+        .filter(r -> r != null && r[0] != null)
+        .collect(
+            Collectors.toMap(
+                r -> (Long) r[0],
+                r -> {
+                  int count = r[1] != null ? ((Number) r[1]).intValue() : 0;
+                  double avg = r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
+                  double rounded = Math.round(avg * 10.0) / 10.0;
+                  return new ProductRatingStat(rounded, count);
+                },
+                (a, b) -> a));
   }
 
   private static String stripAccents(String input) {
@@ -634,6 +654,7 @@ public class ProductsService {
                 Collectors.toMap(inv -> inv.getVariant().getVariantId(), inv -> inv, (a, b) -> a));
 
     Map<Long, Integer> soldMap = getSoldCountMap(productIds);
+    Map<Long, ProductRatingStat> ratingMap = getRatingStatsMap(productIds);
 
     List<ProductSummaryResponse> items = new ArrayList<>();
     for (Product product : products) {
@@ -721,6 +742,14 @@ public class ProductsService {
               .maxPrice(maxP)
               .totalVariants(pVariants.size())
               .soldCount(soldMap.getOrDefault(product.getProductId(), 0))
+              .rating(
+                  ratingMap
+                      .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                      .rating())
+              .reviewCount(
+                  ratingMap
+                      .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                      .reviewCount())
               .availableColors(availableColors)
               .isAvailable(isAvailable)
               .status(product.getStatus())
@@ -783,6 +812,8 @@ public class ProductsService {
                 : inventoryRepository.findByVariant_VariantIdIn(promoVariantIds).stream()
                     .collect(
                         Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
+        Map<Long, ProductRatingStat> promoRatingMap =
+            getRatingStatsMap(promoVariantsByProduct.keySet());
         for (Map.Entry<Long, List<PromotionVariant>> entry : promoVariantsByProduct.entrySet()) {
           if (featured.size() >= maxItems) break;
 
@@ -832,6 +863,14 @@ public class ProductsService {
                   .originalPrice(originalPrice)
                   .salePrice(salePrice)
                   .discountPercent(Math.max(0, discountPercent))
+                  .rating(
+                      promoRatingMap
+                          .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                          .rating())
+                  .reviewCount(
+                      promoRatingMap
+                          .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                          .reviewCount())
                   .promotion(
                       promo != null
                           ? ProductFeaturedResponse.PromotionSummary.builder()
@@ -907,6 +946,7 @@ public class ProductsService {
             ? Map.of()
             : inventoryRepository.findByVariant_VariantIdIn(firstVariantIds).stream()
                 .collect(Collectors.toMap(i -> i.getVariant().getVariantId(), i -> i, (a, b) -> a));
+    Map<Long, ProductRatingStat> ratingMap = getRatingStatsMap(activeProductIds);
 
     for (Product product : products) {
       List<ProductVariant> variants =
@@ -955,6 +995,14 @@ public class ProductsService {
               .originalPrice(originalPrice)
               .salePrice(salePrice)
               .discountPercent(Math.max(0, discountPercent))
+              .rating(
+                  ratingMap
+                      .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                      .rating())
+              .reviewCount(
+                  ratingMap
+                      .getOrDefault(product.getProductId(), new ProductRatingStat(0.0, 0))
+                      .reviewCount())
               .promotion(promoSummary)
               .inStock(inStock)
               .build());
@@ -1042,6 +1090,9 @@ public class ProductsService {
             .map(v -> productVariantMapper.toVariantDetailResponse(v, invMap.get(v.getVariantId())))
             .toList();
 
+    ProductRatingStat ratingStat =
+        getRatingStatsMap(List.of(id)).getOrDefault(id, new ProductRatingStat(0.0, 0));
+
     return ProductDetailResponse.builder()
         .productId(product.getProductId())
         .name(product.getProductName())
@@ -1063,6 +1114,8 @@ public class ProductsService {
         .warrantyPolicy(product.getWarrantyPolicy())
         .status(product.getStatus())
         .soldCount(getSoldCountMap(List.of(id)).getOrDefault(id, 0))
+        .rating(ratingStat.rating())
+        .reviewCount(ratingStat.reviewCount())
         .images(imageResponses)
         .specs(specGroupResponses)
         .variantSchema(resolveEffectiveVariantSchema(product.getCategory()))
@@ -1256,6 +1309,7 @@ public class ProductsService {
                     (a, b) -> a));
 
     List<ProductRelatedResponse> response = new ArrayList<>();
+    Map<Long, ProductRatingStat> ratingMap = getRatingStatsMap(relIds);
     for (Product p : related) {
       List<ProductVariant> pVars =
           variantsByProduct.getOrDefault(p.getProductId(), Collections.emptyList());
@@ -1274,6 +1328,14 @@ public class ProductsService {
               .name(p.getProductName())
               .primaryImage(img)
               .minPrice(minP)
+              .rating(
+                  ratingMap
+                      .getOrDefault(p.getProductId(), new ProductRatingStat(0.0, 0))
+                      .rating())
+              .reviewCount(
+                  ratingMap
+                      .getOrDefault(p.getProductId(), new ProductRatingStat(0.0, 0))
+                      .reviewCount())
               .brand(p.getBrand() != null ? p.getBrand().getBrandName() : null)
               .build());
     }

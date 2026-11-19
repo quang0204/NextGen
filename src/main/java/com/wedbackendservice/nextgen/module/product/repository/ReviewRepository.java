@@ -51,6 +51,17 @@ public interface ReviewRepository
 
   @Query(
       """
+            SELECT r.orderItem.variant.product.productId, COUNT(r.reviewId), AVG(r.rating)
+            FROM Review r
+            WHERE r.orderItem.variant.product.productId IN :productIds
+              AND r.status = 'VISIBLE'
+            GROUP BY r.orderItem.variant.product.productId
+            """)
+  java.util.List<Object[]> findRatingStatsByProductIds(
+      @Param("productIds") java.util.Collection<Long> productIds);
+
+  @Query(
+      """
             SELECT r.orderItem.orderItemId
             FROM Review r
             WHERE r.orderItem.order.user.userId = :userId

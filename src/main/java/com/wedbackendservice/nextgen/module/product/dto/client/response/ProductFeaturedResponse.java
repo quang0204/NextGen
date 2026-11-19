@@ -18,6 +18,8 @@ public class ProductFeaturedResponse {
   BigDecimal originalPrice;
   BigDecimal salePrice;
   Integer discountPercent;
+  Double rating;
+  Integer reviewCount;
   PromotionSummary promotion;
   Boolean inStock;
 
