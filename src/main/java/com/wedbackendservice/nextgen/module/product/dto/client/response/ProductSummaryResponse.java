@@ -47,5 +47,9 @@ public class ProductSummaryResponse {
   public static class CategorySummary {
     Long categoryId;
     String name;
+    Long parentId;
+    String parentName;
+    Long rootCategoryId;
+    String rootCategoryName;
   }
 }
