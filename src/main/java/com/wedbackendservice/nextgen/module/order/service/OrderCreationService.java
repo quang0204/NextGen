@@ -288,6 +288,9 @@ public class OrderCreationService {
           ErrorCode.INVALID_REQUEST, "Phương thức thanh toán không được để trống!");
     }
     String upper = raw.trim().toUpperCase();
+    if ("SIMULATED_TRANSFER".equals(upper)) {
+      return PaymentMethod.BANK_TRANSFER.name();
+    }
     if (!PaymentMethod.COD.name().equals(upper)
         && !PaymentMethod.BANK_TRANSFER.name().equals(upper)) {
       throw new AppException(

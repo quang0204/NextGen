@@ -12,6 +12,7 @@ import com.wedbackendservice.nextgen.core.security.SecurityHelper;
 import com.wedbackendservice.nextgen.module.order.entity.Order;
 import com.wedbackendservice.nextgen.module.order.repository.OrderRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderStatusHistoryRepository;
+import com.wedbackendservice.nextgen.module.order.service.OrderStateService;
 import com.wedbackendservice.nextgen.module.payment.dto.client.request.CreatePaymentIntentRequest;
 import com.wedbackendservice.nextgen.module.payment.dto.client.request.SimulateCallbackRequest;
 import com.wedbackendservice.nextgen.module.payment.dto.client.response.SimulateCallbackResponse;
@@ -43,6 +44,8 @@ class PaymentServiceTest {
   @Mock private SecurityHelper securityHelper;
 
   @Mock private BankTransferConfig bankTransferConfig;
+
+  @Mock private OrderStateService orderStateService;
 
   @InjectMocks private PaymentService paymentService;
 

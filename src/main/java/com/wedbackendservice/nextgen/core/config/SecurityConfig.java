@@ -85,7 +85,7 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                     .permitAll()
-                    .requestMatchers("/api/v1/admin/**")
+                    .requestMatchers("/api/v1/admin/**", "/admin/**")
                     .hasAnyRole("ADMIN", "STAFF")
                     // Khách đã đăng nhập được tải ảnh đánh giá (storageType = REVIEWS); loại khác
                     // StorageFileService chỉ cho STAFF / ADMIN
@@ -114,12 +114,23 @@ public class SecurityConfig {
     jwtDecoder.setJwtValidator(
         new DelegatingOAuth2TokenValidator<>(
             JwtValidators.createDefault(),
-            jwt ->
-                "access".equals(jwt.getClaimAsString("token_type"))
-                        && !tokenRedisService.isTokenBlacklisted(
-                            Long.valueOf(jwt.getSubject()), jwt.getTokenValue())
+            jwt -> {
+              if (!"access".equals(jwt.getClaimAsString("token_type"))) {
+                return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
+              }
+              String sub = jwt.getSubject();
+              if (sub == null || !sub.matches("^\\d+$")) {
+                return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
+              }
+              try {
+                Long userId = Long.valueOf(sub);
+                return !tokenRedisService.isTokenBlacklisted(userId, jwt.getTokenValue())
                     ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"))));
+                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
+              } catch (Exception e) {
+                return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
+              }
+            }));
     return jwtDecoder;
   }
 
@@ -146,7 +157,7 @@ public class SecurityConfig {
     corsConfiguration.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
     corsConfiguration.setAllowedMethods(
         List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-    corsConfiguration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+    corsConfiguration.setAllowedHeaders(List.of("*"));
     corsConfiguration.setMaxAge(3600L);
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", corsConfiguration);

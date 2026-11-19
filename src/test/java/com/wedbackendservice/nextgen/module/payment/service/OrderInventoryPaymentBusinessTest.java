@@ -257,7 +257,8 @@ public class OrderInventoryPaymentBusinessTest {
             securityHelper,
             bankTransferConfig,
             inventoryService,
-            outboxService);
+            outboxService,
+            orderStateService);
 
     shipmentsService =
         new ShipmentsService(

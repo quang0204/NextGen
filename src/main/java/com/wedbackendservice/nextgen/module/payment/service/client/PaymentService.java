@@ -8,10 +8,10 @@ import com.wedbackendservice.nextgen.core.outbox.service.OutboxService;
 import com.wedbackendservice.nextgen.core.security.SecurityHelper;
 import com.wedbackendservice.nextgen.module.inventory.service.InventoryService;
 import com.wedbackendservice.nextgen.module.order.entity.Order;
-import com.wedbackendservice.nextgen.module.order.entity.OrderStatusHistory;
 import com.wedbackendservice.nextgen.module.order.enums.OrderStatus;
 import com.wedbackendservice.nextgen.module.order.repository.OrderRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderStatusHistoryRepository;
+import com.wedbackendservice.nextgen.module.order.service.OrderStateService;
 import com.wedbackendservice.nextgen.module.payment.dto.client.request.CreatePaymentIntentRequest;
 import com.wedbackendservice.nextgen.module.payment.dto.client.request.SimulateCallbackRequest;
 import com.wedbackendservice.nextgen.module.payment.dto.client.response.PaymentIntentResponse;
@@ -48,6 +48,7 @@ public class PaymentService {
   private final BankTransferConfig bankTransferConfig;
   private final InventoryService inventoryService;
   private final OutboxService outboxService;
+  private final OrderStateService orderStateService;
 
   /**
    * API 10.1: tạo thanh toán QR mô phỏng (chỉ dành cho BANK_TRANSFER). COD tuyệt đối không hiển thị
@@ -180,23 +181,17 @@ public class PaymentService {
     payment.setPaidAt(now);
     paymentRepository.save(payment);
 
-    String prevStatus = order.getStatus();
     order.setPaymentStatus("PAID");
+    orderStateService.transition(
+        order,
+        OrderStatus.WAITING_CONFIRMATION,
+        user,
+        "Thanh toán QR Demo thành công (Giao dịch: "
+            + payment.getTransactionRef()
+            + "). Đơn hàng chuyển sang Chờ xác nhận.");
     order.setStatus(OrderStatus.WAITING_CONFIRMATION.name());
     order.setUpdatedAt(now);
     orderRepository.save(order);
-
-    orderStatusHistoryRepository.save(
-        OrderStatusHistory.builder()
-            .order(order)
-            .changedBy(user)
-            .previousStatus(prevStatus)
-            .newStatus(OrderStatus.WAITING_CONFIRMATION.name())
-            .note(
-                "Thanh toán QR Demo thành công (Giao dịch: "
-                    + payment.getTransactionRef()
-                    + "). Đơn hàng chuyển sang Chờ xác nhận.")
-            .build());
 
     Map<String, Object> payload = new java.util.HashMap<>();
     payload.put("paymentId", payment.getPaymentId());
@@ -273,20 +268,16 @@ public class PaymentService {
     // Giải phóng tồn kho đúng 1 lần
     inventoryService.releaseStockForOrder(order.getOrderId(), failReason);
 
-    String prevStatus = order.getStatus();
-    order.setStatus(OrderStatus.CANCELLED.name());
+    order.setPaymentStatus(PaymentStatus.FAILED.name());
     order.setCancelReason("Thanh toán thất bại: " + failReason);
+    orderStateService.transition(
+        order,
+        OrderStatus.CANCELLED,
+        user,
+        "Thanh toán QR Demo thất bại. Hệ thống đã tự động hủy đơn và giải phóng tồn kho.");
+    order.setStatus(OrderStatus.CANCELLED.name());
     order.setUpdatedAt(now);
     orderRepository.save(order);
-
-    orderStatusHistoryRepository.save(
-        OrderStatusHistory.builder()
-            .order(order)
-            .changedBy(user)
-            .previousStatus(prevStatus)
-            .newStatus(OrderStatus.CANCELLED.name())
-            .note("Thanh toán QR Demo thất bại. Hệ thống đã tự động hủy đơn và giải phóng tồn kho.")
-            .build());
 
     Map<String, Object> failPayload = new java.util.HashMap<>();
     failPayload.put("paymentId", payment.getPaymentId());
@@ -347,18 +338,14 @@ public class PaymentService {
       if (order != null) {
         order.setPaymentStatus(success ? ORDER_PAID : PaymentStatus.FAILED.name());
         if (success && OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus())) {
-          String prevStatus = order.getStatus();
+          orderStateService.transition(
+              order,
+              OrderStatus.WAITING_CONFIRMATION,
+              null,
+              "Thanh toán chuyển khoản thành công qua callback ("
+                  + payment.getTransactionRef()
+                  + ")");
           order.setStatus(OrderStatus.WAITING_CONFIRMATION.name());
-          orderStatusHistoryRepository.save(
-              OrderStatusHistory.builder()
-                  .order(order)
-                  .previousStatus(prevStatus)
-                  .newStatus(OrderStatus.WAITING_CONFIRMATION.name())
-                  .note(
-                      "Thanh toán chuyển khoản thành công qua callback ("
-                          + payment.getTransactionRef()
-                          + ")")
-                  .build());
         }
         orderRepository.save(order);
       }
@@ -395,7 +382,7 @@ public class PaymentService {
       ref =
           "PAY"
               + LocalDateTime.now().format(REF_TIME)
-              + String.format("%04d", ThreadLocalRandom.current().nextInt(10_000));
+              + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
     } while (paymentRepository.existsByTransactionRef(ref));
     return ref;
   }
