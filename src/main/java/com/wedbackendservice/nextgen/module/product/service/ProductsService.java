@@ -1137,6 +1137,12 @@ public class ProductsService {
       Category prodCat = product != null ? product.getCategory() : null;
       Category prodRoot = getRootCategory(prodCat);
 
+      if (prodRoot != null && (prodRoot.getCategoryId() == 4L || (prodRoot.getCategoryName() != null && prodRoot.getCategoryName().toLowerCase().contains("phụ kiện")))) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST,
+            "Tính năng so sánh không áp dụng cho ngành hàng Phụ kiện di động & Âm thanh!");
+      }
+
       if (rootCategory == null) {
         rootCategory = prodRoot;
       } else {
