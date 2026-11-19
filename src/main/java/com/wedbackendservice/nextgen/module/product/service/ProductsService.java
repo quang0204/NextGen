@@ -107,7 +107,7 @@ public class ProductsService {
         .filter(r -> r != null && r[0] != null)
         .collect(
             Collectors.toMap(
-                r -> (Long) r[0],
+                r -> ((Number) r[0]).longValue(),
                 r -> {
                   int count = r[1] != null ? ((Number) r[1]).intValue() : 0;
                   double avg = r[2] != null ? ((Number) r[2]).doubleValue() : 0.0;
