@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.module.product.controller.client;
 
 import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductCompareResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductDetailResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductFeaturedResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductListResponse;
@@ -46,6 +47,17 @@ public class ProductsController {
     return ApiResponse.ok(
         "Lấy danh sách sản phẩm nổi bật thành công!",
         productsService.getFeaturedProducts(type, limit));
+  }
+
+  /** API 4.5: So sánh từ 1 đến 3 sản phẩm cùng danh mục cha (Public) */
+  @GetMapping("/compare")
+  public ApiResponse<ProductCompareResponse> compareProducts(
+      @RequestParam(name = "ids", required = false) List<Long> ids,
+      @RequestParam(name = "productIds", required = false) List<Long> productIds) {
+    List<Long> targetIds = ids != null ? ids : productIds;
+    return ApiResponse.ok(
+        "Lấy dữ liệu so sánh sản phẩm thành công!",
+        productsService.compareProducts(targetIds));
   }
 
   /** API 4.3: Xem chi tiết sản phẩm kèm specs, images và variants (Public) */

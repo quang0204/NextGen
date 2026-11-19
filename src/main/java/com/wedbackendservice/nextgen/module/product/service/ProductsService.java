@@ -11,6 +11,7 @@ import com.wedbackendservice.nextgen.module.inventory.repository.InventoryTransa
 import com.wedbackendservice.nextgen.module.notification.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.module.notification.service.MinioStorageService;
 import com.wedbackendservice.nextgen.module.order.repository.OrderItemRepository;
+import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductCompareResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductDetailResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductFeaturedResponse;
 import com.wedbackendservice.nextgen.module.product.dto.client.response.ProductListResponse;
@@ -730,13 +731,7 @@ public class ProductsService {
                           .name(product.getBrand().getBrandName())
                           .build()
                       : null)
-              .category(
-                  product.getCategory() != null
-                      ? ProductSummaryResponse.CategorySummary.builder()
-                          .categoryId(product.getCategory().getCategoryId())
-                          .name(product.getCategory().getCategoryName())
-                          .build()
-                      : null)
+              .category(toCategorySummary(product.getCategory()))
               .primaryImage(primaryImage)
               .minPrice(minP)
               .maxPrice(maxP)
@@ -1103,13 +1098,7 @@ public class ProductsService {
                     .name(product.getBrand().getBrandName())
                     .build()
                 : null)
-        .category(
-            product.getCategory() != null
-                ? ProductSummaryResponse.CategorySummary.builder()
-                    .categoryId(product.getCategory().getCategoryId())
-                    .name(product.getCategory().getCategoryName())
-                    .build()
-                : null)
+        .category(toCategorySummary(product.getCategory()))
         .description(product.getDescription())
         .warrantyPolicy(product.getWarrantyPolicy())
         .status(product.getStatus())
@@ -1120,6 +1109,82 @@ public class ProductsService {
         .specs(specGroupResponses)
         .variantSchema(resolveEffectiveVariantSchema(product.getCategory()))
         .variants(variantResponses)
+        .build();
+  }
+
+  // =========================================================================
+  // 4.3C GET /api/v1/products/compare - So sánh sản phẩm cùng danh mục cha
+  // =========================================================================
+  @Transactional(readOnly = true)
+  public ProductCompareResponse compareProducts(List<Long> productIds) {
+    if (productIds == null || productIds.isEmpty()) {
+      return ProductCompareResponse.builder()
+          .products(Collections.emptyList())
+          .build();
+    }
+
+    if (productIds.size() > 3) {
+      throw new AppException(ErrorCode.INVALID_REQUEST, "Chỉ được so sánh tối đa 3 sản phẩm cùng lúc!");
+    }
+
+    List<Long> uniqueIds = productIds.stream().distinct().toList();
+    List<ProductDetailResponse> detailList = new ArrayList<>();
+    Category rootCategory = null;
+
+    for (Long id : uniqueIds) {
+      ProductDetailResponse detail = getProductDetail(id);
+      Product product = productRepository.findById(id).orElse(null);
+      Category prodCat = product != null ? product.getCategory() : null;
+      Category prodRoot = getRootCategory(prodCat);
+
+      if (rootCategory == null) {
+        rootCategory = prodRoot;
+      } else {
+        Long expectedRootId = rootCategory != null ? rootCategory.getCategoryId() : null;
+        Long actualRootId = prodRoot != null ? prodRoot.getCategoryId() : null;
+        if (!Objects.equals(expectedRootId, actualRootId)) {
+          String rootName = rootCategory != null ? rootCategory.getCategoryName() : "Không xác định";
+          String actualName = prodRoot != null ? prodRoot.getCategoryName() : "Không xác định";
+          throw new AppException(
+              ErrorCode.INVALID_REQUEST,
+              String.format(
+                  "Không thể so sánh các sản phẩm khác danh mục cha! Sản phẩm '%s' thuộc nhóm '%s', trong khi sản phẩm trước đó thuộc nhóm '%s'.",
+                  detail.getName(),
+                  actualName,
+                  rootName));
+        }
+      }
+
+      detailList.add(detail);
+    }
+
+    return ProductCompareResponse.builder()
+        .rootCategory(toCategorySummary(rootCategory))
+        .products(detailList)
+        .build();
+  }
+
+  public Category getRootCategory(Category category) {
+    if (category == null) return null;
+    Category current = category;
+    int depth = 0;
+    while (current.getParent() != null && depth < 10) {
+      current = current.getParent();
+      depth++;
+    }
+    return current;
+  }
+
+  public ProductSummaryResponse.CategorySummary toCategorySummary(Category cat) {
+    if (cat == null) return null;
+    Category root = getRootCategory(cat);
+    return ProductSummaryResponse.CategorySummary.builder()
+        .categoryId(cat.getCategoryId())
+        .name(cat.getCategoryName())
+        .parentId(cat.getParent() != null ? cat.getParent().getCategoryId() : null)
+        .parentName(cat.getParent() != null ? cat.getParent().getCategoryName() : null)
+        .rootCategoryId(root != null ? root.getCategoryId() : cat.getCategoryId())
+        .rootCategoryName(root != null ? root.getCategoryName() : cat.getCategoryName())
         .build();
   }
 
