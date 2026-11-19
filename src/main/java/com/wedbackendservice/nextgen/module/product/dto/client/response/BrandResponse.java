@@ -3,6 +3,7 @@ package com.wedbackendservice.nextgen.module.product.dto.client.response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.time.LocalDateTime;
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -27,6 +28,7 @@ public class BrandResponse {
   Boolean isVisible;
 
   Integer totalProducts;
+  List<Long> categoryIds;
   LocalDateTime createdAt;
   LocalDateTime updatedAt;
 }

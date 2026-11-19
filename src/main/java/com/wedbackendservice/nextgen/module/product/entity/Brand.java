@@ -2,6 +2,8 @@ package com.wedbackendservice.nextgen.module.product.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.springframework.data.annotation.CreatedDate;
@@ -31,6 +33,14 @@ public class Brand {
   String description;
 
   @Builder.Default Boolean isActive = true;
+
+  @ManyToMany(fetch = FetchType.LAZY)
+  @JoinTable(
+      name = "category_brands",
+      joinColumns = @JoinColumn(name = "brand_id"),
+      inverseJoinColumns = @JoinColumn(name = "category_id"))
+  @Builder.Default
+  Set<Category> categories = new HashSet<>();
 
   @CreatedDate LocalDateTime createdAt;
 

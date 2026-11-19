@@ -325,12 +325,28 @@ public class CategoriesAndBrandsService {
   // BRANDS
   // =========================================================================
 
-  /** API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho staff) */
+  /** API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho staff, tùy chọn categoryId) */
   @Transactional(readOnly = true)
   public List<BrandResponse> getBrands(boolean includeHidden) {
+    return getBrands(includeHidden, null);
+  }
+
+  @Transactional(readOnly = true)
+  public List<BrandResponse> getBrands(boolean includeHidden, Long categoryId) {
     boolean canSeeHidden = includeHidden && isStaffOrAdmin();
 
     List<Brand> brands = canSeeHidden ? brandRepository.findAll() : brandRepository.findAllActive();
+
+    if (categoryId != null) {
+      brands =
+          brands.stream()
+              .filter(
+                  b ->
+                      b.getCategories() != null
+                          && b.getCategories().stream()
+                              .anyMatch(c -> c.getCategoryId().equals(categoryId)))
+              .toList();
+    }
 
     Map<Long, Integer> productCountMap = getBrandProductCounts();
 
@@ -400,6 +416,11 @@ public class CategoriesAndBrandsService {
             .isActive(isVisible)
             .build();
 
+    if (request.getCategoryIds() != null && !request.getCategoryIds().isEmpty()) {
+      List<Category> categories = categoryRepository.findAllById(request.getCategoryIds());
+      brand.setCategories(new HashSet<>(categories));
+    }
+
     Brand saved = brandRepository.save(brand);
 
     auditLogRepository.log(
@@ -453,6 +474,10 @@ public class CategoriesAndBrandsService {
     brand.setDescription(request.getDescription());
     if (request.getIsVisible() != null) {
       brand.setIsActive(request.getIsVisible());
+    }
+    if (request.getCategoryIds() != null) {
+      List<Category> categories = categoryRepository.findAllById(request.getCategoryIds());
+      brand.setCategories(new HashSet<>(categories));
     }
     brand.setUpdatedAt(LocalDateTime.now());
 

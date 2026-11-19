@@ -14,13 +14,14 @@ public class BrandsController {
 
   private final CategoriesAndBrandsService categoriesAndBrandsService;
 
-  /** API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho Staff) */
+  /** API 3.6: Danh sách thương hiệu đối tác (Public, hỗ trợ includeHidden cho Staff, tùy chọn lọc categoryId) */
   @GetMapping
   public ApiResponse<List<BrandResponse>> getBrands(
-      @RequestParam(defaultValue = "false") boolean includeHidden) {
+      @RequestParam(defaultValue = "false") boolean includeHidden,
+      @RequestParam(required = false) Long categoryId) {
     return ApiResponse.ok(
         "Lấy danh sách thương hiệu thành công",
-        categoriesAndBrandsService.getBrands(includeHidden));
+        categoriesAndBrandsService.getBrands(includeHidden, categoryId));
   }
 
   /** API 3.7: Chi tiết thương hiệu (Public) */

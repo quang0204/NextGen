@@ -3,6 +3,7 @@ package com.wedbackendservice.nextgen.module.product.dto.portal.request;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 
@@ -27,4 +28,6 @@ public class BrandRequest {
   @JsonProperty("isVisible")
   @JsonAlias({"isVisible", "isActive"})
   Boolean isVisible;
+
+  List<Long> categoryIds;
 }
