@@ -32,6 +32,8 @@ public class TokenRedisService {
   private static final String OTP_FAIL_PREFIX = "otp:fail:";
   private static final String STORAGE_UPLOAD_PREFIX = "storage:upload:";
   public static final String STORAGE_PENDING_ZSET = "storage:pending:zset";
+  private static final String LOCK_REG_PREFIX = "lock:register:";
+  private static final String LOCK_REG_IDENTITY_PREFIX = "lock:reg:identity:";
   private static final int MAX_FAILED_ATTEMPTS = 5;
   public static final int MAX_OTP_SEND_PER_IP = 10;
   public static final int MAX_OTP_SEND_PER_TARGET = 5;
@@ -94,6 +96,35 @@ public class TokenRedisService {
 
   public void deleteRegisterSession(String token) {
     delete(REG_PREFIX + token);
+  }
+
+  // ===== ATOMIC DISTRIBUTED LOCKS =====
+
+  public boolean acquireLock(String lockKey, Duration ttl) {
+    Boolean success = redisTemplate.opsForValue().setIfAbsent(lockKey, "LOCKED", ttl);
+    return Boolean.TRUE.equals(success);
+  }
+
+  public void releaseLock(String lockKey) {
+    redisTemplate.delete(lockKey);
+  }
+
+  public boolean acquireRegisterLock(String registrationToken, Duration ttl) {
+    return acquireLock(LOCK_REG_PREFIX + registrationToken, ttl);
+  }
+
+  public void releaseRegisterLock(String registrationToken) {
+    releaseLock(LOCK_REG_PREFIX + registrationToken);
+  }
+
+  public boolean acquireIdentityLock(String identity, Duration ttl) {
+    if (identity == null || identity.isBlank()) return true;
+    return acquireLock(LOCK_REG_IDENTITY_PREFIX + identity.toLowerCase().trim(), ttl);
+  }
+
+  public void releaseIdentityLock(String identity) {
+    if (identity == null || identity.isBlank()) return;
+    releaseLock(LOCK_REG_IDENTITY_PREFIX + identity.toLowerCase().trim());
   }
 
   public void saveResetPasswordSession(

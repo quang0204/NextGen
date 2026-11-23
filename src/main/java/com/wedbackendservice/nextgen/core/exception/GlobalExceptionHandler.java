@@ -128,10 +128,43 @@ public class GlobalExceptionHandler {
                 .build());
   }
 
+  @ExceptionHandler(value = org.springframework.web.HttpMediaTypeNotSupportedException.class)
+  public ResponseEntity<ApiResponse<Void>> handleHttpMediaTypeNotSupported(
+      org.springframework.web.HttpMediaTypeNotSupportedException exception) {
+    return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+        .body(
+            ApiResponse.<Void>builder()
+                .success(false)
+                .statusCode(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value())
+                .message("Định dạng dữ liệu không được hỗ trợ. Vui lòng thêm Header Content-Type: application/json.")
+                .error("UNSUPPORTED_MEDIA_TYPE")
+                .timestamp(Instant.now().toString())
+                .build());
+  }
+
   @ExceptionHandler(value = org.springframework.dao.DataIntegrityViolationException.class)
   public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(
       org.springframework.dao.DataIntegrityViolationException exception) {
     log.error("Data integrity violation: ", exception);
+    String rootMsg =
+        exception.getRootCause() != null
+            ? exception.getRootCause().getMessage()
+            : exception.getMessage();
+    if (rootMsg != null
+        && (rootMsg.contains("uk_users_email")
+            || rootMsg.contains("uk_users_phone")
+            || rootMsg.toLowerCase().contains("duplicate entry"))) {
+      ErrorCode err = ErrorCode.USER_ALREADY_EXISTS;
+      return ResponseEntity.status(err.getHttpStatus())
+          .body(
+              ApiResponse.<Void>builder()
+                  .success(false)
+                  .statusCode(err.getHttpStatus().value())
+                  .message(err.getMessage())
+                  .error(err.name())
+                  .timestamp(Instant.now().toString())
+                  .build());
+    }
     return ResponseEntity.status(HttpStatus.BAD_REQUEST)
         .body(
             ApiResponse.<Void>builder()

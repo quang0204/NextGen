@@ -9,7 +9,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.wedbackendservice.nextgen.core.dto.session.OtpSessionData;
+import com.wedbackendservice.nextgen.core.dto.session.RegisterSessionData;
+import com.wedbackendservice.nextgen.core.dto.session.RegistrationStatus;
 import com.wedbackendservice.nextgen.core.exception.AppException;
+import com.wedbackendservice.nextgen.core.exception.ErrorCode;
 import com.wedbackendservice.nextgen.core.security.SecurityHelper;
 import com.wedbackendservice.nextgen.core.security.TokenRedisService;
 import com.wedbackendservice.nextgen.module.cart.repository.CartRepository;
@@ -17,8 +20,11 @@ import com.wedbackendservice.nextgen.module.notification.repository.Notification
 import com.wedbackendservice.nextgen.module.notification.repository.AuditLogRepository;
 import com.wedbackendservice.nextgen.module.user.dto.client.request.LoginInitiateRequest;
 import com.wedbackendservice.nextgen.module.user.dto.client.request.LoginVerifyOtpRequest;
+import com.wedbackendservice.nextgen.module.user.dto.client.request.RegisterVerifyOtpRequest;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginInitiateResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginVerifyOtpResponse;
+import com.wedbackendservice.nextgen.module.user.dto.client.response.RegisterVerifyOtpResponse;
+import com.wedbackendservice.nextgen.module.user.dto.client.response.UserRegisterResponse;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.user.enums.OtpChannel;
 import com.wedbackendservice.nextgen.module.user.enums.Role;
@@ -175,5 +181,102 @@ class AuthenticationServiceOtpTest {
 
     assertThatThrownBy(() -> authenticationService.verifyLoginOtp(req))
         .isInstanceOf(AppException.class);
+  }
+
+  @Test
+  void verifyRegisterOtp_WhenConcurrentLockFails_ThrowsRequestInProgress() {
+    String token = "reg-token-concurrent";
+    String plainOtp = "123456";
+    RegisterSessionData sessionData =
+        RegisterSessionData.builder()
+            .email(testEmail)
+            .phone("0987654321")
+            .fullName("Nguyen Van A")
+            .passwordHash(passwordEncoder.encode(rawPassword))
+            .otpCode(passwordEncoder.encode(plainOtp))
+            .status(RegistrationStatus.PENDING)
+            .build();
+
+    when(tokenRedisService.getRegisterSession(token)).thenReturn(sessionData);
+    when(tokenRedisService.acquireRegisterLock(eq(token), any())).thenReturn(false);
+
+    RegisterVerifyOtpRequest req =
+        RegisterVerifyOtpRequest.builder().registrationToken(token).otpCode(plainOtp).build();
+
+    assertThatThrownBy(() -> authenticationService.verifyRegisterOtp(req))
+        .isInstanceOf(AppException.class)
+        .satisfies(e -> {
+          AppException appEx = (AppException) e;
+          assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.REQUEST_IN_PROGRESS);
+        });
+
+    verify(userRepository, never()).save(any());
+  }
+
+  @Test
+  void verifyRegisterOtp_WhenAlreadyCompleted_ReturnsIdempotentResponseWithoutCallingSave() {
+    String token = "reg-token-completed";
+    RegisterVerifyOtpResponse mockSavedResponse =
+        RegisterVerifyOtpResponse.builder()
+            .tokenType("Bearer")
+            .accessToken("mock-access-token")
+            .refreshToken("mock-refresh-token")
+            .expiresIn(3600L)
+            .build();
+
+    RegisterSessionData sessionData =
+        RegisterSessionData.builder()
+            .email(testEmail)
+            .phone("0987654321")
+            .status(RegistrationStatus.COMPLETED)
+            .completedResponse(mockSavedResponse)
+            .build();
+
+    when(tokenRedisService.getRegisterSession(token)).thenReturn(sessionData);
+
+    RegisterVerifyOtpRequest req =
+        RegisterVerifyOtpRequest.builder().registrationToken(token).otpCode("123456").build();
+
+    RegisterVerifyOtpResponse res = authenticationService.verifyRegisterOtp(req);
+
+    assertThat(res).isNotNull();
+    assertThat(res.getAccessToken()).isEqualTo("mock-access-token");
+    verify(userRepository, never()).save(any());
+    verify(tokenRedisService, never()).acquireRegisterLock(anyString(), any());
+  }
+
+  @Test
+  void verifyRegisterOtp_SuccessfulRegistration_SetsStateCompletedAndReleasesLock() {
+    String token = "reg-token-success";
+    String plainOtp = "654321";
+    RegisterSessionData sessionData =
+        RegisterSessionData.builder()
+            .email(testEmail)
+            .phone("0987654321")
+            .fullName("Nguyen Van A")
+            .passwordHash(passwordEncoder.encode(rawPassword))
+            .otpCode(passwordEncoder.encode(plainOtp))
+            .status(RegistrationStatus.PENDING)
+            .build();
+
+    when(tokenRedisService.getRegisterSession(token)).thenReturn(sessionData);
+    when(tokenRedisService.acquireRegisterLock(eq(token), any())).thenReturn(true);
+    when(tokenRedisService.acquireIdentityLock(eq(testEmail), any())).thenReturn(true);
+    when(userRepository.countByEmailOrPhone(testEmail, "0987654321")).thenReturn(0L);
+    when(userRepository.save(any(User.class))).thenReturn(mockUser);
+    when(usersMapper.userRegisterResponse(any(User.class)))
+        .thenReturn(UserRegisterResponse.builder().userId(100L).email(testEmail).build());
+
+    RegisterVerifyOtpRequest req =
+        RegisterVerifyOtpRequest.builder().registrationToken(token).otpCode(plainOtp).build();
+
+    RegisterVerifyOtpResponse res = authenticationService.verifyRegisterOtp(req);
+
+    assertThat(res).isNotNull();
+    assertThat(res.getAccessToken()).isNotBlank();
+    verify(userRepository, times(1)).save(any(User.class));
+    verify(cartRepository, times(1)).save(any());
+    verify(tokenRedisService).releaseRegisterLock(token);
+    verify(tokenRedisService).releaseIdentityLock(testEmail);
   }
 }

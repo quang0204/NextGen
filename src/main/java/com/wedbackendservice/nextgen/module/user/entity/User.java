@@ -16,21 +16,30 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "users")
+@Table(
+    name = "users",
+    uniqueConstraints = {
+      @UniqueConstraint(name = "uk_users_email", columnNames = "email"),
+      @UniqueConstraint(name = "uk_users_phone", columnNames = "phone")
+    })
 @EntityListeners(AuditingEntityListener.class)
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class User {
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
-  @Column(name = "user_id")
   Long userId;
 
   @Enumerated(EnumType.STRING)
   Role role;
 
   String fullName;
+
+  @Column(unique = true, nullable = false)
   String email;
+
+  @Column(unique = true)
   String phone;
+
   String passwordHash;
 
   @Enumerated(EnumType.STRING)

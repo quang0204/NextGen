@@ -268,7 +268,9 @@ public enum ErrorCode {
   STORAGE_OPERATION_FAILED(
       1128, "Lỗi thao tác với hệ thống lưu trữ MinIO.", HttpStatus.INTERNAL_SERVER_ERROR),
   STORAGE_ERROR(1128, "Lỗi kết nối hoặc xử lý lưu trữ tập tin.", HttpStatus.INTERNAL_SERVER_ERROR),
-  PRODUCT_IMAGE_NOT_FOUND(1129, "Không tìm thấy ảnh sản phẩm.", HttpStatus.NOT_FOUND);
+  PRODUCT_IMAGE_NOT_FOUND(1129, "Không tìm thấy ảnh sản phẩm.", HttpStatus.NOT_FOUND),
+  REQUEST_IN_PROGRESS(
+      1130, "Yêu cầu đang được xử lý, vui lòng không gửi lại liên tục.", HttpStatus.CONFLICT);
 
   int code;
   String message;

@@ -7,6 +7,7 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.wedbackendservice.nextgen.core.dto.session.OtpSessionData;
 import com.wedbackendservice.nextgen.core.dto.session.RegisterSessionData;
+import com.wedbackendservice.nextgen.core.dto.session.RegistrationStatus;
 import com.wedbackendservice.nextgen.core.dto.session.ResetPasswordSessionData;
 import com.wedbackendservice.nextgen.core.dto.session.TokenPair;
 import com.wedbackendservice.nextgen.core.exception.AppException;
@@ -76,6 +77,8 @@ public class AuthenticationService {
   private static final int OTP_EXPIRE_SECONDS = 120;
   private static final int OTP_COOLDOWN_SECONDS = 60;
   private static final int REGISTRATION_EXPIRE_SECONDS = 300;
+  private static final java.time.Duration REGISTER_LOCK_TTL = java.time.Duration.ofSeconds(10);
+  private static final long REGISTER_IDEMPOTENT_TTL_SECONDS = 60L;
   private static final int MAX_FAILED_LOGIN = 5;
   private static final String TOKEN_TYPE_CLAIM = "token_type";
   private static final String TYPE_ACCESS = "access";
@@ -262,6 +265,7 @@ public class AuthenticationService {
             .passwordHash(passwordEncoder.encode(request.getPassword()))
             .otpCode(passwordEncoder.encode(otpCode))
             .createdAt(LocalDateTime.now())
+            .status(RegistrationStatus.PENDING)
             .build(),
         REGISTRATION_EXPIRE_SECONDS);
 
@@ -282,58 +286,131 @@ public class AuthenticationService {
   public RegisterVerifyOtpResponse verifyRegisterOtp(RegisterVerifyOtpRequest request) {
     String registrationToken = request.getRegistrationToken().trim();
 
+    // 1. Kiểm tra session từ Redis
     RegisterSessionData sessionData = tokenRedisService.getRegisterSession(registrationToken);
     if (sessionData == null) {
       throw new AppException(
           ErrorCode.SESSION_NOT_FOUND, "registrationToken không tồn tại hoặc đã hết hạn.");
     }
-    if (!otpMatches(sessionData.getOtpCode(), request.getOtpCode())) {
-      long failedAttempts = tokenRedisService.recordFailedOtpAttempt(registrationToken);
-      if (failedAttempts >= TokenRedisService.MAX_OTP_FAIL_ATTEMPTS) {
-        tokenRedisService.deleteRegisterSession(registrationToken);
-        tokenRedisService.clearFailedOtpAttempts(registrationToken);
-        log.warn(
-            "Phiên đăng ký [{}] bị hủy do nhập sai OTP quá {} lần",
-            registrationToken,
-            TokenRedisService.MAX_OTP_FAIL_ATTEMPTS);
-        throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+
+    // 2. IDEMPOTENCY: Nếu phiên đăng ký đã COMPLETED thành công trước đó, trả về ngay kết quả hợp lệ
+    if (sessionData.getStatus() == RegistrationStatus.COMPLETED) {
+      if (sessionData.getCompletedResponse() != null) {
+        log.info(
+            "Idempotent hit: Phiên đăng ký [{}] đã kích hoạt thành công trước đó.",
+            registrationToken);
+        return sessionData.getCompletedResponse();
       }
-      int remaining = TokenRedisService.MAX_OTP_FAIL_ATTEMPTS - (int) failedAttempts;
-      throw new AppException(
-          ErrorCode.OTP_INVALID_OR_EXPIRED,
-          "Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
+      User existingUser = userRepository.findByIdentity(sessionData.getEmail()).orElse(null);
+      if (existingUser != null) {
+        AuthenticationResponse auth = generateToken(existingUser);
+        return RegisterVerifyOtpResponse.builder()
+            .user(usersMapper.userRegisterResponse(existingUser))
+            .tokenType("Bearer")
+            .accessToken(auth.getAccessToken())
+            .refreshToken(auth.getRefreshToken())
+            .expiresIn(accessExpiration)
+            .build();
+      }
     }
 
-    assertUserNotExists(sessionData.getEmail(), sessionData.getPhone());
-    tokenRedisService.clearFailedOtpAttempts(registrationToken);
-    tokenRedisService.deleteRegisterSession(registrationToken);
+    // 3. TẦNG 1: REDIS ATOMIC LOCK theo registrationToken & email
+    boolean tokenLocked =
+        tokenRedisService.acquireRegisterLock(registrationToken, REGISTER_LOCK_TTL);
+    if (!tokenLocked) {
+      log.warn("Yêu cầu trùng lặp bị chặn bởi Redis Lock trên token [{}]", registrationToken);
+      throw new AppException(ErrorCode.REQUEST_IN_PROGRESS);
+    }
 
-    User newUser =
-        userRepository.save(
-            User.builder()
-                .fullName(sessionData.getFullName())
-                .phone(sessionData.getPhone())
-                .email(sessionData.getEmail())
-                .passwordHash(sessionData.getPasswordHash())
-                .role(Role.CUSTOMER)
-                .status(UserStatus.ACTIVE)
-                .build());
+    boolean identityLocked =
+        tokenRedisService.acquireIdentityLock(sessionData.getEmail(), REGISTER_LOCK_TTL);
+    if (!identityLocked) {
+      tokenRedisService.releaseRegisterLock(registrationToken);
+      log.warn("Yêu cầu trùng lặp bị chặn bởi Redis Lock trên email [{}]", sessionData.getEmail());
+      throw new AppException(ErrorCode.REQUEST_IN_PROGRESS);
+    }
 
-    cartRepository.save(Cart.builder().user(newUser).build());
-    notificationRepository.save(
-        buildNotification(
-            newUser,
-            "Chào mừng thành viên mới",
-            "Chào mừng bạn đến với NextGen! Tài khoản của bạn đã được kích hoạt thành công."));
+    try {
+      // Re-read session data sau khi acquire lock (Double-checked locking)
+      sessionData = tokenRedisService.getRegisterSession(registrationToken);
+      if (sessionData == null) {
+        throw new AppException(
+            ErrorCode.SESSION_NOT_FOUND, "registrationToken không tồn tại hoặc đã hết hạn.");
+      }
+      if (sessionData.getStatus() == RegistrationStatus.COMPLETED) {
+        if (sessionData.getCompletedResponse() != null) {
+          return sessionData.getCompletedResponse();
+        }
+      }
 
-    AuthenticationResponse auth = generateToken(newUser);
-    return RegisterVerifyOtpResponse.builder()
-        .user(usersMapper.userRegisterResponse(newUser))
-        .tokenType("Bearer")
-        .accessToken(auth.getAccessToken())
-        .refreshToken(auth.getRefreshToken())
-        .expiresIn(accessExpiration)
-        .build();
+      // 4. KIỂM TRA MÃ OTP
+      if (!otpMatches(sessionData.getOtpCode(), request.getOtpCode())) {
+        long failedAttempts = tokenRedisService.recordFailedOtpAttempt(registrationToken);
+        if (failedAttempts >= TokenRedisService.MAX_OTP_FAIL_ATTEMPTS) {
+          tokenRedisService.deleteRegisterSession(registrationToken);
+          tokenRedisService.clearFailedOtpAttempts(registrationToken);
+          log.warn(
+              "Phiên đăng ký [{}] bị hủy do nhập sai OTP quá {} lần",
+              registrationToken,
+              TokenRedisService.MAX_OTP_FAIL_ATTEMPTS);
+          throw new AppException(ErrorCode.OTP_ATTEMPTS_EXCEEDED);
+        }
+        int remaining = TokenRedisService.MAX_OTP_FAIL_ATTEMPTS - (int) failedAttempts;
+        throw new AppException(
+            ErrorCode.OTP_INVALID_OR_EXPIRED,
+            "Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
+      }
+
+      // 5. TẦNG 2: STATE MACHINE -> Chuyển sang PROCESSING
+      sessionData.setStatus(RegistrationStatus.PROCESSING);
+      tokenRedisService.saveRegisterSession(
+          registrationToken, sessionData, REGISTER_LOCK_TTL.toSeconds());
+
+      // 6. KIỂM TRA TỒN TẠI (TẦNG ỨNG DỤNG)
+      assertUserNotExists(sessionData.getEmail(), sessionData.getPhone());
+      tokenRedisService.clearFailedOtpAttempts(registrationToken);
+
+      // 7. TẦNG 4: LƯU DB (CÓ DATABASE UNIQUE CONSTRAINT BẢO VỆ)
+      User newUser =
+          userRepository.save(
+              User.builder()
+                  .fullName(sessionData.getFullName())
+                  .phone(sessionData.getPhone())
+                  .email(sessionData.getEmail())
+                  .passwordHash(sessionData.getPasswordHash())
+                  .role(Role.CUSTOMER)
+                  .status(UserStatus.ACTIVE)
+                  .build());
+
+      cartRepository.save(Cart.builder().user(newUser).build());
+      notificationRepository.save(
+          buildNotification(
+              newUser,
+              "Chào mừng thành viên mới",
+              "Chào mừng bạn đến với NextGen! Tài khoản của bạn đã được kích hoạt thành công."));
+
+      AuthenticationResponse auth = generateToken(newUser);
+      RegisterVerifyOtpResponse response =
+          RegisterVerifyOtpResponse.builder()
+              .user(usersMapper.userRegisterResponse(newUser))
+              .tokenType("Bearer")
+              .accessToken(auth.getAccessToken())
+              .refreshToken(auth.getRefreshToken())
+              .expiresIn(accessExpiration)
+              .build();
+
+      // 8. TẦNG 3: STATE MACHINE -> COMPLETED & LƯU PHẢN HỒI CHO IDEMPOTENCY (giữ 60s)
+      sessionData.setStatus(RegistrationStatus.COMPLETED);
+      sessionData.setCreatedUserId(newUser.getUserId());
+      sessionData.setCompletedResponse(response);
+      tokenRedisService.saveRegisterSession(
+          registrationToken, sessionData, REGISTER_IDEMPOTENT_TTL_SECONDS);
+
+      return response;
+    } finally {
+      tokenRedisService.releaseRegisterLock(registrationToken);
+      tokenRedisService.releaseIdentityLock(sessionData.getEmail());
+    }
   }
 
   /** API 6: Gửi lại OTP đăng ký. */
@@ -344,6 +421,10 @@ public class AuthenticationService {
     if (sessionData == null) {
       throw new AppException(
           ErrorCode.SESSION_NOT_FOUND, "registrationToken không tồn tại hoặc đã hết hạn.");
+    }
+    if (sessionData.getStatus() == RegistrationStatus.COMPLETED) {
+      throw new AppException(
+          ErrorCode.USER_ALREADY_EXISTS, "Tài khoản đã được đăng ký và kích hoạt thành công!");
     }
 
     String clientIp = ClientIpHelper.getClientIp();
