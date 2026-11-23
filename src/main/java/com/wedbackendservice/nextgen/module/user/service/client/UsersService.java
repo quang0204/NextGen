@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,6 +54,7 @@ public class UsersService {
   private final OtpNotificationService otpNotificationService;
   private final AuditLogRepository auditLogRepository;
   private final UsersMapper usersMapper;
+  private final PasswordEncoder passwordEncoder;
 
   /** API 2.1: Lấy thông tin hồ sơ cá nhân */
   @Transactional(readOnly = true)
@@ -111,7 +113,7 @@ public class UsersService {
             .fullName(newFullName)
             .phone(newPhone)
             .email(newEmail)
-            .otpCode(otpCode)
+            .otpCode(passwordEncoder.encode(otpCode))
             .createdAt(now)
             .lastSentAt(now)
             .otpExpiresAt(now.plusSeconds(OTP_EXPIRE_SECONDS))
@@ -151,9 +153,7 @@ public class UsersService {
           "Mã xác thực OTP đã hết hạn hiệu lực. Vui lòng nhấn gửi lại mã mới!");
     }
 
-    if (!MessageDigest.isEqual(
-        session.getOtpCode().getBytes(StandardCharsets.UTF_8),
-        request.getOtpCode().trim().getBytes(StandardCharsets.UTF_8))) {
+    if (!otpMatches(session.getOtpCode(), request.getOtpCode())) {
       long failedAttempts = tokenRedisService.recordFailedOtpAttempt(request.getOtpSessionToken());
       if (failedAttempts >= TokenRedisService.MAX_OTP_FAIL_ATTEMPTS) {
         tokenRedisService.deleteProfileUpdateSession(request.getOtpSessionToken());
@@ -219,7 +219,7 @@ public class UsersService {
     }
 
     String newOtpCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
-    session.setOtpCode(newOtpCode);
+    session.setOtpCode(passwordEncoder.encode(newOtpCode));
     session.setLastSentAt(now);
     session.setOtpExpiresAt(now.plusSeconds(OTP_EXPIRE_SECONDS));
 
@@ -360,5 +360,17 @@ public class UsersService {
     String domain = parts[1];
     int visibleLen = local.length() <= 4 ? Math.min(2, local.length()) : 4;
     return local.substring(0, visibleLen) + "****@" + domain;
+  }
+
+  private boolean otpMatches(String expected, String actual) {
+    if (expected == null || actual == null) {
+      return false;
+    }
+    String trimmed = actual.trim();
+    if (expected.startsWith("$2a$") || expected.startsWith("$2b$") || expected.startsWith("$2y$")) {
+      return passwordEncoder.matches(trimmed, expected);
+    }
+    return MessageDigest.isEqual(
+        expected.getBytes(StandardCharsets.UTF_8), trimmed.getBytes(StandardCharsets.UTF_8));
   }
 }

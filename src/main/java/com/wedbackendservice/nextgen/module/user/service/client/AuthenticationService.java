@@ -34,6 +34,7 @@ import com.wedbackendservice.nextgen.module.user.dto.client.response.AddressResp
 import com.wedbackendservice.nextgen.module.user.dto.client.response.AuthenticationResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.ForgotPasswordResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.ForgotResendOtpResponse;
+import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginInitiateResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginVerifyOtpResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.RefreshTokenResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.RegisterInitiateResponse;
@@ -109,8 +110,8 @@ public class AuthenticationService {
   // LOGIN
   // =====================================================================
 
-  /** API 1: Đăng nhập trực tiếp bằng tài khoản + mật khẩu (bỏ xác thực OTP), cấp JWT ngay. */
-  public LoginVerifyOtpResponse initiateLogin(LoginInitiateRequest request) {
+  /** API 1: Đăng nhập bước 1 - kiểm tra mật khẩu, sinh và gửi OTP. */
+  public LoginInitiateResponse initiateLogin(LoginInitiateRequest request) {
     String identity = request.getIdentity().trim();
 
     if (tokenRedisService.isLoginBlocked(identity)) {
@@ -127,12 +128,35 @@ public class AuthenticationService {
     assertNotLocked(user);
     tokenRedisService.clearFailedLoginAttempts(identity);
 
-    AuthenticationResponse auth = generateToken(user);
-    return LoginVerifyOtpResponse.builder()
-        .user(usersMapper.usersResponse(user))
-        .accessToken(auth.getAccessToken())
-        .refreshToken(auth.getRefreshToken())
-        .expiresIn(accessExpiration)
+    OtpChannel channel = resolveChannel(identity);
+    String target = resolveTarget(channel, user, identity);
+
+    String clientIp = ClientIpHelper.getClientIp();
+    assertOtpSendingAllowed(clientIp, target);
+
+    String otpCode = generateOtp();
+    String sessionToken = UUID.randomUUID().toString().replace("-", "");
+
+    tokenRedisService.saveOtpSession(
+        sessionToken,
+        OtpSessionData.builder()
+            .userId(user.getUserId())
+            .channel(channel)
+            .target(target)
+            .otpCode(passwordEncoder.encode(otpCode))
+            .createdAt(LocalDateTime.now())
+            .build(),
+        OTP_EXPIRE_SECONDS);
+
+    recordOtpSendAttempt(clientIp, target);
+    otpNotificationService.sendOtp(channel, target, otpCode);
+
+    return LoginInitiateResponse.builder()
+        .channel(channel)
+        .targetMasked(maskTarget(channel, target))
+        .sessionToken(sessionToken)
+        .expiresInSeconds(OTP_EXPIRE_SECONDS)
+        .cooldownSeconds(OTP_COOLDOWN_SECONDS)
         .build();
   }
 
@@ -195,7 +219,7 @@ public class AuthenticationService {
             .userId(sessionData.getUserId())
             .channel(sessionData.getChannel())
             .target(sessionData.getTarget())
-            .otpCode(newOtp)
+            .otpCode(passwordEncoder.encode(newOtp))
             .createdAt(LocalDateTime.now())
             .build(),
         OTP_EXPIRE_SECONDS);
@@ -236,7 +260,7 @@ public class AuthenticationService {
             .phone(phone)
             .email(email)
             .passwordHash(passwordEncoder.encode(request.getPassword()))
-            .otpCode(otpCode)
+            .otpCode(passwordEncoder.encode(otpCode))
             .createdAt(LocalDateTime.now())
             .build(),
         REGISTRATION_EXPIRE_SECONDS);
@@ -334,7 +358,7 @@ public class AuthenticationService {
             .phone(sessionData.getPhone())
             .email(sessionData.getEmail())
             .passwordHash(sessionData.getPasswordHash())
-            .otpCode(newOtp)
+            .otpCode(passwordEncoder.encode(newOtp))
             .createdAt(LocalDateTime.now())
             .build(),
         REGISTRATION_EXPIRE_SECONDS);
@@ -377,7 +401,7 @@ public class AuthenticationService {
             .identity(identity)
             .channel(channel)
             .target(target)
-            .otpCode(otpCode)
+            .otpCode(passwordEncoder.encode(otpCode))
             .createdAt(LocalDateTime.now())
             .build(),
         REGISTRATION_EXPIRE_SECONDS);
@@ -463,7 +487,7 @@ public class AuthenticationService {
             .identity(sessionData.getIdentity())
             .channel(sessionData.getChannel())
             .target(sessionData.getTarget())
-            .otpCode(newOtp)
+            .otpCode(passwordEncoder.encode(newOtp))
             .createdAt(LocalDateTime.now())
             .build(),
         REGISTRATION_EXPIRE_SECONDS);
@@ -589,12 +613,16 @@ public class AuthenticationService {
     return String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
   }
 
-  private static boolean otpMatches(String expected, String actual) {
+  private boolean otpMatches(String expected, String actual) {
     if (expected == null || actual == null) {
       return false;
     }
+    String trimmed = actual.trim();
+    if (expected.startsWith("$2a$") || expected.startsWith("$2b$") || expected.startsWith("$2y$")) {
+      return passwordEncoder.matches(trimmed, expected);
+    }
     return MessageDigest.isEqual(
-        expected.getBytes(StandardCharsets.UTF_8), actual.trim().getBytes(StandardCharsets.UTF_8));
+        expected.getBytes(StandardCharsets.UTF_8), trimmed.getBytes(StandardCharsets.UTF_8));
   }
 
   private void assertCooldownPassed(LocalDateTime createdAt, String sessionKey) {

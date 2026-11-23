@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserRo
 import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserStatusRequest;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserDetailResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserItemResponse;
+import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUsersListResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.CreateInternalUserResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserRoleResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserStatusResponse;
@@ -30,7 +31,7 @@ public class AdminUsersController {
    * trang)
    */
   @GetMapping
-  public ApiResponse<PageResponse<AdminUserItemResponse>> getUsersList(
+  public ApiResponse<AdminUsersListResponse> getUsersList(
       @RequestParam(defaultValue = "1") int page,
       @RequestParam(name = "limit", required = false) Integer limit,
       @RequestParam(name = "size", required = false) Integer size,
