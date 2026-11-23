@@ -94,7 +94,7 @@ public class AdminPaymentsService {
       BigDecimal amount = row[3] != null ? (BigDecimal) row[3] : BigDecimal.ZERO;
 
       total += count;
-      if (PaymentStatus.SUCCESS.name().equalsIgnoreCase(status)) {
+      if (PaymentStatus.SUCCESS.name().equalsIgnoreCase(status) || "PAID".equalsIgnoreCase(status)) {
         success += count;
         totalCollected = totalCollected.add(amount);
         collectedByMethod.merge(method, amount, BigDecimal::add);

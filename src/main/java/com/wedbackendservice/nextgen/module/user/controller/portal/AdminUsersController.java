@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserRo
 import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserStatusRequest;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserDetailResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserItemResponse;
+import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserStatsResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUsersListResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.CreateInternalUserResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserRoleResponse;
@@ -49,6 +50,14 @@ public class AdminUsersController {
         "Lấy danh sách người dùng thành công!",
         adminUsersService.getUsersList(
             page, effectiveLimit, effectiveSearch, role, status, sortBy, sortDir));
+  }
+
+  /** API 2.13: Thống kê số lượng tài khoản theo vai trò và trạng thái */
+  @GetMapping("/stats")
+  public ApiResponse<AdminUserStatsResponse> getUserStats() {
+    return ApiResponse.ok(
+        "Lấy thống kê người dùng thành công!",
+        adminUsersService.getUserStats());
   }
 
   /**

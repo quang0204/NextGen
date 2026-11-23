@@ -1354,11 +1354,24 @@ public class ProductsService {
                         ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + id + "!"));
 
     int maxItems = limit > 0 ? limit : 4;
-    Long catId = current.getCategory() != null ? current.getCategory().getCategoryId() : null;
-    Long bId = current.getBrand() != null ? current.getBrand().getBrandId() : null;
+    Category cat = current.getCategory();
+    if (cat == null) {
+      return Collections.emptyList();
+    }
+
+    Long subCategoryId = null;
+    Long parentCategoryId = null;
+
+    if (cat.getParent() != null) {
+      subCategoryId = cat.getCategoryId();
+      parentCategoryId = cat.getParent().getCategoryId();
+    } else {
+      parentCategoryId = cat.getCategoryId();
+    }
 
     List<Product> related =
-        productRepository.findRelatedProducts(id, catId, bId, PageRequest.of(0, maxItems));
+        productRepository.findRelatedProducts(
+            id, subCategoryId, parentCategoryId, PageRequest.of(0, maxItems));
     if (related.isEmpty()) {
       return Collections.emptyList();
     }

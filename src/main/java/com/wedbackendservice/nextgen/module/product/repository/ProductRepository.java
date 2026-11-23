@@ -32,13 +32,19 @@ public interface ProductRepository
   boolean existsBySlugAndProductIdNot(String slug, Long productId);
 
   @Query(
-      "SELECT p FROM Product p WHERE p.productId <> :productId AND p.status = 'ACTIVE' "
-          + "AND (:categoryId IS NULL OR p.category.categoryId = :categoryId OR :brandId IS NULL OR p.brand.brandId = :brandId) "
-          + "ORDER BY CASE WHEN :categoryId IS NOT NULL AND p.category.categoryId = :categoryId THEN 0 ELSE 1 END, p.createdAt DESC")
+      "SELECT DISTINCT p FROM Product p "
+          + "LEFT JOIN p.category c "
+          + "LEFT JOIN c.parent parent "
+          + "WHERE p.productId <> :productId AND p.status = 'ACTIVE' "
+          + "AND ("
+          + "  (:subCategoryId IS NOT NULL AND c.categoryId = :subCategoryId) "
+          + "  OR (:parentCategoryId IS NOT NULL AND (c.categoryId = :parentCategoryId OR parent.categoryId = :parentCategoryId))"
+          + ") "
+          + "ORDER BY CASE WHEN :subCategoryId IS NOT NULL AND c.categoryId = :subCategoryId THEN 0 ELSE 1 END, p.createdAt DESC")
   List<Product> findRelatedProducts(
       @Param("productId") Long productId,
-      @Param("categoryId") Long categoryId,
-      @Param("brandId") Long brandId,
+      @Param("subCategoryId") Long subCategoryId,
+      @Param("parentCategoryId") Long parentCategoryId,
       Pageable pageable);
 
   @Query(

@@ -26,6 +26,9 @@ public interface OrderRepository
   @Query("SELECT o FROM Order o WHERE o.status NOT IN ('CANCELLED', 'RETURNING')")
   List<Order> findValidOrdersForReports();
 
+  @Query("SELECT o FROM Order o WHERE o.status = 'COMPLETED'")
+  List<Order> findCompletedOrdersForReports();
+
   @Query(
       "SELECT o FROM Order o WHERE o.status NOT IN ('CANCELLED', 'RETURNING') AND o.createdAt >= :afterDate")
   List<Order> findValidOrdersForReportsAfter(@Param("afterDate") java.time.LocalDateTime afterDate);

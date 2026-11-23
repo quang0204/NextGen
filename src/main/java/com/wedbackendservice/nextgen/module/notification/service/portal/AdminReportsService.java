@@ -3,6 +3,7 @@ package com.wedbackendservice.nextgen.module.notification.service.portal;
 import com.wedbackendservice.nextgen.core.security.SecurityHelper;
 import com.wedbackendservice.nextgen.module.inventory.entity.Inventory;
 import com.wedbackendservice.nextgen.module.inventory.repository.InventoryRepository;
+import com.wedbackendservice.nextgen.module.notification.dto.portal.response.RevenueAnalyticsResponse;
 import com.wedbackendservice.nextgen.module.notification.dto.portal.response.SlowMovingItemResponse;
 import com.wedbackendservice.nextgen.module.notification.dto.portal.response.SlowMovingReportResponse;
 import com.wedbackendservice.nextgen.module.notification.dto.portal.response.TopSellingItemResponse;
@@ -10,6 +11,7 @@ import com.wedbackendservice.nextgen.module.order.entity.Order;
 import com.wedbackendservice.nextgen.module.order.entity.OrderItem;
 import com.wedbackendservice.nextgen.module.order.repository.OrderItemRepository;
 import com.wedbackendservice.nextgen.module.order.repository.OrderRepository;
+import com.wedbackendservice.nextgen.module.product.entity.Category;
 import com.wedbackendservice.nextgen.module.product.entity.Product;
 import com.wedbackendservice.nextgen.module.product.entity.ProductVariant;
 import com.wedbackendservice.nextgen.module.product.repository.ProductRepository;
@@ -18,6 +20,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -505,5 +508,303 @@ public class AdminReportsService {
       this.imageUrl = imageUrl;
       this.unitPrice = unitPrice;
     }
+  }
+
+  private static class CategoryRevAgg {
+    Long categoryId;
+    String categoryName;
+    BigDecimal revenue = BigDecimal.ZERO;
+    long unitsSold = 0;
+
+    CategoryRevAgg(Long categoryId, String categoryName) {
+      this.categoryId = categoryId;
+      this.categoryName = categoryName;
+    }
+  }
+
+  private static class BrandRevAgg {
+    Long brandId;
+    String brandName;
+    BigDecimal revenue = BigDecimal.ZERO;
+    long unitsSold = 0;
+
+    BrandRevAgg(Long brandId, String brandName) {
+      this.brandId = brandId;
+      this.brandName = brandName;
+    }
+  }
+
+  /**
+   * BÁO CÁO 3: Thống kê biểu đồ doanh thu theo Ngày, Tuần, Tháng, theo Danh mục và Thương hiệu
+   */
+  @Transactional(readOnly = true)
+  public RevenueAnalyticsResponse getRevenueAnalytics(String period) {
+    securityHelper.authenticateStaffOrAdmin();
+
+    String safePeriod = StringUtils.hasText(period) ? period.trim().toUpperCase() : "DAY";
+
+    // 1. Chỉ lấy các đơn hàng ở trạng thái giao thành công (COMPLETED) chuẩn hạch toán doanh thu
+    List<Order> validOrders = new ArrayList<>(orderRepository.findCompletedOrdersForReports());
+    if (validOrders.isEmpty()) {
+      return RevenueAnalyticsResponse.builder()
+          .period(safePeriod)
+          .totalRevenue(BigDecimal.ZERO)
+          .totalOrders(0L)
+          .averageOrderValue(BigDecimal.ZERO)
+          .timeline(Collections.emptyList())
+          .byCategory(Collections.emptyList())
+          .byBrand(Collections.emptyList())
+          .build();
+    }
+
+    Set<Long> validOrderIds =
+        validOrders.stream().map(Order::getOrderId).collect(Collectors.toSet());
+    List<OrderItem> allItems = orderItemRepository.findByOrderIdIn(validOrderIds);
+
+    // Tính tổng doanh thu và tổng số đơn (sử dụng getFinalTotal() - số tiền thực tế khách thanh toán sau giảm giá)
+    BigDecimal totalRevenue =
+        validOrders.stream()
+            .map(o -> o.getFinalTotal() != null ? o.getFinalTotal() : BigDecimal.ZERO)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+    long totalOrders = validOrders.size();
+    BigDecimal avgOrderValue =
+        totalOrders > 0
+            ? totalRevenue.divide(BigDecimal.valueOf(totalOrders), 0, RoundingMode.HALF_UP)
+            : BigDecimal.ZERO;
+
+    // 2. Timeline theo Day / Week / Month
+    DateTimeFormatter dayFmt = DateTimeFormatter.ofPattern("dd/MM");
+    DateTimeFormatter dateKeyFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("'Tháng' MM/yyyy");
+    DateTimeFormatter monthKeyFmt = DateTimeFormatter.ofPattern("yyyy-MM");
+
+    Map<String, RevenueAnalyticsResponse.RevenueTimelinePoint> timelineMap = new LinkedHashMap<>();
+
+    validOrders.sort(Comparator.comparing(o -> o.getCreatedAt() != null ? o.getCreatedAt() : LocalDateTime.MIN));
+
+    LocalDateTime now = LocalDateTime.now();
+
+    if ("WEEK".equalsIgnoreCase(safePeriod)) {
+      // Khởi tạo các mốc 4 tuần gần nhất
+      for (int i = 3; i >= 0; i--) {
+        LocalDateTime target = now.minusWeeks(i);
+        int week = target.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+        int year = target.get(java.time.temporal.IsoFields.WEEK_BASED_YEAR);
+        String key = year + "-W" + (week < 10 ? "0" + week : week);
+        String label = "Tuần " + week;
+        timelineMap.put(
+            key,
+            RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                .date(key)
+                .label(label)
+                .revenue(BigDecimal.ZERO)
+                .orderCount(0L)
+                .build());
+      }
+
+      for (Order o : validOrders) {
+        LocalDateTime dt = o.getCreatedAt() != null ? o.getCreatedAt() : now;
+        int week = dt.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR);
+        int year = dt.get(java.time.temporal.IsoFields.WEEK_BASED_YEAR);
+        String key = year + "-W" + (week < 10 ? "0" + week : week);
+        String label = "Tuần " + week;
+
+        RevenueAnalyticsResponse.RevenueTimelinePoint pt =
+            timelineMap.computeIfAbsent(
+                key,
+                k ->
+                    RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                        .date(key)
+                        .label(label)
+                        .revenue(BigDecimal.ZERO)
+                        .orderCount(0L)
+                        .build());
+
+        pt.setRevenue(
+            pt.getRevenue().add(o.getFinalTotal() != null ? o.getFinalTotal() : BigDecimal.ZERO));
+        pt.setOrderCount(pt.getOrderCount() + 1);
+      }
+    } else if ("MONTH".equalsIgnoreCase(safePeriod)) {
+      // Khởi tạo các mốc 6 tháng gần nhất
+      for (int i = 5; i >= 0; i--) {
+        LocalDateTime target = now.minusMonths(i);
+        String key = target.format(monthKeyFmt);
+        String label = target.format(monthFmt);
+        timelineMap.put(
+            key,
+            RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                .date(key)
+                .label(label)
+                .revenue(BigDecimal.ZERO)
+                .orderCount(0L)
+                .build());
+      }
+
+      for (Order o : validOrders) {
+        LocalDateTime dt = o.getCreatedAt() != null ? o.getCreatedAt() : now;
+        String key = dt.format(monthKeyFmt);
+        String label = dt.format(monthFmt);
+
+        RevenueAnalyticsResponse.RevenueTimelinePoint pt =
+            timelineMap.computeIfAbsent(
+                key,
+                k ->
+                    RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                        .date(key)
+                        .label(label)
+                        .revenue(BigDecimal.ZERO)
+                        .orderCount(0L)
+                        .build());
+
+        pt.setRevenue(
+            pt.getRevenue().add(o.getFinalTotal() != null ? o.getFinalTotal() : BigDecimal.ZERO));
+        pt.setOrderCount(pt.getOrderCount() + 1);
+      }
+    } else {
+      // Khởi tạo các mốc 7 ngày gần nhất
+      for (int i = 6; i >= 0; i--) {
+        LocalDateTime target = now.minusDays(i);
+        String key = target.format(dateKeyFmt);
+        String label = target.format(dayFmt);
+        timelineMap.put(
+            key,
+            RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                .date(key)
+                .label(label)
+                .revenue(BigDecimal.ZERO)
+                .orderCount(0L)
+                .build());
+      }
+
+      for (Order o : validOrders) {
+        LocalDateTime dt = o.getCreatedAt() != null ? o.getCreatedAt() : now;
+        String key = dt.format(dateKeyFmt);
+        String label = dt.format(dayFmt);
+
+        RevenueAnalyticsResponse.RevenueTimelinePoint pt =
+            timelineMap.computeIfAbsent(
+                key,
+                k ->
+                    RevenueAnalyticsResponse.RevenueTimelinePoint.builder()
+                        .date(key)
+                        .label(label)
+                        .revenue(BigDecimal.ZERO)
+                        .orderCount(0L)
+                        .build());
+
+        pt.setRevenue(
+            pt.getRevenue().add(o.getFinalTotal() != null ? o.getFinalTotal() : BigDecimal.ZERO));
+        pt.setOrderCount(pt.getOrderCount() + 1);
+      }
+    }
+
+    List<RevenueAnalyticsResponse.RevenueTimelinePoint> timelineList =
+        timelineMap.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(Map.Entry::getValue)
+            .toList();
+
+    // 3. Phân bổ Doanh thu theo Danh mục (Category)
+    Map<String, CategoryRevAgg> catMap = new HashMap<>();
+    // 4. Phân bổ Doanh thu theo Thương hiệu (Brand)
+    Map<String, BrandRevAgg> brandMap = new HashMap<>();
+
+    for (OrderItem item : allItems) {
+      ProductVariant variant = item.getVariant();
+      Product prod = variant != null ? variant.getProduct() : null;
+
+      BigDecimal lineRev =
+          item.getLineTotal() != null
+              ? item.getLineTotal()
+              : (item.getTotalPrice() != null ? item.getTotalPrice() : BigDecimal.ZERO);
+      int qty = item.getQuantity() != null ? item.getQuantity() : 1;
+
+      // Danh mục gốc
+      String resolvedCatName = "Khác";
+      Long resolvedCatId = 0L;
+      if (prod != null && prod.getCategory() != null) {
+        Category rootCat = prod.getCategory();
+        int depth = 0;
+        while (rootCat.getParent() != null && depth < 10) {
+          rootCat = rootCat.getParent();
+          depth++;
+        }
+        resolvedCatName = rootCat.getCategoryName();
+        resolvedCatId = rootCat.getCategoryId();
+      }
+      final String catName = resolvedCatName;
+      final Long catId = resolvedCatId;
+
+      CategoryRevAgg cAgg = catMap.computeIfAbsent(catName, k -> new CategoryRevAgg(catId, k));
+      cAgg.revenue = cAgg.revenue.add(lineRev);
+      cAgg.unitsSold += qty;
+
+      // Thương hiệu
+      String resolvedBName = "Khác";
+      Long resolvedBId = 0L;
+      if (prod != null && prod.getBrand() != null) {
+        resolvedBName = prod.getBrand().getBrandName();
+        resolvedBId = prod.getBrand().getBrandId();
+      }
+      final String bName = resolvedBName;
+      final Long bId = resolvedBId;
+
+      BrandRevAgg bAgg = brandMap.computeIfAbsent(bName, k -> new BrandRevAgg(bId, k));
+      bAgg.revenue = bAgg.revenue.add(lineRev);
+      bAgg.unitsSold += qty;
+    }
+
+    BigDecimal totalCatRev =
+        catMap.values().stream().map(a -> a.revenue).reduce(BigDecimal.ZERO, BigDecimal::add);
+    double safeCatTotal =
+        totalCatRev.compareTo(BigDecimal.ZERO) > 0 ? totalCatRev.doubleValue() : 1.0;
+
+    List<RevenueAnalyticsResponse.RevenueCategoryBreakdown> categoryBreakdowns =
+        catMap.values().stream()
+            .map(
+                c ->
+                    RevenueAnalyticsResponse.RevenueCategoryBreakdown.builder()
+                        .categoryId(c.categoryId)
+                        .categoryName(c.categoryName)
+                        .revenue(c.revenue)
+                        .unitsSold(c.unitsSold)
+                        .percentage(
+                            Math.round((c.revenue.doubleValue() / safeCatTotal * 100.0) * 10.0)
+                                / 10.0)
+                        .build())
+            .sorted((a, b) -> b.getRevenue().compareTo(a.getRevenue()))
+            .toList();
+
+    BigDecimal totalBrandRev =
+        brandMap.values().stream().map(a -> a.revenue).reduce(BigDecimal.ZERO, BigDecimal::add);
+    double safeBrandTotal =
+        totalBrandRev.compareTo(BigDecimal.ZERO) > 0 ? totalBrandRev.doubleValue() : 1.0;
+
+    List<RevenueAnalyticsResponse.RevenueBrandBreakdown> brandBreakdowns =
+        brandMap.values().stream()
+            .map(
+                b ->
+                    RevenueAnalyticsResponse.RevenueBrandBreakdown.builder()
+                        .brandId(b.brandId)
+                        .brandName(b.brandName)
+                        .revenue(b.revenue)
+                        .unitsSold(b.unitsSold)
+                        .percentage(
+                            Math.round((b.revenue.doubleValue() / safeBrandTotal * 100.0) * 10.0)
+                                / 10.0)
+                        .build())
+            .sorted((a, b) -> b.getRevenue().compareTo(a.getRevenue()))
+            .toList();
+
+    return RevenueAnalyticsResponse.builder()
+        .period(safePeriod)
+        .totalRevenue(totalRevenue)
+        .totalOrders(totalOrders)
+        .averageOrderValue(avgOrderValue)
+        .timeline(timelineList)
+        .byCategory(categoryBreakdowns)
+        .byBrand(brandBreakdowns)
+        .build();
   }
 }
