@@ -45,6 +45,10 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
   @Query("SELECT COUNT(u) FROM User u WHERE u.phone = :phone AND u.userId <> :userId")
   long countByPhoneExcludingUser(@Param("phone") String phone, @Param("userId") Long userId);
 
+  long countByRole(Role role);
+
+  long countByStatus(UserStatus status);
+
   long countByRoleAndStatus(Role role, UserStatus status);
 
   @Query(

@@ -17,6 +17,7 @@ import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserRo
 import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserStatusRequest;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserDetailResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserItemResponse;
+import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserStatsResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.CreateInternalUserResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserRoleResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserStatusResponse;
@@ -143,6 +144,23 @@ public class AdminUsersService {
             });
 
     return PageResponse.from(mapped, Function.identity());
+  }
+
+  /**
+   * API 2.13: Thống kê số lượng tài khoản theo vai trò và trạng thái
+   */
+  public AdminUserStatsResponse getUserStats() {
+    long totalUsers = userRepository.count();
+    long totalAdmins = userRepository.countByRole(Role.ADMIN);
+    long totalStaffs = userRepository.countByRole(Role.STAFF);
+    long totalLocked = userRepository.countByStatus(UserStatus.LOCKED);
+
+    return AdminUserStatsResponse.builder()
+        .totalUsers(totalUsers)
+        .totalAdmins(totalAdmins)
+        .totalStaffs(totalStaffs)
+        .totalLocked(totalLocked)
+        .build();
   }
 
   /**

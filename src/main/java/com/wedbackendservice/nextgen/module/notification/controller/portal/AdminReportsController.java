@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.module.notification.controller.portal;
 
 import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.module.notification.dto.portal.response.RevenueAnalyticsResponse;
 import com.wedbackendservice.nextgen.module.notification.dto.portal.response.SlowMovingReportResponse;
 import com.wedbackendservice.nextgen.module.notification.dto.portal.response.TopSellingItemResponse;
 import com.wedbackendservice.nextgen.module.notification.service.portal.AdminReportsService;
@@ -62,5 +63,19 @@ public class AdminReportsController {
         reportsService.getSlowMoving(minDays, maxUnitsSold, keyword, severity, sortBy);
     return ApiResponse.ok(
         "Lấy danh sách sản phẩm bán chậm và đề xuất chính sách xả kho thành công", result);
+  }
+
+  /**
+   * BÁO CÁO 3: [GET] /api/v1/admin/reports/revenue-analytics
+   * Thống kê biểu đồ doanh thu theo Ngày, Tuần, Tháng, theo Danh mục và Thương hiệu
+   *
+   * @param period "DAY", "WEEK", "MONTH" (mặc định "DAY")
+   */
+  @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
+  @GetMapping("/revenue-analytics")
+  public ApiResponse<RevenueAnalyticsResponse> getRevenueAnalytics(
+      @RequestParam(defaultValue = "DAY") String period) {
+    RevenueAnalyticsResponse result = reportsService.getRevenueAnalytics(period);
+    return ApiResponse.ok("Lấy phân tích biểu đồ doanh thu thành công", result);
   }
 }

@@ -196,12 +196,17 @@ public class ShipmentsService {
 
     return PageResponse.from(
         shipmentPage,
-        s ->
-            shipmentMapper.toAdminShipmentItem(
-                s,
-                s.getOrder() != null
-                    ? paymentMethodMap.getOrDefault(s.getOrder().getOrderId(), "COD")
-                    : "COD"));
+        s -> {
+          String payMethod = "COD";
+          if (s.getOrder() != null) {
+            if (s.getOrder().getPaymentMethod() != null && !s.getOrder().getPaymentMethod().isBlank()) {
+              payMethod = s.getOrder().getPaymentMethod();
+            } else {
+              payMethod = paymentMethodMap.getOrDefault(s.getOrder().getOrderId(), "COD");
+            }
+          }
+          return shipmentMapper.toAdminShipmentItem(s, payMethod);
+        });
   }
 
   /**

@@ -25,6 +25,8 @@ public class AdminShipmentItemResponse {
   String recipientPhone;
   String shippingAddress;
   BigDecimal orderTotalAmount;
+  BigDecimal codAmount;
+  String orderStatus;
   String paymentMethod;
   String updatedBy;
   LocalDateTime updatedAt;
