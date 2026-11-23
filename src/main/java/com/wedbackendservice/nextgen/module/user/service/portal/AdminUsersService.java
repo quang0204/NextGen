@@ -18,9 +18,11 @@ import com.wedbackendservice.nextgen.module.user.dto.portal.request.UpdateUserSt
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserDetailResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserItemResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUserStatsResponse;
+import com.wedbackendservice.nextgen.module.user.dto.portal.response.AdminUsersListResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.CreateInternalUserResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserRoleResponse;
 import com.wedbackendservice.nextgen.module.user.dto.portal.response.UpdateUserStatusResponse;
+import com.wedbackendservice.nextgen.module.user.dto.portal.response.UserSummaryResponse;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.user.enums.Role;
 import com.wedbackendservice.nextgen.module.user.enums.UserStatus;
@@ -59,7 +61,7 @@ public class AdminUsersService {
   private final UsersMapper usersMapper;
 
   /** API 2.8: Danh sách người dùng (Tìm kiếm, phân trang, lọc theo Role & Status) */
-  public PageResponse<AdminUserItemResponse> getUsersList(
+  public AdminUsersListResponse getUsersList(
       int page,
       int limit,
       String search,
@@ -112,12 +114,40 @@ public class AdminUsersService {
       statusFilter = null;
     }
 
+    long totalUsers = userRepository.count();
+    long adminCount = userRepository.countByRole(Role.ADMIN);
+    long staffCount = userRepository.countByRole(Role.STAFF);
+    long customerCount = userRepository.countByRole(Role.CUSTOMER);
+    long lockedCount = userRepository.countByStatus(UserStatus.LOCKED);
+
+    UserSummaryResponse summary =
+        UserSummaryResponse.builder()
+            .totalUsers(totalUsers)
+            .adminCount(adminCount)
+            .staffCount(staffCount)
+            .customerCount(customerCount)
+            .lockedCount(lockedCount)
+            .build();
+
     String kw =
         (search != null && !search.isBlank()) ? "%" + search.trim().toLowerCase() + "%" : null;
     Page<User> pageResult = userRepository.searchUsers(roleFilter, statusFilter, kw, pageable);
     List<User> users = pageResult.getContent();
     if (users.isEmpty()) {
-      return PageResponse.from(pageResult, u -> null);
+      return AdminUsersListResponse.builder()
+          .content(Collections.emptyList())
+          .page(pageResult.getNumber() + 1)
+          .size(pageResult.getSize())
+          .totalPages(pageResult.getTotalPages())
+          .totalElements(pageResult.getTotalElements())
+          .hasNext(pageResult.hasNext())
+          .summary(summary)
+          .totalUsers(totalUsers)
+          .adminCount(adminCount)
+          .staffCount(staffCount)
+          .customerCount(customerCount)
+          .lockedCount(lockedCount)
+          .build();
     }
 
     List<Long> userIds = users.stream().map(User::getUserId).toList();
@@ -143,7 +173,20 @@ public class AdminUsersService {
                   .build();
             });
 
-    return PageResponse.from(mapped, Function.identity());
+    return AdminUsersListResponse.builder()
+        .content(mapped.getContent())
+        .page(mapped.getNumber() + 1)
+        .size(mapped.getSize())
+        .totalPages(mapped.getTotalPages())
+        .totalElements(mapped.getTotalElements())
+        .hasNext(mapped.hasNext())
+        .summary(summary)
+        .totalUsers(totalUsers)
+        .adminCount(adminCount)
+        .staffCount(staffCount)
+        .customerCount(customerCount)
+        .lockedCount(lockedCount)
+        .build();
   }
 
   /**

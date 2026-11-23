@@ -51,6 +51,10 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
   long countByRoleAndStatus(Role role, UserStatus status);
 
+  long countByRole(Role role);
+
+  long countByStatus(UserStatus status);
+
   @Query(
       """
         SELECT u FROM User u

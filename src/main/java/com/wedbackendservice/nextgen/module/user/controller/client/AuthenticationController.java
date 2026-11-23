@@ -15,6 +15,7 @@ import com.wedbackendservice.nextgen.module.user.dto.client.request.ResendOtpReq
 import com.wedbackendservice.nextgen.module.user.dto.client.request.ResetPasswordRequest;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.ForgotPasswordResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.ForgotResendOtpResponse;
+import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginInitiateResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.LoginVerifyOtpResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.RefreshTokenResponse;
 import com.wedbackendservice.nextgen.module.user.dto.client.response.RegisterInitiateResponse;
@@ -36,11 +37,13 @@ public class AuthenticationController {
 
   private final AuthenticationService authenticationService;
 
-  /** API 1: Đăng nhập trực tiếp (Tài khoản + Mật khẩu) */
+  /** API 1: Khởi tạo đăng nhập (Bước 1 Đăng nhập) */
   @PostMapping({"/login", "/login-initiate"})
-  public ApiResponse<LoginVerifyOtpResponse> loginInitiate(
+  public ApiResponse<LoginInitiateResponse> loginInitiate(
       @Valid @RequestBody LoginInitiateRequest request) {
-    return ApiResponse.ok("Đăng nhập thành công!", authenticationService.initiateLogin(request));
+    return ApiResponse.ok(
+        "Thông tin hợp lệ. Mã xác thực OTP đã được gửi.",
+        authenticationService.initiateLogin(request));
   }
 
   /** API 2: Xác thực mã OTP Đăng nhập (Bước 2 Đăng nhập) */

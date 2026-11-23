@@ -33,6 +33,7 @@ import com.wedbackendservice.nextgen.module.product.repository.ProductImageRepos
 import com.wedbackendservice.nextgen.module.product.repository.ProductRepository;
 import com.wedbackendservice.nextgen.module.product.repository.ProductSpecRepository;
 import com.wedbackendservice.nextgen.module.product.repository.ProductVariantRepository;
+import com.wedbackendservice.nextgen.module.product.repository.ReviewRepository;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.user.enums.Role;
 import com.wedbackendservice.nextgen.module.voucher.repository.PromotionRepository;
@@ -69,6 +70,7 @@ class ProductsServiceImageTest {
   @Mock private SecurityHelper securityHelper;
   @Mock private TokenRedisService tokenRedisService;
   @Mock private MinioStorageService minioStorageService;
+  @Mock private ReviewRepository reviewRepository;
 
   @Spy
   private ProductVariantMapper productVariantMapper = Mappers.getMapper(ProductVariantMapper.class);
@@ -504,6 +506,7 @@ class ProductsServiceImageTest {
         .thenReturn(List.of());
     when(productVariantRepository.findByProduct_ProductId(55L)).thenReturn(List.of(variant));
     when(inventoryRepository.findByVariant_VariantIdIn(List.of(550L))).thenReturn(List.of());
+    when(reviewRepository.findRatingStatsByProductIds(any())).thenReturn(List.of());
 
     AdminProductDetailResponse adminDetail = productsService.getAdminProductDetail(55L);
     ProductDetailResponse clientDetail = productsService.getProductDetail(55L);
