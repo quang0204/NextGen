@@ -93,3 +93,12 @@ minio:
   brands-bucket: ${MINIO_BRANDS_BUCKET:brands}
   presigned-expiry-seconds: ${MINIO_PRESIGNED_EXPIRY:900}
   public-base-url: ${MINIO_PUBLIC_BASE_URL:}
+
+order:
+  inventory:
+    resilience:
+      enabled: ${ORDER_INVENTORY_RESILIENCE_ENABLED:true}
+      failure-threshold: ${ORDER_INVENTORY_FAILURE_THRESHOLD:5}
+      open-duration-ms: ${ORDER_INVENTORY_OPEN_DURATION_MS:15000}
+      max-concurrent: ${ORDER_INVENTORY_MAX_CONCURRENT:100}
+      acquire-timeout-ms: ${ORDER_INVENTORY_ACQUIRE_TIMEOUT_MS:2000}

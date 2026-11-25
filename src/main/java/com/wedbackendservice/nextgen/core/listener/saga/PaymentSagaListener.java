@@ -91,47 +91,71 @@ public class PaymentSagaListener {
       Optional<Order> orderOpt = orderRepository.findById(event.getOrderId());
       if (orderOpt.isPresent()) {
         Order order = orderOpt.get();
+        if ("CANCELLED".equalsIgnoreCase(order.getStatus())) {
+          log.info(
+              "[PaymentSaga] Order #{} already CANCELLED, skipping payment creation",
+              order.getOrderCode());
+          inboxService.markAsProcessed(
+              event.getEventId(), consumerGroup, "StockReservedCancelled", event.getOrderCode());
+          return;
+        }
+        boolean paymentAlreadyExists = paymentRepository.existsByOrder_OrderId(order.getOrderId());
 
         if (isBankTransfer) {
-          // BANK_TRANSFER: Tạo Payment PENDING để hiển thị QR, khách giả lập thanh toán
-          Payment payment =
-              Payment.builder()
-                  .order(order)
+          // BANK_TRANSFER: Tạo Payment PENDING idempotent để hiển thị QR, khách giả lập thanh toán
+          if (!paymentAlreadyExists) {
+            Payment payment =
+                Payment.builder()
+                    .order(order)
+                    .paymentMethod("BANK_TRANSFER")
+                    .paymentProvider("SIMULATED_QR")
+                    .amount(event.getTotalAmount())
+                    .transactionRef(txnRef)
+                    .status(PaymentStatus.PENDING.name())
+                    .paidAt(null)
+                    .build();
+            paymentRepository.save(payment);
+          }
+
+          PaymentResultEvent resultEvent =
+              PaymentResultEvent.builder()
+                  .correlationId(event.getCorrelationId())
+                  .orderId(event.getOrderId())
+                  .orderCode(event.getOrderCode())
+                  .success(true)
                   .paymentMethod("BANK_TRANSFER")
-                  .paymentProvider("SIMULATED_QR")
                   .amount(event.getTotalAmount())
                   .transactionRef(txnRef)
-                  .status(PaymentStatus.PENDING.name())
-                  .paidAt(null)
+                  .message("Khởi tạo giao dịch chuyển khoản QR thành công, chờ khách thanh toán")
+                  .items(event.getItems())
                   .build();
-          paymentRepository.save(payment);
 
-          order.setStatus("PENDING_PAYMENT");
-          order.setPaymentStatus(PaymentStatus.UNPAID.name());
-          order.setUpdatedAt(LocalDateTime.now());
-          orderRepository.save(order);
+          outboxService.saveEvent(
+              "PAYMENT",
+              event.getOrderCode(),
+              "PaymentSucceeded",
+              KafkaTopics.PAYMENT_EVENTS,
+              resultEvent);
 
           log.info(
-              "[PaymentSaga] Created PENDING payment with QR demo for order #{}",
+              "[PaymentSaga] Ensured PENDING payment and emitted PAYMENT_EVENTS for order #{}",
               order.getOrderCode());
         } else {
-          // COD: Tạo Payment UNPAID theo dõi công nợ, không tạo QR, order WAITING_CONFIRMATION
-          Payment payment =
-              Payment.builder()
-                  .order(order)
-                  .paymentMethod("COD")
-                  .paymentProvider("COD_SHIPPER")
-                  .amount(event.getTotalAmount())
-                  .transactionRef("COD-" + order.getOrderCode())
-                  .status(PaymentStatus.UNPAID.name())
-                  .paidAt(null)
-                  .build();
-          paymentRepository.save(payment);
-
-          order.setStatus("WAITING_CONFIRMATION");
-          order.setPaymentStatus(PaymentStatus.UNPAID.name());
-          order.setUpdatedAt(LocalDateTime.now());
-          orderRepository.save(order);
+          // COD: Tạo Payment UNPAID idempotent theo dõi công nợ, không tạo QR
+          String codRef = "COD-" + order.getOrderCode();
+          if (!paymentAlreadyExists) {
+            Payment payment =
+                Payment.builder()
+                    .order(order)
+                    .paymentMethod("COD")
+                    .paymentProvider("COD_SHIPPER")
+                    .amount(event.getTotalAmount())
+                    .transactionRef(codRef)
+                    .status(PaymentStatus.UNPAID.name())
+                    .paidAt(null)
+                    .build();
+            paymentRepository.save(payment);
+          }
 
           // Phát sự kiện COD đã sẵn sàng chờ duyệt
           PaymentResultEvent resultEvent =
@@ -142,7 +166,7 @@ public class PaymentSagaListener {
                   .success(true)
                   .paymentMethod("COD")
                   .amount(event.getTotalAmount())
-                  .transactionRef(payment.getTransactionRef())
+                  .transactionRef(codRef)
                   .message("Khởi tạo đơn hàng COD thành công, chờ nhân viên xác nhận")
                   .items(event.getItems())
                   .build();
@@ -154,7 +178,7 @@ public class PaymentSagaListener {
               KafkaTopics.PAYMENT_EVENTS,
               resultEvent);
 
-          log.info("[PaymentSaga] Created UNPAID COD payment for order #{}", order.getOrderCode());
+          log.info("[PaymentSaga] Ensured UNPAID COD payment for order #{}", order.getOrderCode());
         }
       }
 

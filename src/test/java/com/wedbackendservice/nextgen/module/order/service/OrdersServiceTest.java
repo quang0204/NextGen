@@ -70,7 +70,6 @@ class OrdersServiceTest {
   @Mock private InventoryService inventoryService;
   @Mock private ShippingFeeCalculator shippingFeeCalculator;
   @Mock private OrderExpirationService orderExpirationService;
-  @Mock private OrderPostCommitService orderPostCommitService;
   @Spy private java.time.Clock clock = java.time.Clock.systemDefaultZone();
   @Spy private OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 

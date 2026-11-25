@@ -17,7 +17,7 @@ public class ReturnsController {
 
   private final ReturnsService returnsService;
 
-  /** API 11.1: [POST] /api/v1/returns — Khách hàng tạo phiếu yêu cầu đổi trả (Authenticated) */
+  /** API 11.1:— Khách hàng tạo phiếu yêu cầu đổi trả */
   @PreAuthorize("isAuthenticated()")
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)

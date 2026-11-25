@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.module.order.service;
 
+import com.wedbackendservice.nextgen.core.event.saga.KafkaTopics;
 import com.wedbackendservice.nextgen.core.exception.AppException;
 import com.wedbackendservice.nextgen.core.exception.ErrorCode;
 import com.wedbackendservice.nextgen.core.outbox.service.OutboxService;
@@ -22,6 +23,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -70,7 +72,8 @@ public class OrderCancellationService {
 
     String currentStatus = order.getStatus();
     if (!OrderStatus.WAITING_CONFIRMATION.name().equalsIgnoreCase(currentStatus)
-        && !OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(currentStatus)) {
+        && !OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(currentStatus)
+        && !OrderStatus.PENDING.name().equalsIgnoreCase(currentStatus)) {
       throw new AppException(
           ErrorCode.ERR_ORDER_CANNOT_CANCEL,
           "Không thể hủy đơn hàng do đơn đã được xác nhận hoặc đang trong quá trình giao hàng!");
@@ -118,10 +121,12 @@ public class OrderCancellationService {
             + (needRefund ? " (Đã tạo yêu cầu hoàn tiền REFUND_PENDING)" : ""));
     orderRepository.save(order);
 
-    // Phát Outbox Event OrderCancelled / RefundRequested
+    // Phát Outbox Event OrderCancelled / RefundRequested (Notification xử lý bất đồng bộ qua Kafka)
     Map<String, Object> cancelPayload = new HashMap<>();
+    cancelPayload.put("eventId", UUID.randomUUID().toString());
     cancelPayload.put("orderId", order.getOrderId());
     cancelPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+    cancelPayload.put("userId", order.getUser() != null ? order.getUser().getUserId() : null);
     cancelPayload.put("cancelReason", reason);
     cancelPayload.put("refundPending", needRefund);
     cancelPayload.put("refundAmount", needRefund ? order.getFinalTotal() : BigDecimal.ZERO);
@@ -132,17 +137,8 @@ public class OrderCancellationService {
         "ORDER",
         order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
         needRefund ? "RefundRequested" : "OrderCancelled",
-        "order-cancelled-topic",
+        KafkaTopics.ORDER_CANCELLED,
         cancelPayload);
-
-    // Gửi thông báo hủy đơn cho khách hàng via NotificationPort
-    if (order.getUser() != null) {
-      notificationPort.sendNotification(
-          order.getUser().getUserId(),
-          order.getOrderId(),
-          "Đơn hàng đã bị hủy",
-          "Đơn hàng " + order.getOrderCode() + " đã được hủy thành công. Lý do: " + reason);
-    }
 
     return CancelOrderResponse.builder()
         .orderCode(order.getOrderCode())

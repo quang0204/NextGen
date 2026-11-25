@@ -27,6 +27,8 @@ public interface PaymentRepository
 
   List<Payment> findByOrder_OrderId(Long orderId);
 
+  boolean existsByOrder_OrderId(Long orderId);
+
   Optional<Payment> findByTransactionRef(String transactionRef);
 
   boolean existsByTransactionRef(String transactionRef);

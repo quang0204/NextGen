@@ -61,8 +61,10 @@ public class InventoryService {
     }
 
     Order order = orderRepository.findById(orderId).orElse(null);
-    if (order == null) {
-      log.error("[InventoryService] Cannot reserve stock: Order #{} not found", orderId);
+    if (order == null || "CANCELLED".equalsIgnoreCase(order.getStatus())) {
+      log.error(
+          "[InventoryService] Cannot reserve stock: Order #{} not found or already CANCELLED",
+          orderId);
       return false;
     }
 

@@ -125,6 +125,7 @@ public class ShipmentsService {
   }
 
   /** API 9.2: Quản trị danh sách vận đơn (Admin Portal) (STAFF / ADMIN) */
+  @Transactional(readOnly = true)
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   public PageResponse<AdminShipmentItemResponse> getAdminShipments(
       int page, int size, String carrier, String status, String search) {

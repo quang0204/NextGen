@@ -1,5 +1,7 @@
 package com.wedbackendservice.nextgen.module.order.service;
 
+import com.wedbackendservice.nextgen.core.event.saga.KafkaTopics;
+import com.wedbackendservice.nextgen.core.event.saga.PaymentResultEvent;
 import com.wedbackendservice.nextgen.core.exception.AppException;
 import com.wedbackendservice.nextgen.core.exception.ErrorCode;
 import com.wedbackendservice.nextgen.core.outbox.service.OutboxService;
@@ -122,10 +124,12 @@ public class OrderFulfillmentService {
         "status: " + currentStatus,
         "status: CONFIRMED, tracking: " + trackingCode);
 
-    // Ghi nhận sự kiện xác nhận đơn hàng vào outbox_events để publish Kafka
+    // Ghi nhận sự kiện xác nhận đơn hàng vào outbox_events để publish Kafka (Notification bất đồng bộ)
     Map<String, Object> confirmPayload = new HashMap<>();
+    confirmPayload.put("eventId", UUID.randomUUID().toString());
     confirmPayload.put("orderId", order.getOrderId());
     confirmPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
+    confirmPayload.put("userId", order.getUser() != null ? order.getUser().getUserId() : null);
     confirmPayload.put("trackingCode", trackingCode);
     confirmPayload.put("status", "CONFIRMED");
     confirmPayload.put("carrier", request.getCarrier().trim());
@@ -139,21 +143,8 @@ public class OrderFulfillmentService {
         "ORDER",
         order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
         "OrderConfirmed",
-        "order-confirmed-topic",
+        KafkaTopics.ORDER_CONFIRMED,
         confirmPayload);
-
-    // Gửi thông báo cho khách hàng via NotificationPort
-    if (order.getUser() != null) {
-      notificationPort.sendNotification(
-          order.getUser().getUserId(),
-          order.getOrderId(),
-          "Đơn hàng đã được xác nhận",
-          "Đơn hàng "
-              + orderCode
-              + " đã được xác nhận và đang được chuẩn bị để giao cho "
-              + request.getCarrier().trim()
-              + ".");
-    }
 
     String confirmedByName =
         operator.getFullName() != null
@@ -387,27 +378,16 @@ public class OrderFulfillmentService {
         "PAYMENT",
         updated.getOrderCode(),
         "PaymentSucceeded",
-        "payment-events-topic",
-        Map.of(
-            "orderId", updated.getOrderId(),
-            "orderCode", updated.getOrderCode(),
-            "amount", updated.getFinalTotal(),
-            "transactionRef", txRef,
-            "paymentMethod", "BANK_TRANSFER",
-            "paidAt", DateTimeUtil.formatIsoInstant(now),
-            "confirmedBy", operator.getEmail() != null ? operator.getEmail() : "STAFF"));
-
-    if (updated.getUser() != null) {
-      notificationPort.sendNotification(
-          updated.getUser().getUserId(),
-          updated.getOrderId(),
-          "Thanh toán thành công",
-          "Đơn hàng "
-              + updated.getOrderCode()
-              + " đã được xác nhận thanh toán thành công số tiền "
-              + updated.getFinalTotal()
-              + "đ.");
-    }
+        KafkaTopics.PAYMENT_EVENTS,
+        PaymentResultEvent.builder()
+            .orderId(updated.getOrderId())
+            .orderCode(updated.getOrderCode())
+            .success(true)
+            .paymentMethod("BANK_TRANSFER")
+            .amount(updated.getFinalTotal())
+            .transactionRef(txRef)
+            .message("Thanh toán chuyển khoản đã được nhân viên xác nhận thành công")
+            .build());
 
     return ordersQueryService.getOrderDetail(updated.getOrderCode());
   }

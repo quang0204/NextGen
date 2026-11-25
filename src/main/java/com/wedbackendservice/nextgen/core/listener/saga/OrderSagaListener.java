@@ -61,21 +61,6 @@ public class OrderSagaListener {
 
       if (event.isSuccess()) {
         String prevStatus = order.getStatus();
-        if ("CONFIRMED".equalsIgnoreCase(prevStatus)
-            || "PREPARING".equalsIgnoreCase(prevStatus)
-            || "PICKED_UP".equalsIgnoreCase(prevStatus)
-            || "SHIPPING".equalsIgnoreCase(prevStatus)
-            || "DELIVERED".equalsIgnoreCase(prevStatus)
-            || "COMPLETED".equalsIgnoreCase(prevStatus)) {
-          log.info(
-              "[OrderSaga] Order #{} is already in state {}, skipping transition",
-              order.getOrderCode(),
-              prevStatus);
-          inboxService.markAsProcessed(
-              event.getEventId(), consumerGroup, "PaymentSucceeded", event.getOrderCode());
-          return;
-        }
-
         boolean isTransfer =
             "BANK_TRANSFER".equalsIgnoreCase(event.getPaymentMethod())
                 || "SIMULATED_TRANSFER".equalsIgnoreCase(event.getPaymentMethod());
@@ -85,9 +70,22 @@ public class OrderSagaListener {
                 ? "PENDING_PAYMENT"
                 : "WAITING_CONFIRMATION";
 
+        if (!"PENDING".equalsIgnoreCase(prevStatus) || nextStatus.equalsIgnoreCase(prevStatus)) {
+          log.info(
+              "[OrderSaga] Order #{} is already in state {} (target {}), skipping transition",
+              order.getOrderCode(),
+              prevStatus,
+              nextStatus);
+          inboxService.markAsProcessed(
+              event.getEventId(), consumerGroup, "PaymentSucceeded", event.getOrderCode());
+          return;
+        }
+
         order.setStatus(nextStatus);
         order.setPaymentStatus(
-            "COD".equalsIgnoreCase(event.getPaymentMethod()) ? "UNPAID" : order.getPaymentStatus());
+            "COD".equalsIgnoreCase(event.getPaymentMethod())
+                ? "UNPAID"
+                : (order.getPaymentStatus() != null ? order.getPaymentStatus() : "UNPAID"));
         order.setUpdatedAt(now);
         orderRepository.save(order);
 

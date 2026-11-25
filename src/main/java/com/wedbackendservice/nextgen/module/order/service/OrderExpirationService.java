@@ -1,5 +1,6 @@
 package com.wedbackendservice.nextgen.module.order.service;
 
+import com.wedbackendservice.nextgen.core.event.saga.KafkaTopics;
 import com.wedbackendservice.nextgen.core.outbox.service.OutboxService;
 import com.wedbackendservice.nextgen.module.inventory.service.InventoryService;
 import com.wedbackendservice.nextgen.module.order.entity.Order;
@@ -14,6 +15,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -97,18 +99,22 @@ public class OrderExpirationService {
             .note("Hệ thống tự động hủy đơn do quá hạn thanh toán QR " + expireMins + " phút.")
             .build());
 
-    // 6. Ghi Outbox Event OrderCancelled
+    // 6. Ghi Outbox Event OrderCancelled (NotificationEventListener tự gửi thông báo hủy)
     Map<String, Object> expPayload = new HashMap<>();
+    expPayload.put("eventId", UUID.randomUUID().toString());
     expPayload.put("orderId", order.getOrderId());
     expPayload.put("orderCode", order.getOrderCode() != null ? order.getOrderCode() : "");
-    expPayload.put("reason", "Expired payment timeout");
+    expPayload.put("userId", order.getUser() != null ? order.getUser().getUserId() : null);
+    expPayload.put(
+        "cancelReason",
+        "Mã QR hết hiệu lực thanh toán (Quá thời hạn giữ chỗ " + expireMins + " phút)");
     expPayload.put("refundPending", false);
 
     outboxService.saveEvent(
         "ORDER",
         order.getOrderCode() != null ? order.getOrderCode() : String.valueOf(order.getOrderId()),
         "OrderCancelled",
-        "order-cancelled-topic",
+        KafkaTopics.ORDER_CANCELLED,
         expPayload);
 
     return true;

@@ -41,12 +41,30 @@ public class InventorySagaListener {
         return;
       }
 
+      if (event.isSyncCompleted()) {
+        log.info(
+            "[InventorySaga] Sync critical path already handled order #{}, skipping redundant"
+                + " reservation",
+            event.getOrderCode());
+        inboxService.markAsProcessed(
+            event.getEventId(), consumerGroup, "OrderCreatedSync", event.getOrderCode());
+        return;
+      }
+
+      boolean isTransfer =
+          "BANK_TRANSFER".equalsIgnoreCase(event.getPaymentMethod())
+              || "SIMULATED_TRANSFER".equalsIgnoreCase(event.getPaymentMethod());
+      int holdMins =
+          event.getHoldMinutes() != null ? event.getHoldMinutes() : (isTransfer ? 30 : 0);
+
       log.info(
-          "[InventorySaga] Received OrderCreated for order #{}: starting stock reservation",
-          event.getOrderCode());
+          "[InventorySaga] Received async fallback OrderCreated for order #{} (hold={}m):"
+              + " reserving stock",
+          event.getOrderCode(),
+          holdMins);
 
       boolean reserved =
-          inventoryService.reserveStockForOrder(event.getOrderId(), event.getItems(), 30);
+          inventoryService.reserveStockForOrder(event.getOrderId(), event.getItems(), holdMins);
 
       if (!reserved) {
         log.warn("[InventorySaga] Stock reservation failed for order #{}", event.getOrderCode());

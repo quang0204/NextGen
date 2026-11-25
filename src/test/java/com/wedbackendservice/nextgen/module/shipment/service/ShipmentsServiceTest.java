@@ -294,4 +294,24 @@ class ShipmentsServiceTest {
         .extracting("errorCode")
         .isEqualTo(ErrorCode.INVALID_SHIPMENT_STATUS_TRANSITION);
   }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  void getAdminShipments_pageSize100_mapsOrderAndPaymentSafely() {
+    when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
+    org.springframework.data.domain.Page<Shipment> page =
+        new org.springframework.data.domain.PageImpl<>(List.of(shipment));
+    when(shipmentRepository.findAll(
+            any(org.springframework.data.jpa.domain.Specification.class),
+            any(org.springframework.data.domain.Pageable.class)))
+        .thenReturn(page);
+    when(paymentRepository.findByOrderIdsOrderByCreatedAtDesc(List.of(100L)))
+        .thenReturn(List.of(Payment.builder().order(order).paymentMethod("BANK_TRANSFER").build()));
+
+    var res = shipmentsService.getAdminShipments(1, 100, "ALL", "ALL", null);
+
+    assertThat(res.getContent()).hasSize(1);
+    assertThat(res.getContent().get(0).getTrackingCode()).isEqualTo("VN123456789");
+    assertThat(res.getContent().get(0).getPaymentMethod()).isEqualTo("BANK_TRANSFER");
+  }
 }

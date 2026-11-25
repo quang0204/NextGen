@@ -26,6 +26,8 @@ public class OrderCreatedEvent {
   String shippingAddress;
   String paymentMethod;
   BigDecimal totalAmount;
+  Integer holdMinutes;
+  @Builder.Default boolean syncCompleted = false;
   List<OrderItemDto> items;
 
   @Getter

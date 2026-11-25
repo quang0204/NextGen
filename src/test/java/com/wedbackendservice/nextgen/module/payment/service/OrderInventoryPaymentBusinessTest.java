@@ -55,7 +55,6 @@ import com.wedbackendservice.nextgen.module.order.service.OrderCancellationServi
 import com.wedbackendservice.nextgen.module.order.service.OrderCreationService;
 import com.wedbackendservice.nextgen.module.order.service.OrderExpirationService;
 import com.wedbackendservice.nextgen.module.order.service.OrderFulfillmentService;
-import com.wedbackendservice.nextgen.module.order.service.OrderPostCommitService;
 import com.wedbackendservice.nextgen.module.order.service.OrderPricingService;
 import com.wedbackendservice.nextgen.module.order.service.OrderReturnService;
 import com.wedbackendservice.nextgen.module.order.service.OrderStateService;
@@ -127,7 +126,6 @@ public class OrderInventoryPaymentBusinessTest {
   private InventoryService inventoryService;
   private InboxService inboxService;
   private OrderExpirationService orderExpirationService;
-  private OrderPostCommitService orderPostCommitService;
   private OrdersService ordersService;
   private PaymentService paymentService;
   private ShipmentsService shipmentsService;
@@ -163,7 +161,6 @@ public class OrderInventoryPaymentBusinessTest {
 
     CartPort cartPort = new CartPersistenceAdapter(cartRepository, cartItemRepository);
     NotificationPort notificationPort = new NotificationPersistenceAdapter(notificationRepository);
-    orderPostCommitService = new OrderPostCommitService(cartPort, notificationPort);
 
     OrderStateService orderStateService =
         new OrderStateService(orderStatusHistoryRepository, java.time.Clock.systemDefaultZone());
@@ -200,7 +197,6 @@ public class OrderInventoryPaymentBusinessTest {
             paymentPort,
             inventoryPort,
             outboxService,
-            orderPostCommitService,
             java.time.Clock.systemDefaultZone());
 
     OrderFulfillmentService orderFulfillmentService =

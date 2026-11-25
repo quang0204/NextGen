@@ -64,6 +64,11 @@ public class KafkaConfig {
   }
 
   @Bean
+  public NewTopic orderConfirmedTopic() {
+    return TopicBuilder.name(KafkaTopics.ORDER_CONFIRMED).partitions(1).replicas(1).build();
+  }
+
+  @Bean
   public NewTopic orderCancelledTopic() {
     return TopicBuilder.name(KafkaTopics.ORDER_CANCELLED).partitions(1).replicas(1).build();
   }

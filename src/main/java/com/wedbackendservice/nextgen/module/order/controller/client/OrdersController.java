@@ -21,7 +21,7 @@ public class OrdersController {
 
   private final OrdersService ordersService;
 
-  /** API 8.1: [POST] /api/v1/orders — Đặt hàng Checkout (Tạo MB01 & Giữ chỗ kho) (Authenticated) */
+  /** API 8.1: — Đặt hàng Checkout */
   @PostMapping
   @ResponseStatus(HttpStatus.CREATED)
   public ApiResponse<CreateOrderResponse> createOrder(
@@ -35,9 +35,7 @@ public class OrdersController {
         data);
   }
 
-  /**
-   * API 8.2: [GET] /api/v1/orders/my-orders — Khách hàng tra cứu lịch sử mua hàng (Authenticated)
-   */
+  /** API 8.2: — Khách hàng tra cứu lịch sử mua hàng */
   @GetMapping("/my-orders")
   public ApiResponse<PageResponse<MyOrderItemResponse>> getMyOrders(
       @RequestParam(defaultValue = "1") int page,
@@ -47,19 +45,14 @@ public class OrdersController {
         "Lấy danh sách đơn hàng cá nhân thành công", ordersService.getMyOrders(page, size, status));
   }
 
-  /**
-   * API 8.3: [GET] /api/v1/orders/{orderCode} — Chi tiết đơn hàng theo mã #DH-XXXX (Authenticated)
-   */
+  /** API 8.3: — Chi tiết đơn hàng theo mã */
   @GetMapping("/{orderCode}")
   public ApiResponse<OrderDetailResponse> getOrderDetail(@PathVariable String orderCode) {
     return ApiResponse.ok(
         "Truy vấn thông tin chi tiết đơn hàng thành công", ordersService.getOrderDetail(orderCode));
   }
 
-  /**
-   * API 8.4: [POST] /api/v1/orders/{orderCode}/cancel — Khách hàng hủy đơn & Giải phóng kho
-   * (Authenticated)
-   */
+  /** API 8.4: — Khách hàng hủy đơn & Giải phóng kho */
   @PostMapping("/{orderCode}/cancel")
   public ApiResponse<CancelOrderResponse> cancelOrder(
       @PathVariable String orderCode, @Valid @RequestBody CancelOrderRequest request) {
@@ -68,10 +61,7 @@ public class OrdersController {
         ordersService.cancelOrder(orderCode, request));
   }
 
-  /**
-   * API 8.5: [POST] /api/v1/orders/{id:[0-9]+}/notify-payment — Khách hàng xác nhận đã chuyển khoản
-   * thành công (Authenticated)
-   */
+  /** API 8.5: — Khách hàng xác nhận đã chuyển khoản */
   @PostMapping("/{id:[0-9]+}/notify-payment")
   public ApiResponse<OrderDetailResponse> notifyPayment(
       @PathVariable Long id, @RequestParam(required = false) String note) {

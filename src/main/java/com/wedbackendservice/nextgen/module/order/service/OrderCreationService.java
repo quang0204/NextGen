@@ -15,6 +15,7 @@ import com.wedbackendservice.nextgen.module.order.entity.OrderItem;
 import com.wedbackendservice.nextgen.module.order.entity.OrderStatusHistory;
 import com.wedbackendservice.nextgen.module.order.enums.OrderStatus;
 import com.wedbackendservice.nextgen.module.order.port.out.inventory.InventoryPort;
+import com.wedbackendservice.nextgen.module.order.port.out.inventory.InventoryUnavailableException;
 import com.wedbackendservice.nextgen.module.order.port.out.inventory.StockItemDto;
 import com.wedbackendservice.nextgen.module.order.port.out.payment.PaymentPort;
 import com.wedbackendservice.nextgen.module.order.repository.OrderItemRepository;
@@ -32,13 +33,13 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 @Slf4j
@@ -55,13 +56,20 @@ public class OrderCreationService {
   private final PaymentPort paymentPort;
   private final InventoryPort inventoryPort;
   private final OutboxService outboxService;
-  private final OrderPostCommitService orderPostCommitService;
   private final Clock clock;
+
+  @Autowired(required = false)
+  private TransactionTemplate transactionTemplate;
 
   @Value("${payment.bank-transfer.expire-minutes:30}")
   private int paymentExpireMinutes = 30;
 
-  @Transactional
+  private record CheckoutAttemptResult(
+      CreateOrderResponse response,
+      Order savedOrder,
+      Set<Long> variantIds,
+      boolean asyncFallback) {}
+
   public CreateOrderResponse createOrder(CreateOrderRequest request, String idempotencyKey) {
     User currentUser = securityHelper.getCurrentUser();
     LocalDateTime now = LocalDateTime.now(clock);
@@ -96,57 +104,114 @@ public class OrderCreationService {
     final String finalRedisKey = redisKey;
 
     try {
-      // 2-7. Tính toán giá, khuyến mãi, voucher và phí ship qua OrderPricingService
-      OrderPricingService.PricingResult pricing =
-          orderPricingService.calculatePricing(
-              request.getItems(),
-              request.getVoucherCode(),
-              request.getShippingMethod(),
-              request.getExpectedTotalAmount(),
-              now);
-
-      Map<Long, Integer> consolidatedQty = pricing.getConsolidatedQty();
-      List<OrderItem> orderItemsToSave = pricing.getOrderItemsToSave();
-      List<OrderCreatedEvent.OrderItemDto> eventItems = pricing.getEventItems();
-      BigDecimal subtotal = pricing.getSubtotal();
-      Voucher appliedVoucher = pricing.getAppliedVoucher();
-      BigDecimal voucherDiscount = pricing.getVoucherDiscount();
-      BigDecimal shippingFee = pricing.getShippingFee();
-      BigDecimal totalAmount = pricing.getTotalAmount();
-
-      // 8. Validate Payment Method Whitelist (Chỉ COD hoặc BANK_TRANSFER)
       String payMethod = validatePaymentMethod(request.getPaymentMethod());
       boolean isTransfer = PaymentMethod.BANK_TRANSFER.name().equals(payMethod);
-      String initialStatus =
-          isTransfer ? OrderStatus.PENDING_PAYMENT.name() : OrderStatus.WAITING_CONFIRMATION.name();
-
-      // 9. Lưu Order với mã đơn hàng duy nhất không đụng độ
-      Order savedOrder =
-          saveOrder(
-              currentUser,
-              appliedVoucher,
-              initialStatus,
-              payMethod,
-              request,
-              subtotal,
-              voucherDiscount,
-              shippingFee,
-              totalAmount);
-
-      // 10. Lưu Order Items
-      for (OrderItem item : orderItemsToSave) {
-        item.setOrder(savedOrder);
-        orderItemRepository.save(item);
-      }
-
-      // 11. Khởi tạo Payment nếu là BANK_TRANSFER via PaymentPort
-      if (isTransfer) {
-        paymentPort.createInitialPayment(
-            savedOrder, totalAmount, PaymentMethod.BANK_TRANSFER.name(), "VIETQR_DEMO");
-      }
-
-      // 12. GIỮ KHO ĐỒNG BỘ NGUYÊN TỬ via InventoryPort
       int holdMinutes = isTransfer ? paymentExpireMinutes : 0;
+
+      CheckoutAttemptResult result;
+      if (inventoryPort.isReserveAvailable()) {
+        try {
+          // Critical Path đồng bộ: giữ kho + khởi tạo thanh toán trong 1 transaction ngắn gọn
+          result =
+              runInTransaction(
+                  () ->
+                      executeCheckoutAttempt(
+                          request, currentUser, payMethod, isTransfer, holdMinutes, now, false));
+        } catch (InventoryUnavailableException ex) {
+          log.warn(
+              "[OrderCreationService] Tồn kho quá tải/gián đoạn ({}), hạ cấp sang nhánh Kafka"
+                  + " Saga bất đồng bộ!",
+              ex.getMessage());
+          // Transaction đồng bộ đã rollback sạch sẽ; mở transaction độc lập để tiếp nhận PENDING
+          result =
+              runInTransaction(
+                  () ->
+                      executeCheckoutAttempt(
+                          request, currentUser, payMethod, isTransfer, holdMinutes, now, true));
+        }
+      } else {
+        log.warn(
+            "[OrderCreationService] Circuit Breaker tồn kho đang OPEN, bỏ qua gọi đồng bộ và"
+                + " tiếp nhận đơn qua Kafka Saga!");
+        result =
+            runInTransaction(
+                () ->
+                    executeCheckoutAttempt(
+                        request, currentUser, payMethod, isTransfer, holdMinutes, now, true));
+      }
+
+      afterOrderCommitted(finalRedisKey, result.savedOrder());
+      return result.response();
+    } catch (Exception ex) {
+      if (finalRedisKey != null) {
+        try {
+          tokenRedisService.deleteKey(finalRedisKey);
+        } catch (Exception redisEx) {
+          log.warn(
+              "[OrderCreationService] Rollback xóa Redis key {} thất bại: {}",
+              finalRedisKey,
+              redisEx.getMessage());
+        }
+      }
+      throw ex;
+    }
+  }
+
+  private CheckoutAttemptResult executeCheckoutAttempt(
+      CreateOrderRequest request,
+      User currentUser,
+      String payMethod,
+      boolean isTransfer,
+      int holdMinutes,
+      LocalDateTime now,
+      boolean asyncFallback) {
+    // 2-7. Tính toán giá, khuyến mãi, voucher và phí ship qua OrderPricingService
+    OrderPricingService.PricingResult pricing =
+        orderPricingService.calculatePricing(
+            request.getItems(),
+            request.getVoucherCode(),
+            request.getShippingMethod(),
+            request.getExpectedTotalAmount(),
+            now);
+
+    Map<Long, Integer> consolidatedQty = pricing.getConsolidatedQty();
+    List<OrderItem> orderItemsToSave = pricing.getOrderItemsToSave();
+    List<OrderCreatedEvent.OrderItemDto> eventItems = pricing.getEventItems();
+    BigDecimal subtotal = pricing.getSubtotal();
+    Voucher appliedVoucher = pricing.getAppliedVoucher();
+    BigDecimal voucherDiscount = pricing.getVoucherDiscount();
+    BigDecimal shippingFee = pricing.getShippingFee();
+    BigDecimal totalAmount = pricing.getTotalAmount();
+
+    // 8. Xác định trạng thái khởi tạo (PENDING nếu hạ cấp sang Async Kafka Saga)
+    String initialStatus =
+        asyncFallback
+            ? OrderStatus.PENDING.name()
+            : (isTransfer
+                ? OrderStatus.PENDING_PAYMENT.name()
+                : OrderStatus.WAITING_CONFIRMATION.name());
+
+    // 9. Lưu Order với mã đơn hàng duy nhất không đụng độ
+    Order savedOrder =
+        saveOrder(
+            currentUser,
+            appliedVoucher,
+            initialStatus,
+            payMethod,
+            request,
+            subtotal,
+            voucherDiscount,
+            shippingFee,
+            totalAmount);
+
+    // 10. Lưu Order Items
+    for (OrderItem item : orderItemsToSave) {
+      item.setOrder(savedOrder);
+      orderItemRepository.save(item);
+    }
+
+    if (!asyncFallback) {
+      // 11. GIỮ KHO ĐỒNG BỘ NGUYÊN TỬ via InventoryPort (lỗi nghiệp vụ hết hàng -> rollback ngay)
       List<StockItemDto> stockItems =
           eventItems.stream()
               .map(
@@ -164,125 +229,75 @@ public class OrderCreationService {
             "Một số sản phẩm trong đơn hàng vừa hết hàng hoặc không đủ số lượng khả dụng!");
       }
 
-      // 13. Ghi Outbox Event: OrderCreated
-      OrderCreatedEvent orderCreatedEvent =
-          OrderCreatedEvent.builder()
-              .orderId(savedOrder.getOrderId())
-              .orderCode(savedOrder.getOrderCode())
-              .userId(currentUser.getUserId())
-              .recipientName(savedOrder.getRecipientName())
-              .recipientPhone(savedOrder.getRecipientPhone())
-              .shippingAddress(savedOrder.getShippingAddress())
-              .paymentMethod(payMethod)
-              .totalAmount(totalAmount)
-              .items(eventItems)
-              .build();
+      // 12. Khởi tạo Payment đồng bộ (1 bản ghi duy nhất cho cả BANK_TRANSFER lẫn COD)
+      paymentPort.createInitialPayment(
+          savedOrder, totalAmount, payMethod, isTransfer ? "VIETQR_DEMO" : "COD_SHIPPER");
+    }
 
-      outboxService.saveEvent(
-          "ORDER",
-          savedOrder.getOrderCode(),
-          "OrderCreated",
-          KafkaTopics.ORDER_CREATED,
-          orderCreatedEvent);
+    // 13. Ghi Outbox Event: OrderCreated (Kafka fan-out sau commit, hoặc chạy Saga nếu
+    // asyncFallback)
+    OrderCreatedEvent orderCreatedEvent =
+        OrderCreatedEvent.builder()
+            .orderId(savedOrder.getOrderId())
+            .orderCode(savedOrder.getOrderCode())
+            .userId(currentUser.getUserId())
+            .recipientName(savedOrder.getRecipientName())
+            .recipientPhone(savedOrder.getRecipientPhone())
+            .shippingAddress(savedOrder.getShippingAddress())
+            .paymentMethod(payMethod)
+            .totalAmount(totalAmount)
+            .holdMinutes(holdMinutes)
+            .syncCompleted(!asyncFallback)
+            .items(eventItems)
+            .build();
 
-      // 14. Ghi Order Status History
-      orderStatusHistoryRepository.save(
-          OrderStatusHistory.builder()
-              .order(savedOrder)
-              .changedBy(currentUser)
-              .previousStatus(null)
-              .newStatus(initialStatus)
-              .note(
-                  "Khởi tạo đơn hàng "
-                      + initialStatus
-                      + " thành công. Đã khóa giữ chỗ tồn kho an toàn.")
-              .build());
+    outboxService.saveEvent(
+        "ORDER",
+        savedOrder.getOrderCode(),
+        "OrderCreated",
+        KafkaTopics.ORDER_CREATED,
+        orderCreatedEvent);
 
-      // 15. Transaction Synchronization: Cập nhật Redis & Dọn giỏ hàng & Gửi thông báo AFTER_COMMIT
-      if (TransactionSynchronizationManager.isSynchronizationActive()) {
-        TransactionSynchronizationManager.registerSynchronization(
-            new TransactionSynchronization() {
-              @Override
-              public void afterCommit() {
-                try {
-                  if (finalRedisKey != null) {
-                    tokenRedisService.setValue(
-                        finalRedisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
-                  }
-                } catch (Exception ex) {
-                  log.warn(
-                      "[OrderCreationService] Lưu Redis idempotency key sau commit thất bại: {}",
-                      ex.getMessage());
-                }
+    // 14. Ghi Order Status History
+    String historyNote =
+        asyncFallback
+            ? "Tiếp nhận đơn hàng PENDING (chế độ dự phòng bất đồng bộ do kho đang bận, chờ Kafka"
+                + " Saga giữ chỗ)."
+            : "Khởi tạo đơn hàng "
+                + initialStatus
+                + " thành công. Đã khóa giữ chỗ tồn kho an toàn.";
+    orderStatusHistoryRepository.save(
+        OrderStatusHistory.builder()
+            .order(savedOrder)
+            .changedBy(currentUser)
+            .previousStatus(null)
+            .newStatus(initialStatus)
+            .note(historyNote)
+            .build());
 
-                try {
-                  orderPostCommitService.cleanupCartAndSendNotification(
-                      currentUser.getUserId(),
-                      consolidatedQty.keySet(),
-                      savedOrder.getOrderId(),
-                      savedOrder.getOrderCode(),
-                      isTransfer,
-                      paymentExpireMinutes);
-                } catch (Exception ex) {
-                  log.warn(
-                      "[OrderCreationService] Post-commit dọn cart & notification thất bại: {}",
-                      ex.getMessage());
-                }
-              }
+    return new CheckoutAttemptResult(
+        toCreateOrderResponse(savedOrder, orderItemsToSave.size()),
+        savedOrder,
+        consolidatedQty.keySet(),
+        asyncFallback);
+  }
 
-              @Override
-              public void afterCompletion(int status) {
-                try {
-                  if (status != TransactionSynchronization.STATUS_COMMITTED
-                      && finalRedisKey != null) {
-                    tokenRedisService.deleteKey(finalRedisKey);
-                  }
-                } catch (Exception ex) {
-                  log.warn(
-                      "[OrderCreationService] Xóa Redis key sau rollback thất bại: {}",
-                      ex.getMessage());
-                }
-              }
-            });
-      } else {
-        try {
-          if (finalRedisKey != null) {
-            tokenRedisService.setValue(
-                finalRedisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
-          }
-        } catch (Exception ex) {
-          log.warn(
-              "[OrderCreationService] Lưu Redis idempotency key thất bại: {}", ex.getMessage());
-        }
+  private <T> T runInTransaction(Supplier<T> action) {
+    if (transactionTemplate != null) {
+      return transactionTemplate.execute(status -> action.get());
+    }
+    return action.get();
+  }
 
-        try {
-          orderPostCommitService.cleanupCartAndSendNotification(
-              currentUser.getUserId(),
-              consolidatedQty.keySet(),
-              savedOrder.getOrderId(),
-              savedOrder.getOrderCode(),
-              isTransfer,
-              paymentExpireMinutes);
-        } catch (Exception ex) {
-          log.warn(
-              "[OrderCreationService] Post-commit dọn cart & notification thất bại: {}",
-              ex.getMessage());
-        }
-      }
-
-      return toCreateOrderResponse(savedOrder, orderItemsToSave.size());
-    } catch (Exception ex) {
+  private void afterOrderCommitted(String finalRedisKey, Order savedOrder) {
+    try {
       if (finalRedisKey != null) {
-        try {
-          tokenRedisService.deleteKey(finalRedisKey);
-        } catch (Exception redisEx) {
-          log.warn(
-              "[OrderCreationService] Rollback xóa Redis key {} thất bại: {}",
-              finalRedisKey,
-              redisEx.getMessage());
-        }
+        tokenRedisService.setValue(finalRedisKey, savedOrder.getOrderCode(), Duration.ofHours(24));
       }
-      throw ex;
+    } catch (Exception ex) {
+      log.warn(
+          "[OrderCreationService] Lưu Redis idempotency key sau commit thất bại: {}",
+          ex.getMessage());
     }
   }
 

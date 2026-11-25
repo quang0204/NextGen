@@ -19,10 +19,7 @@ public class AdminOrdersController {
 
   private final OrdersService ordersService;
 
-  /**
-   * API 8.5: [GET] /api/v1/admin/orders — Quản trị toàn bộ danh sách đơn hàng (7 bước) (STAFF /
-   * ADMIN)
-   */
+  /** API 8.5:— Quản trị toàn bộ danh sách đơn hàng (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @GetMapping
   public ApiResponse<AdminOrderListResponse> getAdminOrders(
@@ -35,10 +32,7 @@ public class AdminOrdersController {
         ordersService.getAdminOrders(page, size, status, paymentStatus));
   }
 
-  /**
-   * API 8.6: [POST] /api/v1/admin/orders/{id}/confirm — Xác nhận đơn MB02 & Tự động tạo Vận đơn
-   * (STAFF / ADMIN)
-   */
+  /** API 8.6:— Xác nhận đơn & Tự động tạo Vận đơn (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/confirm")
   public ApiResponse<ConfirmOrderResponse> confirmOrder(
@@ -53,10 +47,7 @@ public class AdminOrdersController {
         response);
   }
 
-  /**
-   * API: [POST] /api/v1/admin/orders/{id}/prepare — Chuyển trạng thái đơn hàng sang Đang chuẩn bị
-   * hàng (PREPARING) (STAFF / ADMIN)
-   */
+  /** API: — Chuyển trạng thái đơn hàng sang Đang chuẩn bị hàng (PREPARING) (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/prepare")
   public ApiResponse<
@@ -67,10 +58,7 @@ public class AdminOrdersController {
         ordersService.prepareOrder(id));
   }
 
-  /**
-   * API 8.7: [POST] /api/v1/admin/orders/{id}/pack-export — Đóng gói & Xuất kho vật lý MB03 (STAFF
-   * / ADMIN)
-   */
+  /** API 8.7: — Đóng gói & Xuất kho vật lý MB03 (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/pack-export")
   public ApiResponse<PackExportOrderResponse> packAndExportOrder(
@@ -81,10 +69,7 @@ public class AdminOrdersController {
             id, request != null ? request : new PackExportOrderRequest()));
   }
 
-  /**
-   * API 8.8: [POST] /api/v1/admin/orders/{id}/confirm-payment — Xác nhận đã nhận tiền chuyển khoản
-   * (STAFF / ADMIN)
-   */
+  /** API 8.8: — Xác nhận đã nhận tiền chuyển khoản (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/confirm-payment")
   public ApiResponse<
@@ -95,10 +80,7 @@ public class AdminOrdersController {
         ordersService.confirmOrderPayment(id, note));
   }
 
-  /**
-   * API 8.9: [POST] /api/v1/admin/orders/{id}/receive-return — Thủ kho nhận hàng hoàn kho & Hoàn
-   * tất hủy đơn (STAFF / ADMIN)
-   */
+  /** API 8.9: — Thủ kho nhận hàng hoàn kho & Hoàn tất hủy đơn (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PostMapping("/{id:[0-9]+}/receive-return")
   public ApiResponse<

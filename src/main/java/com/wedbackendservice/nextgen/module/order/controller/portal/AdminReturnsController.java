@@ -17,7 +17,7 @@ public class AdminReturnsController {
 
   private final ReturnsService returnsService;
 
-  /** API 11.2: [GET] /api/v1/admin/returns — Quản lý danh sách yêu cầu đổi trả (STAFF / ADMIN) */
+  /** API 11.2: — Quản lý danh sách yêu cầu đổi trả (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @GetMapping
   public ApiResponse<AdminReturnListResponse> getReturns(
@@ -34,10 +34,7 @@ public class AdminReturnsController {
         returnsService.getAdminReturns(page, effectiveLimit, status, orderCode, sortBy, sortDir));
   }
 
-  /**
-   * API 11.3: [PUT] /api/v1/admin/returns/{id}/inspect — Biên bản kiểm định ngoại quan & Hoàn kho
-   * MB04 (STAFF / ADMIN)
-   */
+  /** API 11.3: — Biên bản kiểm định ngoại quan & Hoàn kho (STAFF / ADMIN) */
   @PreAuthorize("hasAnyRole('STAFF','ADMIN')")
   @PutMapping("/{id:[0-9]+}/inspect")
   public ApiResponse<InspectReturnResponse> inspectReturn(
@@ -45,7 +42,7 @@ public class AdminReturnsController {
     InspectReturnResponse response = returnsService.inspectReturn(id, request);
     String message =
         "APPROVED".equalsIgnoreCase(response.getStatus())
-            ? "Đã hoàn tất giám định, lập biên bản MB04 nhập hoàn kho và phê duyệt hoàn tiền thành công!"
+            ? "Đã hoàn tất giám định, lập biên bản nhập hoàn kho và phê duyệt hoàn tiền thành công!"
             : ("INSPECTING".equalsIgnoreCase(response.getStatus())
                 ? "Đã ghi nhận biên bản thẩm định ngoại quan thành công!"
                 : "Đã từ chối yêu cầu đổi trả và lập biên bản kiểm định!");

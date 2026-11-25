@@ -21,15 +21,18 @@ public class PaymentPersistenceAdapter implements PaymentPort {
   @Override
   public void createInitialPayment(
       Order order, BigDecimal amount, String paymentMethod, String paymentProvider) {
-    Payment initialPayment =
+    boolean isCod = "COD".equalsIgnoreCase(paymentMethod);
+    Payment.PaymentBuilder builder =
         Payment.builder()
             .order(order)
             .paymentMethod(paymentMethod)
             .paymentProvider(paymentProvider)
             .amount(amount)
-            .status(PaymentStatus.PENDING.name())
-            .build();
-    paymentRepository.save(initialPayment);
+            .status(isCod ? PaymentStatus.UNPAID.name() : PaymentStatus.PENDING.name());
+    if (isCod && order != null && order.getOrderCode() != null) {
+      builder.transactionRef("COD-" + order.getOrderCode());
+    }
+    paymentRepository.save(builder.build());
   }
 
   @Override

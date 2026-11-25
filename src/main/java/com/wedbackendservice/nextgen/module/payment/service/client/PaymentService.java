@@ -80,6 +80,11 @@ public class PaymentService {
           ErrorCode.INVALID_REQUEST,
           "Phương thức COD thanh toán khi nhận hàng, không hỗ trợ tạo mã QR hoặc thanh toán trước.");
     }
+    if (OrderStatus.PENDING.name().equalsIgnoreCase(order.getStatus())) {
+      throw new AppException(
+          ErrorCode.ERR_ORDER_PROCESSING,
+          "Đơn hàng đang được kiểm tra tồn kho, vui lòng thử lại sau giây lát.");
+    }
 
     BigDecimal amount =
         order.getFinalAmount() != null ? order.getFinalAmount() : order.getTotalAmount();
