@@ -51,6 +51,9 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
 
   long countByStatus(UserStatus status);
 
+  @Query("SELECT COALESCE(u.tokenVersion, 0L) FROM User u WHERE u.userId = :userId")
+  Optional<Long> findTokenVersionByUserId(@Param("userId") Long userId);
+
   @Query(
       """
         SELECT u FROM User u

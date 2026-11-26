@@ -8,11 +8,15 @@ import com.wedbackendservice.nextgen.core.dto.session.TokenPair;
 import com.wedbackendservice.nextgen.core.dto.session.UploadSessionData;
 import java.time.Duration;
 import java.util.Date;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.LongFunction;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
@@ -21,11 +25,13 @@ import tools.jackson.databind.ObjectMapper;
 public class TokenRedisService {
 
   private static final String SESSION_PREFIX = "token:session:";
-  private static final String BLACKLIST_PREFIX = "token:blacklist:";
+  private static final String TOKEN_BLACKLIST_JTI_PREFIX = "token:blacklist:jti:";
+  private static final String TOKEN_VERSION_PREFIX = "token:version:";
   private static final String OTP_PREFIX = "otp:session:";
   private static final String LOGIN_FAIL_PREFIX = "login:fail:";
   private static final String REG_PREFIX = "reg_token_";
   private static final String RESET_PREFIX = "reset_token_";
+  private static final String RESET_USER_PREFIX = "reset_user_";
   private static final String PROFILE_UPDATE_PREFIX = "profile_update_session:";
   private static final String OTP_RATE_IP_PREFIX = "otp:rate:ip:";
   private static final String OTP_RATE_TARGET_PREFIX = "otp:rate:target:";
@@ -41,35 +47,92 @@ public class TokenRedisService {
   private static final Duration FAIL_LOCK_DURATION = Duration.ofMinutes(15);
   private static final Duration OTP_RATE_WINDOW = Duration.ofMinutes(15);
   private static final Duration OTP_FAIL_TTL = Duration.ofSeconds(120);
+  private static final Duration TOKEN_VERSION_CACHE_TTL = Duration.ofDays(7);
 
   private final RedisTemplate<String, String> redisTemplate;
   private final ObjectMapper objectMapper;
 
-  // ===== JWT SESSION / BLACKLIST =====
+  // ===== JWT SESSION / JTI BLACKLIST / TOKEN VERSION =====
 
-  public void saveToken(Long userId, String accessToken, String refreshToken, Date refreshExpiry) {
+  public void saveToken(
+      Long userId, String sessionId, String accessToken, String refreshToken, Date refreshExpiry) {
     save(
-        SESSION_PREFIX + userId,
+        sessionKey(userId, sessionId),
         new TokenPair(accessToken, refreshToken),
         expiryToTtl(refreshExpiry));
   }
 
-  public TokenPair getTokenPair(Long userId) {
-    return read(SESSION_PREFIX + userId, TokenPair.class);
+  public TokenPair getTokenPair(Long userId, String sessionId) {
+    return read(sessionKey(userId, sessionId), TokenPair.class);
+  }
+
+  public void deleteToken(Long userId, String sessionId) {
+    delete(sessionKey(userId, sessionId));
   }
 
   public void deleteToken(Long userId) {
     delete(SESSION_PREFIX + userId);
   }
 
-  public void blacklistToken(Long userId, TokenPair pair, Date refreshExpiry) {
-    save(BLACKLIST_PREFIX + userId, pair, expiryToTtl(refreshExpiry));
+  public void blacklistJwt(String jti, Date expiry) {
+    if (jti == null || jti.isBlank() || expiry == null) return;
+    Duration ttl = expiryToTtl(expiry);
+    if (ttl.isNegative() || ttl.isZero()) return;
+    redisTemplate.opsForValue().set(TOKEN_BLACKLIST_JTI_PREFIX + jti, "1", ttl);
   }
 
-  public boolean isTokenBlacklisted(Long userId, String token) {
-    TokenPair pair = read(BLACKLIST_PREFIX + userId, TokenPair.class);
-    return pair != null
-        && (token.equals(pair.getAccessToken()) || token.equals(pair.getRefreshToken()));
+  public boolean isJwtBlacklisted(String jti) {
+    if (jti == null || jti.isBlank()) return true;
+    return redisTemplate.opsForValue().get(TOKEN_BLACKLIST_JTI_PREFIX + jti) != null;
+  }
+
+  public boolean isTokenVersionValid(
+      Long userId, long tokenVersion, LongFunction<Optional<Long>> dbLoader) {
+    if (userId == null || tokenVersion < 0) return false;
+    String key = TOKEN_VERSION_PREFIX + userId;
+    String cached = redisTemplate.opsForValue().get(key);
+    if (cached != null) {
+      try {
+        return Long.parseLong(cached) == tokenVersion;
+      } catch (NumberFormatException ignored) {
+        delete(key);
+      }
+    }
+    Optional<Long> fromDb = dbLoader.apply(userId);
+    if (fromDb.isEmpty()) return false;
+    long dbVersion = fromDb.get();
+    saveTokenVersion(userId, dbVersion);
+    return dbVersion == tokenVersion;
+  }
+
+  public void revokeAllSessions(Long userId, long newTokenVersion) {
+    if (userId == null) return;
+    deleteToken(userId);
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      // Defer Redis write until DB transaction commits so rollbacks never leave stale versions.
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              saveTokenVersion(userId, newTokenVersion);
+            }
+          });
+      return;
+    }
+    saveTokenVersion(userId, newTokenVersion);
+  }
+
+  public void saveTokenVersion(Long userId, long version) {
+    if (userId == null) return;
+    redisTemplate
+        .opsForValue()
+        .set(TOKEN_VERSION_PREFIX + userId, String.valueOf(version), TOKEN_VERSION_CACHE_TTL);
+  }
+
+  private static String sessionKey(Long userId, String sessionId) {
+    return (sessionId == null || sessionId.isBlank())
+        ? SESSION_PREFIX + userId
+        : SESSION_PREFIX + userId + ":" + sessionId;
   }
 
   // ===== OTP / REGISTER / RESET SESSION =====
@@ -129,15 +192,37 @@ public class TokenRedisService {
 
   public void saveResetPasswordSession(
       String token, ResetPasswordSessionData data, long ttlSeconds) {
-    save(RESET_PREFIX + token, data, Duration.ofSeconds(ttlSeconds));
+    Duration ttl = Duration.ofSeconds(ttlSeconds);
+    if (token == null || token.isBlank() || ttl.isNegative() || ttl.isZero()) return;
+    save(RESET_PREFIX + token, data, ttl);
+
+    // Keep at most one active resetToken per user so superseded tokens are immediately rejected.
+    if (data != null && data.getUserId() != null) {
+      String userKey = RESET_USER_PREFIX + data.getUserId();
+      String previousToken = redisTemplate.opsForValue().getAndSet(userKey, token);
+      redisTemplate.expire(userKey, ttl);
+      if (previousToken != null && !previousToken.isBlank() && !previousToken.equals(token)) {
+        delete(RESET_PREFIX + previousToken);
+        clearFailedOtpAttempts(previousToken);
+      }
+    }
   }
 
   public ResetPasswordSessionData getResetPasswordSession(String token) {
+    if (token == null || token.isBlank()) return null;
     return read(RESET_PREFIX + token, ResetPasswordSessionData.class);
   }
 
   public void deleteResetPasswordSession(String token) {
+    if (token == null || token.isBlank()) return;
+    ResetPasswordSessionData existing = getResetPasswordSession(token);
     delete(RESET_PREFIX + token);
+    if (existing != null && existing.getUserId() != null) {
+      String userKey = RESET_USER_PREFIX + existing.getUserId();
+      if (token.equals(redisTemplate.opsForValue().get(userKey))) {
+        delete(userKey);
+      }
+    }
   }
 
   public void saveProfileUpdateSession(

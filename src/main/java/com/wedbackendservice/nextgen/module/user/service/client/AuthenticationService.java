@@ -60,12 +60,15 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.experimental.NonFinal;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -81,6 +84,8 @@ public class AuthenticationService {
   private static final long REGISTER_IDEMPOTENT_TTL_SECONDS = 60L;
   private static final int MAX_FAILED_LOGIN = 5;
   private static final String TOKEN_TYPE_CLAIM = "token_type";
+  private static final String SESSION_ID_CLAIM = "sid";
+  private static final String TOKEN_VERSION_CLAIM = "ver";
   private static final String TYPE_ACCESS = "access";
   private static final String TYPE_REFRESH = "refresh";
   private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -533,9 +538,10 @@ public class AuthenticationService {
 
     User user = findUser(sessionData.getUserId());
     user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+    long nextVersion = user.bumpTokenVersion();
     userRepository.save(user);
 
-    tokenRedisService.deleteToken(user.getUserId());
+    tokenRedisService.revokeAllSessions(user.getUserId(), nextVersion);
 
     auditLogRepository.log(user, "PASSWORD_RESET", "User", user.getUserId(), null, null);
 
@@ -583,23 +589,28 @@ public class AuthenticationService {
   // TOKEN / SESSION
   // =====================================================================
 
-  /** API 10: Cấp lại Access Token (Refresh Token Rotation). */
+  /** API 10: Cấp lại Access Token (Refresh Token Rotation theo từng phiên). */
   public RefreshTokenResponse refreshAccessToken(RefreshTokenRequest request)
       throws ParseException, JOSEException {
     SignedJWT signedJWT = verifyToken(request.getRefreshToken(), TYPE_REFRESH);
-    Long userId = Long.valueOf(signedJWT.getJWTClaimsSet().getSubject());
+    JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
+    Long userId = Long.valueOf(claims.getSubject());
+    String sessionId = claims.getStringClaim(SESSION_ID_CLAIM);
+    Long tokenVersion = extractTokenVersion(claims);
 
-    TokenPair tokenPair = tokenRedisService.getTokenPair(userId);
+    TokenPair tokenPair = tokenRedisService.getTokenPair(userId, sessionId);
     if (tokenPair == null || !tokenPair.getRefreshToken().equals(request.getRefreshToken())) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
     User user = findUser(userId);
     assertNotLocked(user);
+    if (!Objects.equals(tokenVersion, user.getEffectiveTokenVersion())) {
+      throw new AppException(ErrorCode.UNAUTHENTICATED);
+    }
 
-    Date oldRefreshExp = signedJWT.getJWTClaimsSet().getExpirationTime();
-    tokenRedisService.blacklistToken(userId, tokenPair, oldRefreshExp);
+    blacklistTokenPair(tokenPair);
 
-    AuthenticationResponse authenticationResponse = generateToken(user);
+    AuthenticationResponse authenticationResponse = generateToken(user, sessionId);
     return RefreshTokenResponse.builder()
         .accessToken(authenticationResponse.getAccessToken())
         .refreshToken(authenticationResponse.getRefreshToken())
@@ -607,17 +618,24 @@ public class AuthenticationService {
         .build();
   }
 
-  /** API 11: Đăng xuất. */
+  /** API 11: Đăng xuất (chỉ thu hồi phiên hiện tại, giữ nguyên thiết bị khác). */
   public void logout() throws ParseException {
-    Long userId = Long.valueOf(securityHelper.getAuthentication().getName());
-    TokenPair tokenPair = tokenRedisService.getTokenPair(userId);
-    if (tokenPair != null) {
-      Date refreshExp =
-          SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
-      tokenRedisService.blacklistToken(userId, tokenPair, refreshExp);
+    Authentication authentication = securityHelper.getAuthentication();
+    Long userId = Long.valueOf(authentication.getName());
+    String sessionId = null;
+
+    if (authentication.getPrincipal() instanceof Jwt jwt) {
+      Date accessExp = jwt.getExpiresAt() != null ? Date.from(jwt.getExpiresAt()) : null;
+      tokenRedisService.blacklistJwt(jwt.getId(), accessExp);
+      sessionId = jwt.getClaimAsString(SESSION_ID_CLAIM);
     }
-    tokenRedisService.deleteToken(userId);
-    log.info("User {} logged out — token pair blacklisted, session removed", userId);
+
+    TokenPair tokenPair = tokenRedisService.getTokenPair(userId, sessionId);
+    if (tokenPair != null) {
+      blacklistTokenPair(tokenPair);
+    }
+    tokenRedisService.deleteToken(userId, sessionId);
+    log.info("User {} logged out session {} — session tokens blacklisted", userId, sessionId);
   }
 
   /** API 12: Thông tin người dùng hiện tại. */
@@ -656,6 +674,7 @@ public class AuthenticationService {
     }
 
     user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+    long nextVersion = user.bumpTokenVersion();
     userRepository.save(user);
 
     auditLogRepository.log(
@@ -673,17 +692,7 @@ public class AuthenticationService {
             .build();
     notificationRepository.save(notification);
 
-    TokenPair tokenPair = tokenRedisService.getTokenPair(user.getUserId());
-    if (tokenPair != null && tokenPair.getRefreshToken() != null) {
-      try {
-        Date refreshExp =
-            SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
-        tokenRedisService.blacklistToken(user.getUserId(), tokenPair, refreshExp);
-      } catch (ParseException e) {
-        log.warn("Không thể parse hạn refresh token để blacklist cho user {}", user.getUserId());
-      }
-    }
-    tokenRedisService.deleteToken(user.getUserId());
+    tokenRedisService.revokeAllSessions(user.getUserId(), nextVersion);
   }
 
   // =====================================================================
@@ -808,11 +817,20 @@ public class AuthenticationService {
   // =====================================================================
 
   AuthenticationResponse generateToken(User user) {
-    String accessToken = buildToken(user, accessExpiration, TYPE_ACCESS);
-    String refreshToken = buildToken(user, refreshExpiration, TYPE_REFRESH);
+    return generateToken(user, UUID.randomUUID().toString().replace("-", ""));
+  }
+
+  private AuthenticationResponse generateToken(User user, String sessionId) {
+    String effectiveSessionId =
+        (sessionId == null || sessionId.isBlank())
+            ? UUID.randomUUID().toString().replace("-", "")
+            : sessionId;
+    String accessToken = buildToken(user, accessExpiration, TYPE_ACCESS, effectiveSessionId);
+    String refreshToken = buildToken(user, refreshExpiration, TYPE_REFRESH, effectiveSessionId);
     try {
       Date refreshExp = SignedJWT.parse(refreshToken).getJWTClaimsSet().getExpirationTime();
-      tokenRedisService.saveToken(user.getUserId(), accessToken, refreshToken, refreshExp);
+      tokenRedisService.saveToken(
+          user.getUserId(), effectiveSessionId, accessToken, refreshToken, refreshExp);
     } catch (ParseException e) {
       log.error("Error parsing refresh token", e);
       throw new IllegalStateException(e);
@@ -824,7 +842,7 @@ public class AuthenticationService {
         .build();
   }
 
-  private String buildToken(User user, long validSeconds, String tokenType) {
+  private String buildToken(User user, long validSeconds, String tokenType, String sessionId) {
     JWTClaimsSet claims =
         new JWTClaimsSet.Builder()
             .subject(user.getUserId().toString())
@@ -834,6 +852,8 @@ public class AuthenticationService {
             .jwtID(UUID.randomUUID().toString())
             .claim("Scope", buildScope(user))
             .claim(TOKEN_TYPE_CLAIM, tokenType)
+            .claim(SESSION_ID_CLAIM, sessionId)
+            .claim(TOKEN_VERSION_CLAIM, user.getEffectiveTokenVersion())
             .build();
     JWSObject jws =
         new JWSObject(new JWSHeader(JWSAlgorithm.HS512), new Payload(claims.toJSONObject()));
@@ -862,17 +882,46 @@ public class AuthenticationService {
     JWSVerifier verifier = new MACVerifier(signedKey.getBytes(StandardCharsets.UTF_8));
     JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
     Date exp = claims.getExpirationTime();
+    Long tokenVersion = extractTokenVersion(claims);
 
     if (!signedJWT.verify(verifier)
         || exp == null
         || !exp.after(new Date())
-        || !expectedType.equals(claims.getClaim(TOKEN_TYPE_CLAIM))) {
+        || !expectedType.equals(claims.getClaim(TOKEN_TYPE_CLAIM))
+        || tokenVersion == null) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
-    if (tokenRedisService.isTokenBlacklisted(
-        Long.valueOf(signedJWT.getJWTClaimsSet().getSubject()), token)) {
+    final Long userId;
+    try {
+      userId = Long.valueOf(claims.getSubject());
+    } catch (NumberFormatException e) {
+      throw new AppException(ErrorCode.UNAUTHENTICATED);
+    }
+    if (tokenRedisService.isJwtBlacklisted(claims.getJWTID())
+        || !tokenRedisService.isTokenVersionValid(
+            userId, tokenVersion, userRepository::findTokenVersionByUserId)) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
     return signedJWT;
+  }
+
+  private static Long extractTokenVersion(JWTClaimsSet claims) {
+    Object ver = claims.getClaim(TOKEN_VERSION_CLAIM);
+    return ver instanceof Number n ? n.longValue() : null;
+  }
+
+  private void blacklistTokenPair(TokenPair pair) {
+    blacklistRawJwt(pair.getAccessToken());
+    blacklistRawJwt(pair.getRefreshToken());
+  }
+
+  private void blacklistRawJwt(String rawJwt) {
+    if (rawJwt == null || rawJwt.isBlank()) return;
+    try {
+      JWTClaimsSet claims = SignedJWT.parse(rawJwt).getJWTClaimsSet();
+      tokenRedisService.blacklistJwt(claims.getJWTID(), claims.getExpirationTime());
+    } catch (ParseException e) {
+      log.warn("Không thể parse JWT để blacklist: {}", e.getMessage());
+    }
   }
 }

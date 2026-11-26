@@ -47,6 +47,20 @@ public class User {
 
   String lockReason;
 
+  @Builder.Default
+  @Column(name = "token_version", columnDefinition = "BIGINT NOT NULL DEFAULT 0")
+  Long tokenVersion = 0L;
+
   @CreatedDate LocalDateTime createdAt;
   @LastModifiedDate LocalDateTime updatedAt;
+
+  public long getEffectiveTokenVersion() {
+    return tokenVersion != null ? tokenVersion : 0L;
+  }
+
+  public long bumpTokenVersion() {
+    long next = getEffectiveTokenVersion() + 1L;
+    this.tokenVersion = next;
+    return next;
+  }
 }

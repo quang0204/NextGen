@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.core.config;
 
 import com.wedbackendservice.nextgen.core.security.TokenRedisService;
+import com.wedbackendservice.nextgen.module.user.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.crypto.spec.SecretKeySpec;
@@ -53,6 +54,7 @@ public class SecurityConfig {
   List<String> allowedOrigins;
 
   private final TokenRedisService tokenRedisService;
+  private final UserRepository userRepository;
 
   @Bean
   public SecurityFilterChain filterchain(HttpSecurity httpSecurity) {
@@ -105,7 +107,7 @@ public class SecurityConfig {
   }
 
   @Bean
-  JwtDecoder jwtDecoder() {
+  public JwtDecoder jwtDecoder() {
     NimbusJwtDecoder jwtDecoder =
         NimbusJwtDecoder.withSecretKey(
                 new SecretKeySpec(signedKey.getBytes(StandardCharsets.UTF_8), "HmacSHA512"))
@@ -122,9 +124,17 @@ public class SecurityConfig {
               if (sub == null || !sub.matches("^\\d+$")) {
                 return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
               }
+              Object verClaim = jwt.getClaim("ver");
+              if (!(verClaim instanceof Number verNum)) {
+                return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
+              }
               try {
                 Long userId = Long.valueOf(sub);
-                return !tokenRedisService.isTokenBlacklisted(userId, jwt.getTokenValue())
+                boolean valid =
+                    !tokenRedisService.isJwtBlacklisted(jwt.getId())
+                        && tokenRedisService.isTokenVersionValid(
+                            userId, verNum.longValue(), userRepository::findTokenVersionByUserId);
+                return valid
                     ? OAuth2TokenValidatorResult.success()
                     : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
               } catch (Exception e) {

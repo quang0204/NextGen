@@ -1,8 +1,6 @@
 package com.wedbackendservice.nextgen.module.user.service.portal;
 
-import com.nimbusds.jwt.SignedJWT;
 import com.wedbackendservice.nextgen.core.dto.PageResponse;
-import com.wedbackendservice.nextgen.core.dto.session.TokenPair;
 import com.wedbackendservice.nextgen.core.exception.AppException;
 import com.wedbackendservice.nextgen.core.exception.ErrorCode;
 import com.wedbackendservice.nextgen.core.security.SecurityHelper;
@@ -388,16 +386,14 @@ public class AdminUsersService {
       }
       targetUser.setStatus(UserStatus.LOCKED);
       targetUser.setLockReason(request.getLockReason().trim());
-
-      // Thu hồi toàn bộ JWT Token đang hoạt động (Blacklist refresh token trong Redis)
-      revokeUserTokens(targetUser.getUserId());
+      targetUser.setUpdatedAt(LocalDateTime.now());
+      revokeAllUserSessions(targetUser);
     } else {
       targetUser.setStatus(UserStatus.ACTIVE);
       targetUser.setLockReason(null);
+      targetUser.setUpdatedAt(LocalDateTime.now());
+      userRepository.save(targetUser);
     }
-
-    targetUser.setUpdatedAt(LocalDateTime.now());
-    userRepository.save(targetUser);
 
     // Ghi log vết kiểm toán vào Audit_Logs
     auditLogRepository.log(
@@ -445,10 +441,9 @@ public class AdminUsersService {
     }
 
     targetUser.setRole(request.getRole());
-    userRepository.save(targetUser);
 
     // Thu hồi toàn bộ session đăng nhập cũ khi thay đổi vai trò để quyền mới có hiệu lực ngay
-    revokeUserTokens(targetUser.getUserId());
+    revokeAllUserSessions(targetUser);
 
     // Ghi nhận Audit_Logs với old_value và new_value
     auditLogRepository.log(
@@ -472,19 +467,10 @@ public class AdminUsersService {
         .build();
   }
 
-  private void revokeUserTokens(Long userId) {
-    TokenPair tokenPair = tokenRedisService.getTokenPair(userId);
-    if (tokenPair != null && tokenPair.getRefreshToken() != null) {
-      try {
-        Date refreshExp =
-            SignedJWT.parse(tokenPair.getRefreshToken()).getJWTClaimsSet().getExpirationTime();
-        tokenRedisService.blacklistToken(userId, tokenPair, refreshExp);
-      } catch (Exception ex) {
-        log.warn(
-            "Không thể blacklist token trong Redis cho userId {}: {}", userId, ex.getMessage());
-      }
-    }
-    tokenRedisService.deleteToken(userId);
+  private void revokeAllUserSessions(User targetUser) {
+    long nextVersion = targetUser.bumpTokenVersion();
+    userRepository.save(targetUser);
+    tokenRedisService.revokeAllSessions(targetUser.getUserId(), nextVersion);
   }
 
   private static String escapeLike(String input) {
