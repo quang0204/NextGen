@@ -37,13 +37,16 @@ public class AuthenticationController {
 
   private final AuthenticationService authenticationService;
 
-  /** API 1: Khởi tạo đăng nhập (Bước 1 Đăng nhập) */
+  /** API 1: Đăng nhập (gửi OTP hoặc cấp token trực tiếp tùy app.auth.login-otp-required) */
   @PostMapping({"/login", "/login-initiate"})
   public ApiResponse<LoginInitiateResponse> loginInitiate(
       @Valid @RequestBody LoginInitiateRequest request) {
-    return ApiResponse.ok(
-        "Thông tin hợp lệ. Mã xác thực OTP đã được gửi.",
-        authenticationService.initiateLogin(request));
+    LoginInitiateResponse response = authenticationService.initiateLogin(request);
+    String message =
+        Boolean.FALSE.equals(response.getOtpRequired())
+            ? "Đăng nhập thành công!"
+            : "Thông tin hợp lệ. Mã xác thực OTP đã được gửi.";
+    return ApiResponse.ok(message, response);
   }
 
   /** API 2: Xác thực mã OTP Đăng nhập (Bước 2 Đăng nhập) */

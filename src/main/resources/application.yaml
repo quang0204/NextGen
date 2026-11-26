@@ -49,6 +49,9 @@ jwt :
   access-expiration: ${JWT_ACCESS_EXPIRATION:1800}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800}
 app:
+  auth:
+    # yes = đăng nhập qua OTP (gửi mã xác thực); no = đăng nhập trực tiếp bằng tài khoản & mật khẩu (không cần OTP)
+    login-otp-required: ${AUTH_LOGIN_OTP_REQUIRED:no}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:"http://localhost:8080,http://localhost:3000"}
   sms:

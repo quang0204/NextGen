@@ -133,6 +133,7 @@ class AuthenticationServiceOtpTest {
     LoginInitiateResponse res = authenticationService.initiateLogin(req);
 
     assertThat(res).isNotNull();
+    assertThat(res.getOtpRequired()).isTrue();
     assertThat(res.getSessionToken()).isNotBlank();
     assertThat(res.getChannel()).isEqualTo(OtpChannel.EMAIL);
 
@@ -151,6 +152,48 @@ class AuthenticationServiceOtpTest {
     assertThat(savedData.getOtpCode()).isNotEqualTo(sentPlainOtp);
     assertThat(savedData.getOtpCode()).startsWith("$2a$");
     assertThat(passwordEncoder.matches(sentPlainOtp, savedData.getOtpCode())).isTrue();
+  }
+
+  @Test
+  void initiateLogin_WhenOtpConfigIsNo_IssuesTokensWithoutSendingOtp() {
+    Map<String, String> redisMap = new ConcurrentHashMap<>();
+    TokenRedisService inMemoryRedis = newInMemoryTokenRedisService(redisMap);
+    AuthenticationService noOtpSvc = newAuthenticationServiceWith(inMemoryRedis);
+    ReflectionTestUtils.setField(noOtpSvc, "loginOtpRequired", "no");
+
+    when(userRepository.findByIdentity(testEmail)).thenReturn(Optional.of(mockUser));
+    when(usersMapper.usersResponse(mockUser))
+        .thenReturn(
+            com.wedbackendservice.nextgen.module.user.dto.client.response.UsersResponse.builder()
+                .userId(String.valueOf(mockUser.getUserId()))
+                .fullName(mockUser.getFullName())
+                .email(mockUser.getEmail())
+                .role(mockUser.getRole())
+                .build());
+
+    LoginInitiateRequest req =
+        LoginInitiateRequest.builder().identity(testEmail).password(rawPassword).build();
+
+    LoginInitiateResponse res = noOtpSvc.initiateLogin(req);
+
+    assertThat(res.getOtpRequired()).isFalse();
+    assertThat(res.getSessionToken()).isNull();
+    assertThat(res.getAccessToken()).isNotBlank();
+    assertThat(res.getRefreshToken()).isNotBlank();
+    assertThat(res.getTokenType()).isEqualTo("Bearer");
+    assertThat(res.getUser()).isNotNull();
+    verifyNoInteractions(otpNotificationService);
+    assertThat(redisMap.keySet().stream().anyMatch(k -> k.startsWith("token:session:100:"))).isTrue();
+
+    // Unquoted YAML "no" parses as "false" — verify same direct-login behavior and wrong password block
+    ReflectionTestUtils.setField(noOtpSvc, "loginOtpRequired", "false");
+    assertThat(noOtpSvc.isLoginOtpRequired()).isFalse();
+
+    LoginInitiateRequest wrongPassReq =
+        LoginInitiateRequest.builder().identity(testEmail).password("WrongPass@1").build();
+    assertThatThrownBy(() -> noOtpSvc.initiateLogin(wrongPassReq))
+        .isInstanceOf(AppException.class)
+        .satisfies(e -> assertThat(((AppException) e).getErrorCode()).isEqualTo(ErrorCode.UNAUTHENTICATED));
   }
 
   @Test

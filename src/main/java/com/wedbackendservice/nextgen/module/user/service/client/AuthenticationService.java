@@ -102,6 +102,10 @@ public class AuthenticationService {
   @Value("${jwt.refresh-expiration}")
   protected Long refreshExpiration;
 
+  @NonFinal
+  @Value("${app.auth.login-otp-required:yes}")
+  protected String loginOtpRequired = "yes";
+
   private final UserRepository userRepository;
   private final CartRepository cartRepository;
   private final NotificationRepository notificationRepository;
@@ -118,8 +122,16 @@ public class AuthenticationService {
   // LOGIN
   // =====================================================================
 
-  /** API 1: Đăng nhập bước 1 - kiểm tra mật khẩu, sinh và gửi OTP. */
-  public LoginInitiateResponse initiateLogin(LoginInitiateRequest request) {
+  public boolean isLoginOtpRequired() {
+    String normalized = loginOtpRequired == null ? "yes" : loginOtpRequired.trim().toLowerCase();
+    // YAML 1.1 tự parse yes/no không dấu ngoặc thành true/false nên kiểm tra cả "no" và "false"
+    return !"no".equals(normalized)
+        && !"false".equals(normalized)
+        && !"0".equals(normalized)
+        && !"off".equals(normalized);
+  }
+
+  private User verifyLoginCredentials(LoginInitiateRequest request) {
     String identity = request.getIdentity().trim();
 
     if (tokenRedisService.isLoginBlocked(identity)) {
@@ -135,6 +147,25 @@ public class AuthenticationService {
 
     assertNotLocked(user);
     tokenRedisService.clearFailedLoginAttempts(identity);
+    return user;
+  }
+
+  /** API 1: Kiểm tra mật khẩu; gửi OTP nếu cấu hình yes hoặc cấp JWT trực tiếp nếu cấu hình no. */
+  public LoginInitiateResponse initiateLogin(LoginInitiateRequest request) {
+    String identity = request.getIdentity().trim();
+    User user = verifyLoginCredentials(request);
+
+    if (!isLoginOtpRequired()) {
+      AuthenticationResponse auth = generateToken(user);
+      return LoginInitiateResponse.builder()
+          .otpRequired(false)
+          .user(usersMapper.usersResponse(user))
+          .tokenType("Bearer")
+          .accessToken(auth.getAccessToken())
+          .refreshToken(auth.getRefreshToken())
+          .expiresIn(accessExpiration)
+          .build();
+    }
 
     OtpChannel channel = resolveChannel(identity);
     String target = resolveTarget(channel, user, identity);
@@ -160,6 +191,7 @@ public class AuthenticationService {
     otpNotificationService.sendOtp(channel, target, otpCode);
 
     return LoginInitiateResponse.builder()
+        .otpRequired(true)
         .channel(channel)
         .targetMasked(maskTarget(channel, target))
         .sessionToken(sessionToken)
