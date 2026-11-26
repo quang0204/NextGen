@@ -293,6 +293,7 @@ public class AuthenticationService {
 
     String otpCode = generateOtp();
     String registrationToken = UUID.randomUUID().toString().replace("-", "");
+    log.info("Otp cua ban la: ", otpCode);
 
     tokenRedisService.saveRegisterSession(
         registrationToken,
