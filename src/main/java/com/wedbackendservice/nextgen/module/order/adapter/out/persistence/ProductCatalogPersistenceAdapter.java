@@ -7,6 +7,7 @@ import com.wedbackendservice.nextgen.module.order.port.out.product.ProductValida
 import com.wedbackendservice.nextgen.module.product.entity.Product;
 import com.wedbackendservice.nextgen.module.product.entity.ProductVariant;
 import com.wedbackendservice.nextgen.module.product.repository.ProductVariantRepository;
+import com.wedbackendservice.nextgen.module.product.service.CategoryVisibilityHelper;
 import com.wedbackendservice.nextgen.module.voucher.entity.PromotionVariant;
 import com.wedbackendservice.nextgen.module.voucher.repository.PromotionVariantRepository;
 import java.math.BigDecimal;
@@ -68,6 +69,13 @@ public class ProductCatalogPersistenceAdapter implements ProductCatalogPort {
             ErrorCode.PRODUCT_INACTIVE,
             String.format(
                 "Sản phẩm '%s' hiện đã ngừng kinh doanh!", v.getProduct().getProductName()));
+      }
+      if (v.getProduct() != null
+          && !CategoryVisibilityHelper.isCategoryTreeVisible(v.getProduct().getCategory())) {
+        throw new AppException(
+            ErrorCode.PRODUCT_INACTIVE,
+            String.format(
+                "Sản phẩm '%s' thuộc danh mục hiện đang tạm ẩn!", v.getProduct().getProductName()));
       }
 
       BigDecimal unitPrice = v.getPrice();

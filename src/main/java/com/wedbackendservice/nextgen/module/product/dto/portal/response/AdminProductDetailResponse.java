@@ -19,6 +19,7 @@ public class AdminProductDetailResponse {
   String name;
   Long categoryId;
   String categoryName;
+  Boolean categoryEffectiveVisible;
   Long brandId;
   String brandName;
   String description;

@@ -23,6 +23,7 @@ import com.wedbackendservice.nextgen.module.product.entity.ProductImage;
 import com.wedbackendservice.nextgen.module.product.entity.ProductVariant;
 import com.wedbackendservice.nextgen.module.product.repository.ProductImageRepository;
 import com.wedbackendservice.nextgen.module.product.repository.ProductVariantRepository;
+import com.wedbackendservice.nextgen.module.product.service.CategoryVisibilityHelper;
 import com.wedbackendservice.nextgen.module.user.entity.User;
 import com.wedbackendservice.nextgen.module.voucher.entity.PromotionVariant;
 import com.wedbackendservice.nextgen.module.voucher.repository.PromotionVariantRepository;
@@ -98,6 +99,7 @@ public class CartService {
 
       int availableStock =
           variant != null ? extractAvailableStock(inventoryMap.get(variant.getVariantId())) : 0;
+      boolean isItemAvailable = CategoryVisibilityHelper.isVariantEffectivelyVisible(variant);
       boolean inStock = availableStock >= item.getQuantity();
 
       PriceInfo priceInfo = resolvePriceWithMap(variant, promoMap);
@@ -127,6 +129,11 @@ public class CartService {
               .availableStock(availableStock)
               .lineTotal(lineTotal)
               .inStock(inStock)
+              .isAvailable(isItemAvailable)
+              .unavailableReason(
+                  isItemAvailable
+                      ? null
+                      : "Sản phẩm hoặc danh mục hiện tạm ẩn / ngừng kinh doanh.")
               .addedAt(item.getCreatedAt())
               .build());
     }
@@ -223,6 +230,8 @@ public class CartService {
           .newSubtotal(calculateSubtotalBatch(remainingItems))
           .build();
     }
+
+    validateVariantActiveForAdd(item.getVariant());
 
     int availableStock = getAvailableStock(variantId);
     if (requestedQty > availableStock) {
@@ -464,13 +473,16 @@ public class CartService {
           ErrorCode.PRODUCT_INACTIVE,
           "Sản phẩm hiện đã ngừng kinh doanh hoặc tạm ngừng phân phối.");
     }
+    if (variant.getProduct() != null
+        && !CategoryVisibilityHelper.isCategoryTreeVisible(variant.getProduct().getCategory())) {
+      throw new AppException(
+          ErrorCode.PRODUCT_INACTIVE,
+          "Sản phẩm thuộc danh mục hiện đang tạm ẩn hoặc ngừng phân phối.");
+    }
   }
 
   private boolean isVariantOrProductInactive(ProductVariant variant) {
-    return (variant.getStatus() != null && !"ACTIVE".equalsIgnoreCase(variant.getStatus()))
-        || (variant.getProduct() != null
-            && variant.getProduct().getStatus() != null
-            && !"ACTIVE".equalsIgnoreCase(variant.getProduct().getStatus()));
+    return !CategoryVisibilityHelper.isVariantEffectivelyVisible(variant);
   }
 
   public int getAvailableStock(Long variantId) {

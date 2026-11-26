@@ -51,5 +51,7 @@ public class ProductSummaryResponse {
     String parentName;
     Long rootCategoryId;
     String rootCategoryName;
+    Boolean isVisible;
+    Boolean effectiveVisible;
   }
 }

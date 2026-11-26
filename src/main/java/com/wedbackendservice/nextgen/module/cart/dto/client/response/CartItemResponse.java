@@ -30,5 +30,7 @@ public class CartItemResponse {
   BigDecimal lineTotal;
   Integer availableStock;
   Boolean inStock;
+  Boolean isAvailable;
+  String unavailableReason;
   LocalDateTime addedAt;
 }

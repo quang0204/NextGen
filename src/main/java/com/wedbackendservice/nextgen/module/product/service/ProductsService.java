@@ -134,11 +134,15 @@ public class ProductsService {
       List<String> requirementKeywords,
       List<String> coreTokens) {}
 
-  private Long resolveCategoryIdByKeyword(String keywordType, Long fallbackId) {
+  private Long resolveCategoryIdByKeyword(
+      String keywordType, Long fallbackId, List<Category> allCategories) {
     try {
-      List<Category> activeCategories = new ArrayList<>(categoryRepository.findAllActive());
-      activeCategories.sort(Comparator.comparing(c -> c.getParent() != null));
-      for (Category c : activeCategories) {
+      List<Category> sorted = new ArrayList<>(allCategories);
+      // Prefer visible categories first, then root categories before leaf categories.
+      sorted.sort(
+          Comparator.comparing((Category c) -> !CategoryVisibilityHelper.isCategoryTreeVisible(c))
+              .thenComparing(c -> c.getParent() != null));
+      for (Category c : sorted) {
         String haystack =
             stripAccents(
                 (c.getCategoryName() != null ? c.getCategoryName() : "")
@@ -176,7 +180,7 @@ public class ProductsService {
     return fallbackId;
   }
 
-  private SmartSearchIntent parseSmartSearch(String rawSearch) {
+  private SmartSearchIntent parseSmartSearch(String rawSearch, List<Category> allCategories) {
     if (rawSearch == null || rawSearch.isBlank()) {
       return new SmartSearchIntent(null, null, null, null, null, null, List.of(), List.of());
     }
@@ -195,18 +199,18 @@ public class ProductsService {
     if (ascii.contains("dien thoai")
         || ascii.contains("smartphone")
         || ascii.matches(".*\\bphone\\b.*")) {
-      catId = resolveCategoryIdByKeyword("phone", 1L);
+      catId = resolveCategoryIdByKeyword("phone", 1L, allCategories);
       text =
           text.replaceAll(
               "(?i)(điện thoại di động|điện thoại|dien thoai di dong|dien thoai|smartphone|\\bphone\\b)",
               " ");
     } else if (ascii.contains("may tinh bang") || ascii.contains("tablet")) {
-      catId = resolveCategoryIdByKeyword("tablet", 2L);
+      catId = resolveCategoryIdByKeyword("tablet", 2L, allCategories);
       text = text.replaceAll("(?i)(máy tính bảng|may tinh bang|tablet)", " ");
     } else if (ascii.contains("laptop")
         || ascii.contains("may tinh xach tay")
         || ascii.contains("macbook")) {
-      catId = resolveCategoryIdByKeyword("laptop", 3L);
+      catId = resolveCategoryIdByKeyword("laptop", 3L, allCategories);
       text = text.replaceAll("(?i)(máy tính xách tay|may tinh xach tay|laptop)", " ");
     } else if (ascii.contains("phu kien")
         || ascii.contains("tai nghe")
@@ -214,7 +218,7 @@ public class ProductsService {
         || ascii.contains("pin du phong")
         || ascii.contains("sac du phong")
         || ascii.contains("loa ")) {
-      catId = resolveCategoryIdByKeyword("accessory", 4L);
+      catId = resolveCategoryIdByKeyword("accessory", 4L, allCategories);
       text = text.replaceAll("(?i)(phụ kiện di động|phụ kiện|phu kien di dong|phu kien)", " ");
     }
 
@@ -422,6 +426,7 @@ public class ProductsService {
       Integer rom,
       String status,
       String sortBy) {
+    securityHelper.authenticateStaffOrAdmin();
     return fetchProductsInternal(
         page,
         limit,
@@ -453,8 +458,18 @@ public class ProductsService {
     int pageNumber = Math.max(1, page);
     int pageSize = Math.min(50, Math.max(1, limit));
 
-    SmartSearchIntent parsed = parseSmartSearch(search);
+    List<Category> allCategories = categoryRepository.findAll();
+    SmartSearchIntent parsed = parseSmartSearch(search, allCategories);
     Long effectiveCategoryId = categoryId != null ? categoryId : parsed.detectedCategoryId();
+    Set<Long> visibleCategoryIds =
+        !isAdmin
+            ? CategoryVisibilityHelper.resolveVisibleCategoryIds(allCategories)
+            : Collections.emptySet();
+    Set<Long> filterSubtreeIds =
+        effectiveCategoryId != null
+            ? CategoryVisibilityHelper.resolveSubtreeCategoryIds(
+                allCategories, effectiveCategoryId, !isAdmin)
+            : null;
     BigDecimal effectiveMinPrice = minPrice != null ? minPrice : parsed.detectedMinPrice();
     BigDecimal effectiveMaxPrice = maxPrice != null ? maxPrice : parsed.detectedMaxPrice();
     Integer effectiveRam = ram != null ? ram : parsed.detectedRam();
@@ -480,14 +495,23 @@ public class ProductsService {
               categoryJoin.join("parent", jakarta.persistence.criteria.JoinType.LEFT);
           var brandJoin = root.join("brand", jakarta.persistence.criteria.JoinType.LEFT);
 
+          if (!isAdmin) {
+            if (visibleCategoryIds.isEmpty()) {
+              predicates.add(cb.disjunction());
+            } else {
+              predicates.add(categoryJoin.get("categoryId").in(visibleCategoryIds));
+            }
+          }
+
           if (brandId != null) {
             predicates.add(cb.equal(brandJoin.get("brandId"), brandId));
           }
           if (effectiveCategoryId != null) {
-            predicates.add(
-                cb.or(
-                    cb.equal(categoryJoin.get("categoryId"), effectiveCategoryId),
-                    cb.equal(parentCategoryJoin.get("categoryId"), effectiveCategoryId)));
+            if (filterSubtreeIds.isEmpty()) {
+              predicates.add(cb.disjunction());
+            } else {
+              predicates.add(categoryJoin.get("categoryId").in(filterSubtreeIds));
+            }
           }
 
           // Nhu cầu sử dụng (Gaming, Văn phòng, Đồ họa, Camera, Pin...)
@@ -786,8 +810,7 @@ public class ProductsService {
           ProductVariant v = pv.getVariant();
           if (v != null
               && "ACTIVE".equalsIgnoreCase(v.getStatus())
-              && v.getProduct() != null
-              && "ACTIVE".equalsIgnoreCase(v.getProduct().getStatus())) {
+              && CategoryVisibilityHelper.isProductEffectivelyVisible(v.getProduct())) {
             promoVariantsByProduct
                 .computeIfAbsent(v.getProduct().getProductId(), k -> new ArrayList<>())
                 .add(pv);
@@ -886,8 +909,15 @@ public class ProductsService {
     }
 
     // BEST_SELLER or fallback when no active flash sales
+    Set<Long> visibleCategoryIds =
+        CategoryVisibilityHelper.resolveVisibleCategoryIds(categoryRepository.findAll());
+    if (visibleCategoryIds.isEmpty()) {
+      return Collections.emptyList();
+    }
+
     List<Object[]> bestSellingIds =
-        productRepository.findBestSellingProductIds(PageRequest.of(0, maxItems));
+        productRepository.findBestSellingProductIds(
+            visibleCategoryIds, PageRequest.of(0, maxItems));
     List<Long> targetProductIds = new ArrayList<>();
     for (Object[] row : bestSellingIds) {
       targetProductIds.add((Long) row[0]);
@@ -895,7 +925,8 @@ public class ProductsService {
 
     if (targetProductIds.size() < maxItems) {
       List<Product> latest =
-          productRepository.findByStatusOrderByCreatedAtDesc("ACTIVE", PageRequest.of(0, maxItems));
+          productRepository.findByStatusAndCategory_CategoryIdInOrderByCreatedAtDesc(
+              "ACTIVE", visibleCategoryIds, PageRequest.of(0, maxItems));
       for (Product p : latest) {
         if (!targetProductIds.contains(p.getProductId())) {
           targetProductIds.add(p.getProductId());
@@ -906,7 +937,7 @@ public class ProductsService {
 
     List<Product> products =
         productRepository.findAllById(targetProductIds).stream()
-            .filter(p -> "ACTIVE".equalsIgnoreCase(p.getStatus()))
+            .filter(CategoryVisibilityHelper::isProductEffectivelyVisible)
             .toList();
 
     List<ProductFeaturedResponse> result = new ArrayList<>();
@@ -1019,7 +1050,7 @@ public class ProductsService {
                     new AppException(
                         ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + id + "!"));
 
-    if (!"ACTIVE".equalsIgnoreCase(product.getStatus())) {
+    if (!CategoryVisibilityHelper.isProductEffectivelyVisible(product)) {
       throw new AppException(
           ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + id + "!");
     }
@@ -1191,6 +1222,8 @@ public class ProductsService {
         .parentName(cat.getParent() != null ? cat.getParent().getCategoryName() : null)
         .rootCategoryId(root != null ? root.getCategoryId() : cat.getCategoryId())
         .rootCategoryName(root != null ? root.getCategoryName() : cat.getCategoryName())
+        .isVisible(cat.getIsActive())
+        .effectiveVisible(CategoryVisibilityHelper.isCategoryTreeVisible(cat))
         .build();
   }
 
@@ -1199,6 +1232,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(readOnly = true)
   public AdminProductDetailResponse getAdminProductDetail(Long id) {
+    securityHelper.authenticateStaffOrAdmin();
     Product product =
         productRepository
             .findById(id)
@@ -1328,6 +1362,8 @@ public class ProductsService {
         .categoryId(product.getCategory() != null ? product.getCategory().getCategoryId() : null)
         .categoryName(
             product.getCategory() != null ? product.getCategory().getCategoryName() : null)
+        .categoryEffectiveVisible(
+            CategoryVisibilityHelper.isCategoryTreeVisible(product.getCategory()))
         .brandId(product.getBrand() != null ? product.getBrand().getBrandId() : null)
         .brandName(product.getBrand() != null ? product.getBrand().getBrandName() : null)
         .description(product.getDescription())
@@ -1353,9 +1389,19 @@ public class ProductsService {
                     new AppException(
                         ErrorCode.PRODUCT_NOT_FOUND, "Không tìm thấy sản phẩm có ID " + id + "!"));
 
+    if (!CategoryVisibilityHelper.isProductEffectivelyVisible(current)) {
+      return Collections.emptyList();
+    }
+
     int maxItems = limit > 0 ? limit : 4;
     Category cat = current.getCategory();
     if (cat == null) {
+      return Collections.emptyList();
+    }
+
+    Set<Long> visibleCategoryIds =
+        CategoryVisibilityHelper.resolveVisibleCategoryIds(categoryRepository.findAll());
+    if (visibleCategoryIds.isEmpty()) {
       return Collections.emptyList();
     }
 
@@ -1371,7 +1417,7 @@ public class ProductsService {
 
     List<Product> related =
         productRepository.findRelatedProducts(
-            id, subCategoryId, parentCategoryId, PageRequest.of(0, maxItems));
+            id, subCategoryId, parentCategoryId, visibleCategoryIds, PageRequest.of(0, maxItems));
     if (related.isEmpty()) {
       return Collections.emptyList();
     }
@@ -1432,6 +1478,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(rollbackFor = Exception.class)
   public CreateProductResponse createProduct(CreateProductRequest request) {
+    User operator = securityHelper.authenticateStaffOrAdmin();
     Category category =
         categoryRepository
             .findById(request.getCategoryId())
@@ -1673,7 +1720,6 @@ public class ProductsService {
 
     // Audit Log
     try {
-      User operator = securityHelper.getCurrentUser();
       auditLogRepository.log(
           operator,
           "CREATE_PRODUCT",
@@ -1706,6 +1752,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(rollbackFor = Exception.class)
   public UpdateProductResponse updateProduct(Long id, UpdateProductRequest request) {
+    User operator = securityHelper.authenticateStaffOrAdmin();
     Product product =
         productRepository
             .findById(id)
@@ -1897,7 +1944,6 @@ public class ProductsService {
 
     // Audit Log
     try {
-      User operator = securityHelper.getCurrentUser();
       auditLogRepository.log(
           operator,
           "UPDATE_PRODUCT",
@@ -1926,6 +1972,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(rollbackFor = Exception.class)
   public VariantCreatedResponse createVariant(Long productId, CreateVariantRequest request) {
+    User operator = securityHelper.authenticateStaffOrAdmin();
     Product product =
         productRepository
             .findById(productId)
@@ -2027,7 +2074,6 @@ public class ProductsService {
 
     // Audit Log
     try {
-      User operator = securityHelper.getCurrentUser();
       auditLogRepository.log(
           operator,
           "CREATE_PRODUCT_VARIANT",
@@ -2070,6 +2116,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(rollbackFor = Exception.class)
   public UpdateVariantResponse updateVariant(Long varId, UpdateVariantRequest request) {
+    User operator = securityHelper.authenticateStaffOrAdmin();
     ProductVariant variant =
         productVariantRepository
             .findById(varId)
@@ -2216,7 +2263,6 @@ public class ProductsService {
 
     // 8. Audit Log
     try {
-      User operator = securityHelper.getCurrentUser();
       auditLogRepository.log(
           operator,
           "UPDATE_PRODUCT_VARIANT",
@@ -2256,6 +2302,7 @@ public class ProductsService {
   @Transactional(rollbackFor = Exception.class)
   public UpdateProductStatusResponse updateProductStatus(
       Long id, UpdateProductStatusRequest request) {
+    User operator = securityHelper.authenticateStaffOrAdmin();
     Product product =
         productRepository
             .findById(id)
@@ -2290,15 +2337,13 @@ public class ProductsService {
       productVariantRepository.saveAll(variants);
     }
 
-    String userEmail = "admin@phoneshop.vn";
+    String userEmail = operator.getEmail() != null ? operator.getEmail() : "admin@phoneshop.vn";
     try {
-      User operator = securityHelper.getCurrentUser();
-      userEmail = operator.getEmail();
       String reasonText = request.getReason() != null ? " | Reason: " + request.getReason() : "";
       auditLogRepository.log(
           operator, "UPDATE_PRODUCT_STATUS", "Product", id, previousStatus, newStatus + reasonText);
     } catch (Exception e) {
-      log.warn("Không thể lấy currentUser hoặc ghi audit log: {}", e.getMessage());
+      log.warn("Không thể ghi audit log cho updateProductStatus: {}", e.getMessage());
     }
 
     return UpdateProductStatusResponse.builder()
@@ -2321,6 +2366,7 @@ public class ProductsService {
   // =========================================================================
   @Transactional(rollbackFor = Exception.class)
   public void deleteProductImage(Long productId, Long imageId) {
+    securityHelper.authenticateStaffOrAdmin();
     Product product =
         productRepository
             .findById(productId)

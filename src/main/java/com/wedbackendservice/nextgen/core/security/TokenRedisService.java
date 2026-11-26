@@ -25,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 public class TokenRedisService {
 
   private static final String SESSION_PREFIX = "token:session:";
+  private static final String USER_SESSIONS_PREFIX = "token:sessions:";
   private static final String TOKEN_VERSION_PREFIX = "token:version:";
   private static final String OTP_PREFIX = "otp:session:";
   private static final String LOGIN_FAIL_PREFIX = "login:fail:";
@@ -55,10 +56,16 @@ public class TokenRedisService {
 
   public void saveToken(
       Long userId, String sessionId, String accessToken, String refreshToken, Date refreshExpiry) {
-    save(
-        sessionKey(userId, sessionId),
-        new TokenPair(accessToken, refreshToken),
-        expiryToTtl(refreshExpiry));
+    Duration ttl = expiryToTtl(refreshExpiry);
+    save(sessionKey(userId, sessionId), new TokenPair(accessToken, refreshToken), ttl);
+    if (userId != null && sessionId != null && !sessionId.isBlank() && !ttl.isNegative() && !ttl.isZero()) {
+      var setOps = redisTemplate.opsForSet();
+      if (setOps != null) {
+        String userSessionsKey = USER_SESSIONS_PREFIX + userId;
+        setOps.add(userSessionsKey, sessionId);
+        redisTemplate.expire(userSessionsKey, TOKEN_VERSION_CACHE_TTL);
+      }
+    }
   }
 
   public TokenPair getTokenPair(Long userId, String sessionId) {
@@ -67,10 +74,30 @@ public class TokenRedisService {
 
   public void deleteToken(Long userId, String sessionId) {
     delete(sessionKey(userId, sessionId));
+    if (userId != null && sessionId != null && !sessionId.isBlank()) {
+      var setOps = redisTemplate.opsForSet();
+      if (setOps != null) {
+        setOps.remove(USER_SESSIONS_PREFIX + userId, sessionId);
+      }
+    }
   }
 
   public void deleteToken(Long userId) {
     delete(SESSION_PREFIX + userId);
+    if (userId == null) return;
+    String userSessionsKey = USER_SESSIONS_PREFIX + userId;
+    var setOps = redisTemplate.opsForSet();
+    if (setOps != null) {
+      Set<String> sessionIds = setOps.members(userSessionsKey);
+      if (sessionIds != null) {
+        for (String sid : sessionIds) {
+          if (sid != null && !sid.isBlank()) {
+            delete(sessionKey(userId, sid));
+          }
+        }
+      }
+      delete(userSessionsKey);
+    }
   }
 
   public boolean isAccessTokenActive(Long userId, String sessionId, String accessToken) {
@@ -106,18 +133,19 @@ public class TokenRedisService {
 
   public void revokeAllSessions(Long userId, long newTokenVersion) {
     if (userId == null) return;
-    deleteToken(userId);
     if (TransactionSynchronizationManager.isSynchronizationActive()) {
-      // Defer Redis write until DB transaction commits so rollbacks never leave stale versions.
+      // Defer Redis cleanup until DB commits so rollbacks never revoke active sessions.
       TransactionSynchronizationManager.registerSynchronization(
           new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+              deleteToken(userId);
               saveTokenVersion(userId, newTokenVersion);
             }
           });
       return;
     }
+    deleteToken(userId);
     saveTokenVersion(userId, newTokenVersion);
   }
 

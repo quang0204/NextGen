@@ -637,12 +637,19 @@ public class AuthenticationService {
     String sessionId = claims.getStringClaim(SESSION_ID_CLAIM);
     Long tokenVersion = extractTokenVersion(claims);
 
+    // Check lock status before version/session check so locked users get 403 USER_LOCKED + reason.
+    User user = findUser(userId);
+    assertNotLocked(user);
+
+    if (!tokenRedisService.isTokenVersionValid(
+        userId, tokenVersion, userRepository::findTokenVersionByUserId)) {
+      throw new AppException(ErrorCode.UNAUTHENTICATED);
+    }
+
     TokenPair tokenPair = tokenRedisService.getTokenPair(userId, sessionId);
     if (tokenPair == null || !tokenPair.getRefreshToken().equals(request.getRefreshToken())) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
-    User user = findUser(userId);
-    assertNotLocked(user);
     if (!Objects.equals(tokenVersion, user.getEffectiveTokenVersion())) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
@@ -927,14 +934,9 @@ public class AuthenticationService {
         || tokenVersion == null) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
-    final Long userId;
     try {
-      userId = Long.valueOf(claims.getSubject());
+      Long.valueOf(claims.getSubject());
     } catch (NumberFormatException e) {
-      throw new AppException(ErrorCode.UNAUTHENTICATED);
-    }
-    if (!tokenRedisService.isTokenVersionValid(
-        userId, tokenVersion, userRepository::findTokenVersionByUserId)) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
     return signedJWT;

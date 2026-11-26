@@ -1,6 +1,7 @@
 package com.wedbackendservice.nextgen.module.product.repository;
 
 import com.wedbackendservice.nextgen.module.product.entity.Product;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
@@ -32,10 +33,11 @@ public interface ProductRepository
   boolean existsBySlugAndProductIdNot(String slug, Long productId);
 
   @Query(
-      "SELECT DISTINCT p FROM Product p "
+      "SELECT p FROM Product p "
           + "LEFT JOIN p.category c "
           + "LEFT JOIN c.parent parent "
           + "WHERE p.productId <> :productId AND p.status = 'ACTIVE' "
+          + "AND c.categoryId IN :visibleCategoryIds "
           + "AND ("
           + "  (:subCategoryId IS NOT NULL AND c.categoryId = :subCategoryId) "
           + "  OR (:parentCategoryId IS NOT NULL AND (c.categoryId = :parentCategoryId OR parent.categoryId = :parentCategoryId))"
@@ -45,6 +47,7 @@ public interface ProductRepository
       @Param("productId") Long productId,
       @Param("subCategoryId") Long subCategoryId,
       @Param("parentCategoryId") Long parentCategoryId,
+      @Param("visibleCategoryIds") Collection<Long> visibleCategoryIds,
       Pageable pageable);
 
   @Query(
@@ -52,10 +55,12 @@ public interface ProductRepository
           + "FROM OrderItem oi "
           + "JOIN oi.variant v "
           + "JOIN v.product p "
-          + "WHERE p.status = 'ACTIVE' "
+          + "WHERE p.status = 'ACTIVE' AND p.category.categoryId IN :visibleCategoryIds "
           + "GROUP BY p.productId "
           + "ORDER BY totalSold DESC")
-  List<Object[]> findBestSellingProductIds(Pageable pageable);
+  List<Object[]> findBestSellingProductIds(
+      @Param("visibleCategoryIds") Collection<Long> visibleCategoryIds, Pageable pageable);
 
-  List<Product> findByStatusOrderByCreatedAtDesc(String status, Pageable pageable);
+  List<Product> findByStatusAndCategory_CategoryIdInOrderByCreatedAtDesc(
+      String status, Collection<Long> categoryIds, Pageable pageable);
 }

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
   @Query(
-      "SELECT ci FROM CartItem ci LEFT JOIN FETCH ci.variant v LEFT JOIN FETCH v.product WHERE ci.cart.cartId = :cartId ORDER BY ci.createdAt DESC")
+      "SELECT ci FROM CartItem ci LEFT JOIN FETCH ci.variant v LEFT JOIN FETCH v.product p LEFT JOIN FETCH p.category cat LEFT JOIN FETCH cat.parent WHERE ci.cart.cartId = :cartId ORDER BY ci.createdAt DESC")
   List<CartItem> findByCartId(@Param("cartId") Long cartId);
 
   @Query("SELECT COALESCE(SUM(ci.quantity), 0) FROM CartItem ci WHERE ci.cart.cartId = :cartId")

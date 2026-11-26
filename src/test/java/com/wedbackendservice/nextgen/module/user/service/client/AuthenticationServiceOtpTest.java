@@ -49,6 +49,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -57,6 +58,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -600,13 +602,29 @@ class AuthenticationServiceOtpTest {
         .isInstanceOf(JwtException.class);
 
     var sessionV2 = issueSessionTokens(service, "otp-v2");
+    Jwt decodedV2 = jwtDecoder.decode(sessionV2.getAccessToken());
+    String sessionKeyV2 = "token:session:100:" + decodedV2.getClaimAsString("sid");
+    assertThat(redisStore).containsKey(sessionKeyV2);
+
     UpdateUserStatusRequest lockReq = new UpdateUserStatusRequest();
     lockReq.setStatus(UserStatus.LOCKED);
     lockReq.setLockReason("Suspicious activity");
     adminUsersService.updateUserStatus(100L, lockReq);
     assertThat(mockUser.getEffectiveTokenVersion()).isEqualTo(3L);
+    assertThat(redisStore).doesNotContainKey(sessionKeyV2);
     assertThatThrownBy(() -> jwtDecoder.decode(sessionV2.getAccessToken()))
         .isInstanceOf(JwtException.class);
+    assertThatThrownBy(
+            () ->
+                service.refreshAccessToken(
+                    RefreshTokenRequest.builder().refreshToken(sessionV2.getRefreshToken()).build()))
+        .isInstanceOf(AppException.class)
+        .satisfies(
+            ex -> {
+              AppException appEx = (AppException) ex;
+              assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.USER_LOCKED);
+              assertThat(appEx.getReason()).isEqualTo("Suspicious activity");
+            });
   }
 
   @Test
@@ -730,10 +748,45 @@ class AuthenticationServiceOtpTest {
   private static TokenRedisService newInMemoryTokenRedisService(Map<String, String> store) {
     RedisTemplate<String, String> redisTemplate = mock(RedisTemplate.class, withSettings().lenient());
     ValueOperations<String, String> valueOps = mock(ValueOperations.class, withSettings().lenient());
+    SetOperations<String, String> setOps = mock(SetOperations.class, withSettings().lenient());
+    Map<String, Set<String>> setStore = new ConcurrentHashMap<>();
 
     when(redisTemplate.opsForValue()).thenReturn(valueOps);
+    when(redisTemplate.opsForSet()).thenReturn(setOps);
     when(redisTemplate.delete(anyString()))
-        .thenAnswer(inv -> store.remove(inv.getArgument(0, String.class)) != null);
+        .thenAnswer(
+            inv -> {
+              String key = inv.getArgument(0, String.class);
+              boolean removedVal = store.remove(key) != null;
+              boolean removedSet = setStore.remove(key) != null;
+              return removedVal || removedSet;
+            });
+    when(setOps.add(anyString(), any(String[].class)))
+        .thenAnswer(
+            inv -> {
+              String key = inv.getArgument(0, String.class);
+              Object second = inv.getArgument(1);
+              Set<String> set = setStore.computeIfAbsent(key, k -> ConcurrentHashMap.newKeySet());
+              long added = 0;
+              if (second instanceof String s) {
+                if (set.add(s)) added++;
+              } else if (second instanceof String[] arr) {
+                for (String s : arr) {
+                  if (set.add(s)) added++;
+                }
+              }
+              return added;
+            });
+    when(setOps.members(anyString()))
+        .thenAnswer(inv -> Set.copyOf(setStore.getOrDefault(inv.getArgument(0, String.class), Set.of())));
+    when(setOps.remove(anyString(), any()))
+        .thenAnswer(
+            inv -> {
+              String key = inv.getArgument(0, String.class);
+              Object member = inv.getArgument(1);
+              Set<String> set = setStore.get(key);
+              return set != null && member != null && set.remove(member.toString()) ? 1L : 0L;
+            });
     when(redisTemplate.expire(anyString(), any(Duration.class))).thenReturn(Boolean.TRUE);
     when(redisTemplate.getExpire(anyString())).thenReturn(60L);
     when(valueOps.get(anyString())).thenAnswer(inv -> store.get(inv.getArgument(0, String.class)));

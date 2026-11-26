@@ -86,6 +86,7 @@ class ProductsServiceImageTest {
     category = Category.builder().categoryId(1L).categoryName("Laptop").build();
     brand = Brand.builder().brandId(2L).brandName("Apple").build();
     adminUser = User.builder().userId(1L).role(Role.ADMIN).email("admin@nextgen.vn").build();
+    lenient().when(securityHelper.authenticateStaffOrAdmin()).thenReturn(adminUser);
   }
 
   @Test
@@ -95,7 +96,7 @@ class ProductsServiceImageTest {
     when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
     when(brandRepository.findById(2L)).thenReturn(Optional.of(brand));
     when(productVariantRepository.existsBySku("MBP-14")).thenReturn(false);
-    when(securityHelper.getCurrentUser()).thenReturn(adminUser);
+    lenient().when(securityHelper.getCurrentUser()).thenReturn(adminUser);
 
     UploadSessionData session =
         UploadSessionData.builder()
@@ -153,6 +154,7 @@ class ProductsServiceImageTest {
                         .sku("MBP-14")
                         .color("Space Black")
                         .listPrice(BigDecimal.valueOf(49990000))
+                        .salePrice(BigDecimal.valueOf(45990000))
                         .initialOnHandQty(5)
                         .build()))
             .build();
@@ -180,7 +182,7 @@ class ProductsServiceImageTest {
     when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
     when(brandRepository.findById(2L)).thenReturn(Optional.of(brand));
     when(productVariantRepository.existsBySku("LEGACY-1")).thenReturn(false);
-    when(securityHelper.getCurrentUser()).thenReturn(adminUser);
+    lenient().when(securityHelper.getCurrentUser()).thenReturn(adminUser);
 
     when(productRepository.save(any(Product.class)))
         .thenAnswer(
@@ -220,6 +222,7 @@ class ProductsServiceImageTest {
                     CreateProductRequest.VariantItemRequest.builder()
                         .sku("LEGACY-1")
                         .listPrice(BigDecimal.valueOf(1000000))
+                        .salePrice(BigDecimal.valueOf(900000))
                         .initialOnHandQty(1)
                         .build()))
             .build();
@@ -265,6 +268,7 @@ class ProductsServiceImageTest {
                     CreateProductRequest.VariantItemRequest.builder()
                         .sku("MBP-14")
                         .listPrice(BigDecimal.valueOf(49990000))
+                        .salePrice(BigDecimal.valueOf(45990000))
                         .initialOnHandQty(5)
                         .build()))
             .build();
@@ -324,7 +328,7 @@ class ProductsServiceImageTest {
                 .build());
     when(minioStorageService.getFileUrl("products", "50/up-new-hero.png"))
         .thenReturn("http://localhost:9000/products/50/up-new-hero.png");
-    when(securityHelper.getCurrentUser()).thenReturn(adminUser);
+    lenient().when(securityHelper.getCurrentUser()).thenReturn(adminUser);
     when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
 
     UpdateProductRequest request =
@@ -517,5 +521,24 @@ class ProductsServiceImageTest {
     assertThat(clientDetail.getVariants()).hasSize(1);
     assertThat(clientDetail.getVariants().get(0).getImageUrl())
         .isEqualTo("http://localhost:9000/products/temp/1/var-titan.png");
+  }
+
+  @Test
+  @DisplayName("updateProductStatus rejects LOCKED user before mutating DB")
+  void updateProductStatus_lockedStaff_throwsUserLocked() {
+    when(securityHelper.authenticateStaffOrAdmin())
+        .thenThrow(new AppException(ErrorCode.USER_LOCKED, ErrorCode.USER_LOCKED.getMessage(), "Vi phạm"));
+
+    com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateProductStatusRequest req =
+        new com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateProductStatusRequest();
+    req.setStatus("INACTIVE");
+
+    assertThatThrownBy(() -> productsService.updateProductStatus(50L, req))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.USER_LOCKED);
+
+    verify(productRepository, never()).findById(any());
+    verify(productRepository, never()).save(any());
   }
 }

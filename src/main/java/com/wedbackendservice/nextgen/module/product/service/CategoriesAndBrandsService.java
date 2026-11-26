@@ -104,7 +104,7 @@ public class CategoriesAndBrandsService {
             .findById(id)
             .orElseThrow(() -> new AppException(ErrorCode.CATEGORY_NOT_FOUND));
 
-    if (!Boolean.TRUE.equals(cat.getIsActive()) && !isStaffOrAdmin()) {
+    if (!isStaffOrAdmin() && !CategoryVisibilityHelper.isCategoryTreeVisible(cat)) {
       throw new AppException(ErrorCode.CATEGORY_NOT_FOUND);
     }
 
