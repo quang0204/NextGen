@@ -26,11 +26,15 @@ public class CreateVariantRequest {
   @Positive(message = "listPrice phải lớn hơn 0")
   BigDecimal listPrice;
 
+  @NotNull(message = "salePrice không được để trống")
+  @Positive(message = "salePrice phải lớn hơn 0")
   BigDecimal salePrice;
+
+  @Positive(message = "compareAtPrice phải lớn hơn 0")
   BigDecimal compareAtPrice;
 
   @NotNull(message = "initialOnHandQty không được để trống")
-  @PositiveOrZero(message = "initialOnHandQty phải >= 0")
+  @Positive(message = "initialOnHandQty phải lớn hơn 0")
   Integer initialOnHandQty;
 
   @PositiveOrZero(message = "minThreshold phải >= 0")

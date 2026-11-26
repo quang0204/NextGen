@@ -1442,7 +1442,7 @@ public class ProductsService {
             .findById(request.getBrandId())
             .orElseThrow(() -> new AppException(ErrorCode.BRAND_NOT_FOUND));
 
-    // Validate duplicates within request and database
+    // Validate duplicates and positive prices/initial stock within request and database
     Set<String> skuSet = new HashSet<>();
     for (CreateProductRequest.VariantItemRequest v : request.getVariants()) {
       String sku = v.getSku().trim();
@@ -1454,12 +1454,27 @@ public class ProductsService {
         throw new AppException(
             ErrorCode.DUPLICATE_SKU, "Mã SKU '" + sku + "' đã tồn tại trong hệ thống!");
       }
+      if (v.getListPrice() == null || v.getListPrice().compareTo(BigDecimal.ZERO) <= 0) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST,
+            "Biến thể '" + sku + "': Giá niêm yết (listPrice) phải lớn hơn 0!");
+      }
+      if (v.getSalePrice() == null || v.getSalePrice().compareTo(BigDecimal.ZERO) <= 0) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST,
+            "Biến thể '" + sku + "': Giá bán (salePrice) phải lớn hơn 0!");
+      }
+      if (v.getInitialOnHandQty() == null || v.getInitialOnHandQty() <= 0) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST,
+            "Biến thể '" + sku + "': Số lượng tồn ban đầu (initialOnHandQty) phải lớn hơn 0!");
+      }
     }
 
     // Determine base price and primary image
     BigDecimal minPrice =
         request.getVariants().stream()
-            .map(CreateProductRequest.VariantItemRequest::getListPrice)
+            .map(CreateProductRequest.VariantItemRequest::getSalePrice)
             .filter(Objects::nonNull)
             .min(BigDecimal::compareTo)
             .orElse(BigDecimal.ZERO);
@@ -1609,7 +1624,7 @@ public class ProductsService {
           ProductVariant.builder()
               .product(savedProduct)
               .sku(vReq.getSku().trim())
-              .price(vReq.getListPrice())
+              .price(vReq.getSalePrice())
               .compareAtPrice(vReq.getListPrice())
               .color(vReq.getColor())
               .ramGb(vReq.getRamGb())
@@ -1948,14 +1963,21 @@ public class ProductsService {
         sanitizedAttrs,
         existingVariants);
 
-    BigDecimal salePrice =
-        request.getSalePrice() != null && request.getSalePrice().compareTo(BigDecimal.ZERO) > 0
-            ? request.getSalePrice()
-            : request.getListPrice();
-    BigDecimal compareAtPrice =
-        request.getListPrice() != null && request.getListPrice().compareTo(BigDecimal.ZERO) > 0
-            ? request.getListPrice()
-            : salePrice;
+    if (request.getListPrice() == null || request.getListPrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST, "Giá niêm yết (listPrice) phải lớn hơn 0!");
+    }
+    if (request.getSalePrice() == null || request.getSalePrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST, "Giá bán (salePrice) phải lớn hơn 0!");
+    }
+    if (request.getInitialOnHandQty() == null || request.getInitialOnHandQty() <= 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST, "Số lượng tồn ban đầu (initialOnHandQty) phải lớn hơn 0!");
+    }
+
+    BigDecimal salePrice = request.getSalePrice();
+    BigDecimal compareAtPrice = request.getListPrice();
 
     String variantImageUrl = product.getThumbnailUrl();
     if (request.getImageUrl() != null && !request.getImageUrl().isBlank()) {
@@ -2068,6 +2090,21 @@ public class ProductsService {
     }
 
     // 2. Giá bán hiện hành (price) & Giá niêm yết gốc (compareAtPrice)
+    if (request.getSalePrice() != null && request.getSalePrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(ErrorCode.INVALID_REQUEST, "Giá bán (salePrice) phải lớn hơn 0!");
+    }
+    if (request.getPrice() != null && request.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(ErrorCode.INVALID_REQUEST, "Giá bán (price) phải lớn hơn 0!");
+    }
+    if (request.getListPrice() != null && request.getListPrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(ErrorCode.INVALID_REQUEST, "Giá niêm yết (listPrice) phải lớn hơn 0!");
+    }
+    if (request.getCompareAtPrice() != null
+        && request.getCompareAtPrice().compareTo(BigDecimal.ZERO) <= 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST, "Giá niêm yết (compareAtPrice) phải lớn hơn 0!");
+    }
+
     BigDecimal effectiveSalePrice =
         request.getSalePrice() != null
             ? request.getSalePrice()
@@ -2077,10 +2114,10 @@ public class ProductsService {
             ? request.getCompareAtPrice()
             : (request.getListPrice() != null ? request.getListPrice() : effectiveSalePrice);
 
-    if (effectiveSalePrice != null && effectiveSalePrice.compareTo(BigDecimal.ZERO) > 0) {
+    if (effectiveSalePrice != null) {
       variant.setPrice(effectiveSalePrice);
     }
-    if (effectiveListPrice != null && effectiveListPrice.compareTo(BigDecimal.ZERO) > 0) {
+    if (effectiveListPrice != null) {
       variant.setCompareAtPrice(effectiveListPrice);
     } else if (effectiveSalePrice != null && variant.getCompareAtPrice() == null) {
       variant.setCompareAtPrice(effectiveSalePrice);

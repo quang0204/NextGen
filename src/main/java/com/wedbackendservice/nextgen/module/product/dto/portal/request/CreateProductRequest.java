@@ -81,8 +81,12 @@ public class CreateProductRequest {
     @Positive(message = "listPrice phải lớn hơn 0")
     BigDecimal listPrice;
 
+    @NotNull(message = "salePrice không được để trống")
+    @Positive(message = "salePrice phải lớn hơn 0")
+    BigDecimal salePrice;
+
     @NotNull(message = "initialOnHandQty không được để trống")
-    @PositiveOrZero(message = "initialOnHandQty phải >= 0")
+    @Positive(message = "initialOnHandQty phải lớn hơn 0")
     Integer initialOnHandQty;
 
     @PositiveOrZero(message = "minThreshold phải >= 0")
