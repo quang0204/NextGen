@@ -59,6 +59,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -606,6 +607,71 @@ class AuthenticationServiceOtpTest {
     assertThat(mockUser.getEffectiveTokenVersion()).isEqualTo(3L);
     assertThatThrownBy(() -> jwtDecoder.decode(sessionV2.getAccessToken()))
         .isInstanceOf(JwtException.class);
+  }
+
+  @Test
+  void lockedAccount_CannotResetPasswordOrReadMeAndIncludesLockReason() {
+    User lockedUser =
+        User.builder()
+            .userId(101L)
+            .fullName("Locked User")
+            .email("locked@nextgen.vn")
+            .phone("0909998888")
+            .passwordHash(passwordEncoder.encode(rawPassword))
+            .role(Role.CUSTOMER)
+            .status(UserStatus.LOCKED)
+            .lockReason("Spam bình luận")
+            .tokenVersion(0L)
+            .build();
+
+    TokenRedisService realRedis = newInMemoryTokenRedisService();
+    AuthenticationService service = newAuthenticationServiceWith(realRedis);
+    when(userRepository.findByIdentity("locked@nextgen.vn")).thenReturn(Optional.of(lockedUser));
+    when(userRepository.findById(101L)).thenReturn(Optional.of(lockedUser));
+
+    assertThatThrownBy(
+            () ->
+                service.forgotPassword(
+                    ForgotPasswordRequest.builder().identity("locked@nextgen.vn").build()))
+        .isInstanceOf(AppException.class)
+        .satisfies(
+            ex -> {
+              AppException appEx = (AppException) ex;
+              assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.USER_LOCKED);
+              assertThat(appEx.getReason()).isEqualTo("Spam bình luận");
+            });
+
+    String resetTok = "locked-reset-tok";
+    realRedis.saveResetPasswordSession(
+        resetTok,
+        ResetPasswordSessionData.builder()
+            .userId(101L)
+            .identity("locked@nextgen.vn")
+            .channel(OtpChannel.EMAIL)
+            .target("locked@nextgen.vn")
+            .otpCode(passwordEncoder.encode("123456"))
+            .createdAt(LocalDateTime.now())
+            .build(),
+        300L);
+    assertThatThrownBy(
+            () ->
+                service.resetPassword(
+                    ResetPasswordRequest.builder()
+                        .resetToken(resetTok)
+                        .otpCode("123456")
+                        .newPassword("NewPass@123")
+                        .confirmNewPassword("NewPass@123")
+                        .build()))
+        .isInstanceOf(AppException.class)
+        .satisfies(
+            ex -> assertThat(((AppException) ex).getReason()).isEqualTo("Spam bình luận"));
+
+    when(securityHelper.getAuthentication())
+        .thenReturn(new UsernamePasswordAuthenticationToken("101", null));
+    assertThatThrownBy(service::getCurrentUser)
+        .isInstanceOf(AppException.class)
+        .satisfies(
+            ex -> assertThat(((AppException) ex).getReason()).isEqualTo("Spam bình luận"));
   }
 
   private AuthenticationService newAuthenticationServiceWith(TokenRedisService redisService) {

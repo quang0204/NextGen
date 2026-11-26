@@ -288,7 +288,7 @@ public class AdminUsersService {
 
     List<AdminUserDetailResponse.UserAuditLogSummary> auditLogs =
         auditLogRepository
-            .findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, DETAIL_HISTORY_LIMIT))
+            .findUserTargetAuditLogs(userId, PageRequest.of(0, DETAIL_HISTORY_LIMIT))
             .stream()
             .map(
                 a ->

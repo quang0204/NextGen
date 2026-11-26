@@ -247,6 +247,7 @@ public class AuthenticationService {
     if (sessionData == null) {
       throw new AppException(ErrorCode.SESSION_NOT_FOUND);
     }
+    assertNotLocked(findUser(sessionData.getUserId()));
 
     String clientIp = ClientIpHelper.getClientIp();
     assertOtpSendingAllowed(clientIp, sessionData.getTarget());
@@ -502,6 +503,7 @@ public class AuthenticationService {
         userRepository
             .findByIdentity(identity)
             .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
+    assertNotLocked(user);
 
     OtpChannel channel = resolveChannel(identity);
     String target = resolveTarget(channel, user, identity);
@@ -565,10 +567,11 @@ public class AuthenticationService {
           ErrorCode.OTP_INVALID_OR_EXPIRED,
           "Mã OTP không chính xác. Bạn còn " + remaining + " lần thử.");
     }
+    User user = findUser(sessionData.getUserId());
+    assertNotLocked(user);
     tokenRedisService.clearFailedOtpAttempts(resetToken);
     tokenRedisService.deleteResetPasswordSession(resetToken);
 
-    User user = findUser(sessionData.getUserId());
     user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
     long nextVersion = user.bumpTokenVersion();
     userRepository.save(user);
@@ -592,6 +595,9 @@ public class AuthenticationService {
     if (sessionData == null) {
       throw new AppException(
           ErrorCode.SESSION_NOT_FOUND, "resetToken không tồn tại hoặc đã hết hạn.");
+    }
+    if (sessionData.getUserId() != null) {
+      assertNotLocked(findUser(sessionData.getUserId()));
     }
 
     String clientIp = ClientIpHelper.getClientIp();
@@ -666,6 +672,7 @@ public class AuthenticationService {
   public UserMeResponse getCurrentUser() {
     Long userId = Long.valueOf(securityHelper.getAuthentication().getName());
     User user = findUser(userId);
+    assertNotLocked(user);
     AddressResponse defaultAddress =
         userAddressRepository
             .findByUserIdAndIsDefaultTrue(userId)
@@ -792,7 +799,8 @@ public class AuthenticationService {
   private void assertNotLocked(User user) {
     if (user.getStatus() == UserStatus.LOCKED) {
       log.warn("Tài khoản userId {} đang bị khóa", user.getUserId());
-      throw new AppException(ErrorCode.USER_LOCKED);
+      throw new AppException(
+          ErrorCode.USER_LOCKED, ErrorCode.USER_LOCKED.getMessage(), user.getLockReason());
     }
   }
 

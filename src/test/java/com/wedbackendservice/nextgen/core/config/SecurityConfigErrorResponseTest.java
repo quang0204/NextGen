@@ -82,5 +82,13 @@ class SecurityConfigErrorResponseTest {
     assertThat(springAccessDenied.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     assertThat(springAccessDenied.getBody()).isNotNull();
     assertThat(springAccessDenied.getBody().getError()).isEqualTo("FORBIDDEN");
+
+    ResponseEntity<ApiResponse<Void>> lockedResponse =
+        globalExceptionHandler.handleAppException(
+            new AppException(ErrorCode.USER_LOCKED, ErrorCode.USER_LOCKED.getMessage(), "Spam đánh giá"));
+    assertThat(lockedResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(lockedResponse.getBody()).isNotNull();
+    assertThat(lockedResponse.getBody().getError()).isEqualTo("USER_LOCKED");
+    assertThat(lockedResponse.getBody().getReason()).isEqualTo("Spam đánh giá");
   }
 }

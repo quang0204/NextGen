@@ -44,6 +44,7 @@ public class GlobalExceptionHandler {
                 .statusCode(errorCode.getHttpStatus().value())
                 .message(message)
                 .error(errorCode.name())
+                .reason(exception.getReason())
                 .timestamp(Instant.now().toString())
                 .build());
   }

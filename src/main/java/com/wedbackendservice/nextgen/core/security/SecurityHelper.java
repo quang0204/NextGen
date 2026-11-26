@@ -34,7 +34,8 @@ public class SecurityHelper {
             .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXIT));
 
     if (user.getStatus() == UserStatus.LOCKED) {
-      throw new AppException(ErrorCode.USER_LOCKED);
+      throw new AppException(
+          ErrorCode.USER_LOCKED, ErrorCode.USER_LOCKED.getMessage(), user.getLockReason());
     }
 
     return user;

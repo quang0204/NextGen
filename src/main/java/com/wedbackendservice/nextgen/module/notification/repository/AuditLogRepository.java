@@ -27,6 +27,16 @@ public interface AuditLogRepository
   @Query("SELECT a FROM AuditLog a WHERE a.user.userId = :userId ORDER BY a.createdAt DESC")
   List<AuditLog> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, Pageable pageable);
 
+  @Query(
+      """
+        SELECT a FROM AuditLog a
+        WHERE a.entityName IN ('User', 'Users')
+          AND a.entityId = :targetUserId
+        ORDER BY a.createdAt DESC
+      """)
+  List<AuditLog> findUserTargetAuditLogs(
+      @Param("targetUserId") Long targetUserId, Pageable pageable);
+
   default void log(
       User user,
       String action,

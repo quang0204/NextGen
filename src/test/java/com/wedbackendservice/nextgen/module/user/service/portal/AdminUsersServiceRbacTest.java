@@ -169,6 +169,13 @@ class AdminUsersServiceRbacTest {
     assertThat(createRes.getUserId()).isEqualTo(300L);
     verify(auditLogRepository)
         .log(adminActor, "CREATE_INTERNAL_USER", "User", 300L, null, "STAFF");
+
+    when(userRepository.findById(300L)).thenReturn(Optional.of(createdUser));
+    when(orderRepository.getUserShoppingSummary(300L)).thenReturn(List.of());
+    when(orderRepository.findByUserIdOrderByCreatedAtDesc(any(), any())).thenReturn(List.of());
+    when(auditLogRepository.findUserTargetAuditLogs(any(), any())).thenReturn(List.of());
+    adminUsersService.getUserDetail(300L);
+    verify(auditLogRepository).findUserTargetAuditLogs(org.mockito.ArgumentMatchers.eq(300L), any());
   }
 
   private static void authenticateAs(User actor) {

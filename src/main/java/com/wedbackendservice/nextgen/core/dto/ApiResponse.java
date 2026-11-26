@@ -17,6 +17,7 @@ public class ApiResponse<T> {
   Integer statusCode;
   String message;
   String error;
+  String reason;
   T data;
   String timestamp;
 
