@@ -110,7 +110,7 @@ public class ReviewsService {
     if (order == null
         || order.getUser() == null
         || !user.getUserId().equals(order.getUser().getUserId())) {
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
     if (!"COMPLETED".equalsIgnoreCase(order.getStatus())
         && !"DELIVERED".equalsIgnoreCase(order.getStatus())) {
@@ -283,7 +283,7 @@ public class ReviewsService {
             "Phiên tải ảnh '" + uploadId + "' không tồn tại hoặc đã hết hạn.");
       }
       if (!Objects.equals(session.getOwnerId(), user.getUserId())) {
-        throw new AppException(ErrorCode.UNAUTHORIZED, "Ảnh này không phải do bạn tải lên.");
+        throw new AppException(ErrorCode.FORBIDDEN, "Ảnh này không phải do bạn tải lên.");
       }
       if (!StorageType.REVIEWS.name().equalsIgnoreCase(session.getStorageType())) {
         throw new AppException(

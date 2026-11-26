@@ -320,7 +320,7 @@ public class OrderFulfillmentService {
     User operator = securityHelper.getCurrentUser();
     if (operator.getRole() != Role.ADMIN && operator.getRole() != Role.STAFF) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED,
+          ErrorCode.FORBIDDEN,
           "Chỉ quản trị viên hoặc nhân viên mới có quyền xác nhận thanh toán!");
     }
 
@@ -407,7 +407,7 @@ public class OrderFulfillmentService {
 
     if (order.getUser() == null || !order.getUser().getUserId().equals(currentUser.getUserId())) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED, "Chỉ chủ sở hữu đơn hàng mới có thể gửi thông báo chuyển khoản!");
+          ErrorCode.FORBIDDEN, "Chỉ chủ sở hữu đơn hàng mới có thể gửi thông báo chuyển khoản!");
     }
 
     if (!OrderStatus.PENDING_PAYMENT.name().equalsIgnoreCase(order.getStatus())

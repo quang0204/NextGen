@@ -175,7 +175,7 @@ public class OrdersQueryService {
         currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
     if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED, "Bạn không có quyền truy cập vào thông tin đơn hàng này!");
+          ErrorCode.FORBIDDEN, "Bạn không có quyền truy cập vào thông tin đơn hàng này!");
     }
 
     List<OrderItem> orderItems = orderItemRepository.findByOrderId(order.getOrderId());

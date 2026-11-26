@@ -93,7 +93,7 @@ public class NotificationsService {
                 () -> new AppException(ErrorCode.INVALID_REQUEST, "Thông báo không tồn tại."));
     if (notification.getUser() == null
         || !user.getUserId().equals(notification.getUser().getUserId())) {
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
     return notification;
   }

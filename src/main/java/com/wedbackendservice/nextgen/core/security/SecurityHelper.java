@@ -54,7 +54,7 @@ public class SecurityHelper {
     User user = getCurrentUser();
     if (user.getRole() != Role.ADMIN) {
       log.warn("User {} role {} không có quyền truy cập admin", user.getUserId(), user.getRole());
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
     return user;
   }
@@ -63,7 +63,7 @@ public class SecurityHelper {
     User user = getCurrentUser();
     if (user.getRole() != Role.ADMIN && user.getRole() != Role.STAFF) {
       log.warn("User {} role {} không có quyền STAFF/ADMIN", user.getUserId(), user.getRole());
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
     return user;
   }

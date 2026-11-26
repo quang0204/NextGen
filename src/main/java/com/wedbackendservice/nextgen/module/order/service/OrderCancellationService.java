@@ -67,7 +67,7 @@ public class OrderCancellationService {
         currentUser.getRole() == Role.ADMIN || currentUser.getRole() == Role.STAFF;
     if (!isStaffOrAdmin && !order.getUser().getUserId().equals(currentUser.getUserId())) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED, "Bạn không có quyền hủy đơn hàng của người khác!");
+          ErrorCode.FORBIDDEN, "Bạn không có quyền hủy đơn hàng của người khác!");
     }
 
     String currentStatus = order.getStatus();

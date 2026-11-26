@@ -64,7 +64,7 @@ public class PaymentService {
 
     boolean owner = order.getUser() != null && user.getUserId().equals(order.getUser().getUserId());
     if (!owner && user.getRole() != Role.ADMIN) {
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
     if (ORDER_PAID.equalsIgnoreCase(order.getPaymentStatus())) {
       throw new AppException(ErrorCode.INVALID_REQUEST, "Đơn hàng đã được thanh toán.");
@@ -164,7 +164,7 @@ public class PaymentService {
         order.getUser() != null && user.getUserId().equals(order.getUser().getUserId());
     boolean isStaffOrAdmin = user.getRole() == Role.ADMIN || user.getRole() == Role.STAFF;
     if (!isOwner && !isStaffOrAdmin) {
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
 
     if ("COD".equalsIgnoreCase(payment.getPaymentMethod())) {
@@ -255,7 +255,7 @@ public class PaymentService {
         order.getUser() != null && user.getUserId().equals(order.getUser().getUserId());
     boolean isStaffOrAdmin = user.getRole() == Role.ADMIN || user.getRole() == Role.STAFF;
     if (!isOwner && !isStaffOrAdmin) {
-      throw new AppException(ErrorCode.UNAUTHORIZED);
+      throw new AppException(ErrorCode.FORBIDDEN);
     }
 
     if (PaymentStatus.SUCCESS.name().equalsIgnoreCase(payment.getStatus())) {

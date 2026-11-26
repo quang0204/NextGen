@@ -186,7 +186,7 @@ class AdminUsersServiceRbacTest {
         .satisfies(
             ex -> {
               ErrorCode code = ((AppException) ex).getErrorCode();
-              assertThat(code).isEqualTo(ErrorCode.UNAUTHORIZED);
+              assertThat(code).isEqualTo(ErrorCode.FORBIDDEN);
               assertThat(code.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
             });
   }

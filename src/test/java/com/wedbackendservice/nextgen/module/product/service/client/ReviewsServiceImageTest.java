@@ -210,7 +210,7 @@ class ReviewsServiceImageTest {
 
     assertThatThrownBy(() -> reviewsService.createReview(request(List.of("u1"))))
         .isInstanceOf(AppException.class)
-        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED);
+        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.FORBIDDEN);
     verify(reviewRepository, never()).save(any());
   }
 

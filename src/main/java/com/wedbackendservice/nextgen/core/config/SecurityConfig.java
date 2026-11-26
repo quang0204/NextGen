@@ -1,8 +1,14 @@
 package com.wedbackendservice.nextgen.core.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wedbackendservice.nextgen.core.dto.ApiResponse;
+import com.wedbackendservice.nextgen.core.exception.ErrorCode;
 import com.wedbackendservice.nextgen.core.security.TokenRedisService;
 import com.wedbackendservice.nextgen.module.user.repository.UserRepository;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -23,7 +30,9 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -53,14 +62,57 @@ public class SecurityConfig {
   @Value("${app.cors.allowed-origins}")
   List<String> allowedOrigins;
 
+  private static final ObjectMapper SECURITY_ERROR_MAPPER = new ObjectMapper();
+
   private final TokenRedisService tokenRedisService;
   private final UserRepository userRepository;
 
   @Bean
+  public AuthenticationEntryPoint securityAuthenticationEntryPoint() {
+    return (request, response, authException) ->
+        writeSecurityError(
+            response,
+            ErrorCode.UNAUTHENTICATED,
+            "Vui lòng đăng nhập hoặc phiên làm việc đã hết hạn.");
+  }
+
+  @Bean
+  public AccessDeniedHandler securityAccessDeniedHandler() {
+    return (request, response, accessDeniedException) ->
+        writeSecurityError(response, ErrorCode.FORBIDDEN, ErrorCode.FORBIDDEN.getMessage());
+  }
+
+  private static void writeSecurityError(
+      HttpServletResponse response, ErrorCode errorCode, String message) throws IOException {
+    if (response.isCommitted()) {
+      return;
+    }
+    response.setStatus(errorCode.getHttpStatus().value());
+    response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+    response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+    ApiResponse<Void> body =
+        ApiResponse.<Void>builder()
+            .success(false)
+            .statusCode(errorCode.getHttpStatus().value())
+            .message(message)
+            .error(errorCode.name())
+            .timestamp(Instant.now().toString())
+            .build();
+    SECURITY_ERROR_MAPPER.writeValue(response.getWriter(), body);
+  }
+
+  @Bean
   public SecurityFilterChain filterchain(HttpSecurity httpSecurity) {
+    AuthenticationEntryPoint authEntryPoint = securityAuthenticationEntryPoint();
+    AccessDeniedHandler accessDeniedHandler = securityAccessDeniedHandler();
+
     httpSecurity
         .cors(cors -> cors.configurationSource(corsConfigurationSource(allowedOrigins)))
         .csrf(AbstractHttpConfigurer::disable)
+        .exceptionHandling(
+            ex ->
+                ex.authenticationEntryPoint(authEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
         .authorizeHttpRequests(
             requests ->
                 requests
@@ -99,10 +151,12 @@ public class SecurityConfig {
                     .authenticated())
         .oauth2ResourceServer(
             o ->
-                o.jwt(
-                    j ->
-                        j.decoder(jwtDecoder())
-                            .jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                o.authenticationEntryPoint(authEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler)
+                    .jwt(
+                        j ->
+                            j.decoder(jwtDecoder())
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter())));
     return httpSecurity.build();
   }
 

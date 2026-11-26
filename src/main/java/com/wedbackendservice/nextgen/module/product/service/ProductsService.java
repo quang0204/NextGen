@@ -2361,7 +2361,7 @@ public class ProductsService {
         && session.getOwnerId() != null
         && !Objects.equals(session.getOwnerId(), currentUser.getUserId())) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED, "Bạn không có quyền sử dụng phiên tải ảnh của người dùng khác.");
+          ErrorCode.FORBIDDEN, "Bạn không có quyền sử dụng phiên tải ảnh của người dùng khác.");
     }
     return session;
   }

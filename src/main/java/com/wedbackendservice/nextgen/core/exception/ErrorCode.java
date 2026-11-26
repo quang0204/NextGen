@@ -17,7 +17,7 @@ public enum ErrorCode {
       HttpStatus.INTERNAL_SERVER_ERROR), // alias for backwards compatibility
   UNAUTHENTICATED(1001, "Tài khoản hoặc mật khẩu không chính xác.", HttpStatus.UNAUTHORIZED),
   USER_LOCKED(1002, "Tài khoản đang bị khóa.", HttpStatus.FORBIDDEN),
-  UNAUTHORIZED(1003, "Bạn không có quyền thực hiện hành động này.", HttpStatus.FORBIDDEN),
+  FORBIDDEN(1003, "Bạn không có quyền thực hiện hành động này.", HttpStatus.FORBIDDEN),
   USER_NOT_EXIST(1004, "Người dùng không tồn tại.", HttpStatus.NOT_FOUND),
   USER_NOT_EXIT(
       1004, "Người dùng không tồn tại.", HttpStatus.NOT_FOUND), // alias for backwards compatibility

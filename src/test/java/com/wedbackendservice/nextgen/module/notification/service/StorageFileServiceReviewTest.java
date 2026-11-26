@@ -108,14 +108,14 @@ class StorageFileServiceReviewTest {
   @Test
   void customerStillCannotUploadProductImages() {
     when(securityHelper.authenticateStaffOrAdmin())
-        .thenThrow(new AppException(ErrorCode.UNAUTHORIZED));
+        .thenThrow(new AppException(ErrorCode.FORBIDDEN));
 
     PresignedUploadRequest request = reviewRequest(1);
     request.setStorageType("PRODUCTS");
 
     assertThatThrownBy(() -> storageFileService.generatePresignedUrls(request))
         .isInstanceOf(AppException.class)
-        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED);
+        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.FORBIDDEN);
   }
 
   @Test

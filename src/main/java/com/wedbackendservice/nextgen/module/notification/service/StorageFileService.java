@@ -283,7 +283,7 @@ public class StorageFileService {
     if (!Objects.equals(session.getOwnerId(), currentUser.getUserId())
         && currentUser.getRole() != Role.ADMIN) {
       throw new AppException(
-          ErrorCode.UNAUTHORIZED, "Bạn không có quyền xác nhận phiên tải ảnh này.");
+          ErrorCode.FORBIDDEN, "Bạn không có quyền xác nhận phiên tải ảnh này.");
     }
 
     if (!Objects.equals(session.getObjectKey(), requestedObjectKey)) {

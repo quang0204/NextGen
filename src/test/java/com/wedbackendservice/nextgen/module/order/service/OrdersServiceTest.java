@@ -139,6 +139,6 @@ class OrdersServiceTest {
     assertThatThrownBy(() -> ordersService.customerNotifyPayment(500L, "Đã chuyển khoản"))
         .isInstanceOf(AppException.class)
         .extracting(ex -> ((AppException) ex).getErrorCode())
-        .isEqualTo(ErrorCode.UNAUTHORIZED);
+        .isEqualTo(ErrorCode.FORBIDDEN);
   }
 }

@@ -104,15 +104,15 @@ class PaymentServiceTest {
   }
 
   @Test
-  void simulateCallback_notAdmin_throwsUnauthorized() {
-    when(securityHelper.authenticateAdmin()).thenThrow(new AppException(ErrorCode.UNAUTHORIZED));
+  void simulateCallback_notAdmin_throwsForbidden() {
+    when(securityHelper.authenticateAdmin()).thenThrow(new AppException(ErrorCode.FORBIDDEN));
 
     SimulateCallbackRequest request =
         SimulateCallbackRequest.builder().transactionRef("PAY-TEST-001").success(true).build();
 
     assertThatThrownBy(() -> paymentService.simulateCallback(request))
         .isInstanceOf(AppException.class)
-        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED);
+        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.FORBIDDEN);
 
     verify(paymentRepository, never()).findByTransactionRef(any());
   }
