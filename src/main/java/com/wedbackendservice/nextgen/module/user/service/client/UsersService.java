@@ -28,6 +28,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -268,6 +269,8 @@ public class UsersService {
       throw new AppException(ErrorCode.ADDRESS_LIMIT_EXCEEDED);
     }
 
+    String normalizedAddress = normalizeAndValidateAddressLine(request.getAddressLine());
+
     boolean shouldBeDefault = currentCount == 0 || Boolean.TRUE.equals(request.getIsDefault());
 
     if (shouldBeDefault) {
@@ -280,7 +283,7 @@ public class UsersService {
                 .user(user)
                 .recipientName(request.getRecipientName().trim())
                 .phone(request.getPhone().trim())
-                .addressLine(request.getAddressLine().trim())
+                .addressLine(normalizedAddress)
                 .isDefault(shouldBeDefault)
                 .build());
 
@@ -297,6 +300,8 @@ public class UsersService {
             .findByAddressIdAndUserId(addressId, user.getUserId())
             .orElseThrow(() -> new AppException(ErrorCode.ADDRESS_NOT_FOUND));
 
+    String normalizedAddress = normalizeAndValidateAddressLine(request.getAddressLine());
+
     if (Boolean.TRUE.equals(request.getIsDefault())
         && !Boolean.TRUE.equals(address.getIsDefault())) {
       userAddressRepository.setDefaultAddressAtomic(user.getUserId(), addressId);
@@ -309,7 +314,7 @@ public class UsersService {
     // Đã sửa lỗi: Cập nhật trực tiếp lên entity address đã query thay vì tạo mới entity rác
     address.setRecipientName(request.getRecipientName().trim());
     address.setPhone(request.getPhone().trim());
-    address.setAddressLine(request.getAddressLine().trim());
+    address.setAddressLine(normalizedAddress);
 
     UserAddress saved = userAddressRepository.save(address);
     return usersMapper.toUserAddressItemResponse(saved);
@@ -372,5 +377,21 @@ public class UsersService {
     }
     return MessageDigest.isEqual(
         expected.getBytes(StandardCharsets.UTF_8), trimmed.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static String normalizeAndValidateAddressLine(String rawAddressLine) {
+    List<String> parts =
+        rawAddressLine == null
+            ? List.of()
+            : Arrays.stream(rawAddressLine.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
+    if (parts.size() < 4) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST,
+          "Địa chỉ phải có đầy đủ 4 phần (Số nhà/Đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố).");
+    }
+    return String.join(", ", parts);
   }
 }
