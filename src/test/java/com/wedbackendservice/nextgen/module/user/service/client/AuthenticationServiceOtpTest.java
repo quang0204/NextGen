@@ -165,7 +165,7 @@ class AuthenticationServiceOtpTest {
     when(usersMapper.usersResponse(mockUser))
         .thenReturn(
             com.wedbackendservice.nextgen.module.user.dto.client.response.UsersResponse.builder()
-                .userId(String.valueOf(mockUser.getUserId()))
+                .userId(mockUser.getUserId())
                 .fullName(mockUser.getFullName())
                 .email(mockUser.getEmail())
                 .role(mockUser.getRole())
@@ -182,6 +182,7 @@ class AuthenticationServiceOtpTest {
     assertThat(res.getRefreshToken()).isNotBlank();
     assertThat(res.getTokenType()).isEqualTo("Bearer");
     assertThat(res.getUser()).isNotNull();
+    assertThat(res.getUser().getUserId()).isEqualTo(100L);
     verifyNoInteractions(otpNotificationService);
     assertThat(redisMap.keySet().stream().anyMatch(k -> k.startsWith("token:session:100:"))).isTrue();
 
