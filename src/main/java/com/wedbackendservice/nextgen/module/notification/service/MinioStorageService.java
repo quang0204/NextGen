@@ -83,6 +83,13 @@ public class MinioStorageService {
       ensureBucketReady(bucket);
       String[] bannerFiles = new String[] {"banner1.png", "banner2.png"};
       for (String fileName : bannerFiles) {
+        if (statObject(bucket, fileName).isPresent()) {
+          log.debug(
+              "Banner '{}' đã tồn tại trên MinIO bucket '{}', bỏ qua đồng bộ.",
+              fileName,
+              bucket);
+          continue;
+        }
         byte[] bytes = loadBannerBytes(fileName);
         if (bytes != null && bytes.length > 0) {
           try (InputStream is = new java.io.ByteArrayInputStream(bytes)) {
