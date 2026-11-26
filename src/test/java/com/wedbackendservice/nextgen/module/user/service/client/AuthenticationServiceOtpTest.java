@@ -494,6 +494,18 @@ class AuthenticationServiceOtpTest {
         service.refreshAccessToken(
             RefreshTokenRequest.builder().refreshToken(device2.getRefreshToken()).build());
     assertThat(jwtDecoder.decode(refreshed2.getAccessToken()).getSubject()).isEqualTo("100");
+
+    // Manual deletion of Device 2 session key in Redis immediately invalidates its Access & Refresh tokens
+    Jwt decodedRefreshed2 = jwtDecoder.decode(refreshed2.getAccessToken());
+    String sessionKey2 = "token:session:100:" + decodedRefreshed2.getClaimAsString("sid");
+    assertThat(redisStore.remove(sessionKey2)).isNotNull();
+    assertThatThrownBy(() -> jwtDecoder.decode(refreshed2.getAccessToken()))
+        .isInstanceOf(JwtException.class);
+    assertThatThrownBy(
+            () ->
+                service.refreshAccessToken(
+                    RefreshTokenRequest.builder().refreshToken(refreshed2.getRefreshToken()).build()))
+        .isInstanceOf(AppException.class);
   }
 
   @Test

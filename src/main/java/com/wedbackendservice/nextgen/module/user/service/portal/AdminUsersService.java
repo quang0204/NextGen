@@ -67,6 +67,7 @@ public class AdminUsersService {
       String status,
       String sortBy,
       String sortDir) {
+    securityHelper.authenticateAdmin();
     log.debug(
         "Get users list: page={}, limit={}, search={}, role={}, status={}",
         page,
@@ -191,6 +192,7 @@ public class AdminUsersService {
    * API 2.13: Thống kê số lượng tài khoản theo vai trò và trạng thái
    */
   public AdminUserStatsResponse getUserStats() {
+    securityHelper.authenticateAdmin();
     long totalUsers = userRepository.count();
     long totalAdmins = userRepository.countByRole(Role.ADMIN);
     long totalStaffs = userRepository.countByRole(Role.STAFF);
@@ -209,6 +211,7 @@ public class AdminUsersService {
    * RecentOrders)
    */
   public AdminUserDetailResponse getUserDetail(Long userId) {
+    securityHelper.authenticateAdmin();
     User user =
         userRepository
             .findById(userId)
@@ -321,7 +324,7 @@ public class AdminUsersService {
   /** API 2.10: Admin tạo tài khoản nội bộ trực tiếp cho nhân viên (STAFF) hoặc ADMIN */
   @Transactional
   public CreateInternalUserResponse createInternalUser(CreateInternalUserRequest request) {
-    User adminUser = securityHelper.getCurrentUser();
+    User adminUser = securityHelper.authenticateAdmin();
     String email = request.getEmail().trim().toLowerCase();
     String phone = request.getPhone().trim();
     String rawPassword = request.getPassword();

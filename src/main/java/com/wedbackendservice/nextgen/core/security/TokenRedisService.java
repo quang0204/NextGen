@@ -25,7 +25,6 @@ import tools.jackson.databind.ObjectMapper;
 public class TokenRedisService {
 
   private static final String SESSION_PREFIX = "token:session:";
-  private static final String TOKEN_BLACKLIST_JTI_PREFIX = "token:blacklist:jti:";
   private static final String TOKEN_VERSION_PREFIX = "token:version:";
   private static final String OTP_PREFIX = "otp:session:";
   private static final String LOGIN_FAIL_PREFIX = "login:fail:";
@@ -74,16 +73,16 @@ public class TokenRedisService {
     delete(SESSION_PREFIX + userId);
   }
 
-  public void blacklistJwt(String jti, Date expiry) {
-    if (jti == null || jti.isBlank() || expiry == null) return;
-    Duration ttl = expiryToTtl(expiry);
-    if (ttl.isNegative() || ttl.isZero()) return;
-    redisTemplate.opsForValue().set(TOKEN_BLACKLIST_JTI_PREFIX + jti, "1", ttl);
-  }
-
-  public boolean isJwtBlacklisted(String jti) {
-    if (jti == null || jti.isBlank()) return true;
-    return redisTemplate.opsForValue().get(TOKEN_BLACKLIST_JTI_PREFIX + jti) != null;
+  public boolean isAccessTokenActive(Long userId, String sessionId, String accessToken) {
+    if (userId == null
+        || sessionId == null
+        || sessionId.isBlank()
+        || accessToken == null
+        || accessToken.isBlank()) {
+      return false;
+    }
+    TokenPair pair = getTokenPair(userId, sessionId);
+    return pair != null && accessToken.equals(pair.getAccessToken());
   }
 
   public boolean isTokenVersionValid(

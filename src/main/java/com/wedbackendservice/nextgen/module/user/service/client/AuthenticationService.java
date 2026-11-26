@@ -608,8 +608,7 @@ public class AuthenticationService {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
 
-    blacklistTokenPair(tokenPair);
-
+    // Overwriting the same sessionId rotates both tokens and invalidates the old pair immediately.
     AuthenticationResponse authenticationResponse = generateToken(user, sessionId);
     return RefreshTokenResponse.builder()
         .accessToken(authenticationResponse.getAccessToken())
@@ -618,24 +617,17 @@ public class AuthenticationService {
         .build();
   }
 
-  /** API 11: Đăng xuất (chỉ thu hồi phiên hiện tại, giữ nguyên thiết bị khác). */
+  /** API 11: Đăng xuất (chỉ xóa phiên hiện tại trên Redis, giữ nguyên thiết bị khác). */
   public void logout() throws ParseException {
     Authentication authentication = securityHelper.getAuthentication();
     Long userId = Long.valueOf(authentication.getName());
-    String sessionId = null;
+    String sessionId =
+        authentication.getPrincipal() instanceof Jwt jwt
+            ? jwt.getClaimAsString(SESSION_ID_CLAIM)
+            : null;
 
-    if (authentication.getPrincipal() instanceof Jwt jwt) {
-      Date accessExp = jwt.getExpiresAt() != null ? Date.from(jwt.getExpiresAt()) : null;
-      tokenRedisService.blacklistJwt(jwt.getId(), accessExp);
-      sessionId = jwt.getClaimAsString(SESSION_ID_CLAIM);
-    }
-
-    TokenPair tokenPair = tokenRedisService.getTokenPair(userId, sessionId);
-    if (tokenPair != null) {
-      blacklistTokenPair(tokenPair);
-    }
     tokenRedisService.deleteToken(userId, sessionId);
-    log.info("User {} logged out session {} — session tokens blacklisted", userId, sessionId);
+    log.info("User {} logged out session {} — session removed from Redis", userId, sessionId);
   }
 
   /** API 12: Thông tin người dùng hiện tại. */
@@ -882,12 +874,15 @@ public class AuthenticationService {
     JWSVerifier verifier = new MACVerifier(signedKey.getBytes(StandardCharsets.UTF_8));
     JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
     Date exp = claims.getExpirationTime();
+    String sessionId = claims.getStringClaim(SESSION_ID_CLAIM);
     Long tokenVersion = extractTokenVersion(claims);
 
     if (!signedJWT.verify(verifier)
         || exp == null
         || !exp.after(new Date())
         || !expectedType.equals(claims.getClaim(TOKEN_TYPE_CLAIM))
+        || sessionId == null
+        || sessionId.isBlank()
         || tokenVersion == null) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
@@ -897,9 +892,8 @@ public class AuthenticationService {
     } catch (NumberFormatException e) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
-    if (tokenRedisService.isJwtBlacklisted(claims.getJWTID())
-        || !tokenRedisService.isTokenVersionValid(
-            userId, tokenVersion, userRepository::findTokenVersionByUserId)) {
+    if (!tokenRedisService.isTokenVersionValid(
+        userId, tokenVersion, userRepository::findTokenVersionByUserId)) {
       throw new AppException(ErrorCode.UNAUTHENTICATED);
     }
     return signedJWT;
@@ -908,20 +902,5 @@ public class AuthenticationService {
   private static Long extractTokenVersion(JWTClaimsSet claims) {
     Object ver = claims.getClaim(TOKEN_VERSION_CLAIM);
     return ver instanceof Number n ? n.longValue() : null;
-  }
-
-  private void blacklistTokenPair(TokenPair pair) {
-    blacklistRawJwt(pair.getAccessToken());
-    blacklistRawJwt(pair.getRefreshToken());
-  }
-
-  private void blacklistRawJwt(String rawJwt) {
-    if (rawJwt == null || rawJwt.isBlank()) return;
-    try {
-      JWTClaimsSet claims = SignedJWT.parse(rawJwt).getJWTClaimsSet();
-      tokenRedisService.blacklistJwt(claims.getJWTID(), claims.getExpirationTime());
-    } catch (ParseException e) {
-      log.warn("Không thể parse JWT để blacklist: {}", e.getMessage());
-    }
   }
 }

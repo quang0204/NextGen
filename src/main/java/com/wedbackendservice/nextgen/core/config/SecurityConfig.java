@@ -124,14 +124,17 @@ public class SecurityConfig {
               if (sub == null || !sub.matches("^\\d+$")) {
                 return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
               }
+              String sessionId = jwt.getClaimAsString("sid");
               Object verClaim = jwt.getClaim("ver");
-              if (!(verClaim instanceof Number verNum)) {
+              if (sessionId == null
+                  || sessionId.isBlank()
+                  || !(verClaim instanceof Number verNum)) {
                 return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token"));
               }
               try {
                 Long userId = Long.valueOf(sub);
                 boolean valid =
-                    !tokenRedisService.isJwtBlacklisted(jwt.getId())
+                    tokenRedisService.isAccessTokenActive(userId, sessionId, jwt.getTokenValue())
                         && tokenRedisService.isTokenVersionValid(
                             userId, verNum.longValue(), userRepository::findTokenVersionByUserId);
                 return valid
