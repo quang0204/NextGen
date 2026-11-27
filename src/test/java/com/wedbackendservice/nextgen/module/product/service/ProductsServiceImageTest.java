@@ -541,4 +541,97 @@ class ProductsServiceImageTest {
     verify(productRepository, never()).findById(any());
     verify(productRepository, never()).save(any());
   }
+
+  @Test
+  @DisplayName("createProduct rejects variant when salePrice is greater than listPrice")
+  void createProduct_salePriceExceedsListPrice_throwsInvalidRequest() {
+    when(categoryRepository.findById(1L)).thenReturn(Optional.of(category));
+    when(brandRepository.findById(2L)).thenReturn(Optional.of(brand));
+    when(productVariantRepository.existsBySku("PRICE-ERR-1")).thenReturn(false);
+
+    CreateProductRequest request =
+        CreateProductRequest.builder()
+            .categoryId(1L)
+            .brandId(2L)
+            .name("Price Validation Product")
+            .variants(
+                List.of(
+                    CreateProductRequest.VariantItemRequest.builder()
+                        .sku("PRICE-ERR-1")
+                        .listPrice(BigDecimal.valueOf(20000000))
+                        .salePrice(BigDecimal.valueOf(25000000))
+                        .initialOnHandQty(5)
+                        .build()))
+            .build();
+
+    assertThatThrownBy(() -> productsService.createProduct(request))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+    verify(productRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("updateVariant rejects when salePrice is greater than listPrice")
+  void updateVariant_salePriceExceedsListPrice_throwsInvalidRequest() {
+    Product product =
+        Product.builder().productId(50L).productName("MacBook Pro").status("ACTIVE").build();
+    ProductVariant variant =
+        ProductVariant.builder()
+            .variantId(500L)
+            .product(product)
+            .sku("MBP-14")
+            .price(BigDecimal.valueOf(40000000))
+            .compareAtPrice(BigDecimal.valueOf(45000000))
+            .status("ACTIVE")
+            .build();
+
+    when(productVariantRepository.findById(500L)).thenReturn(Optional.of(variant));
+
+    com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateVariantRequest req =
+        com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateVariantRequest.builder()
+            .listPrice(BigDecimal.valueOf(40000000))
+            .salePrice(BigDecimal.valueOf(42000000))
+            .build();
+
+    assertThatThrownBy(() -> productsService.updateVariant(500L, req))
+        .isInstanceOf(AppException.class)
+        .extracting("errorCode")
+        .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+    verify(productVariantRepository, never()).save(any());
+  }
+
+  @Test
+  @DisplayName("updateProductStatus preserves individual variant statuses unless reactivateAllVariants is true")
+  void updateProductStatus_preservesVariantStatuses() {
+    Product product =
+        Product.builder().productId(60L).productName("iPhone 16").status("INACTIVE").build();
+    ProductVariant activeVar =
+        ProductVariant.builder().variantId(601L).product(product).sku("IP16-128").status("ACTIVE").build();
+    ProductVariant pausedVar =
+        ProductVariant.builder().variantId(602L).product(product).sku("IP16-256").status("INACTIVE").build();
+
+    when(productRepository.findById(60L)).thenReturn(Optional.of(product));
+    when(productRepository.save(any(Product.class))).thenAnswer(inv -> inv.getArgument(0));
+
+    com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateProductStatusRequest req =
+        com.wedbackendservice.nextgen.module.product.dto.portal.request.UpdateProductStatusRequest.builder()
+            .status("ACTIVE")
+            .build();
+
+    productsService.updateProductStatus(60L, req);
+
+    assertThat(product.getStatus()).isEqualTo("ACTIVE");
+    assertThat(activeVar.getStatus()).isEqualTo("ACTIVE");
+    assertThat(pausedVar.getStatus()).isEqualTo("INACTIVE");
+    verify(productVariantRepository, never()).saveAll(any());
+
+    when(productVariantRepository.findByProduct_ProductId(60L)).thenReturn(List.of(activeVar, pausedVar));
+    req.setReactivateAllVariants(true);
+    productsService.updateProductStatus(60L, req);
+    assertThat(pausedVar.getStatus()).isEqualTo("ACTIVE");
+    verify(productVariantRepository).saveAll(any());
+  }
 }

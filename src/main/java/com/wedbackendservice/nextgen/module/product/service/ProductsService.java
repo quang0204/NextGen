@@ -1511,6 +1511,13 @@ public class ProductsService {
             ErrorCode.INVALID_REQUEST,
             "Biến thể '" + sku + "': Giá bán (salePrice) phải lớn hơn 0!");
       }
+      if (v.getSalePrice().compareTo(v.getListPrice()) > 0) {
+        throw new AppException(
+            ErrorCode.INVALID_REQUEST,
+            "Biến thể '"
+                + sku
+                + "': Giá bán (salePrice) không được lớn hơn giá niêm yết (listPrice)!");
+      }
       if (v.getInitialOnHandQty() == null || v.getInitialOnHandQty() <= 0) {
         throw new AppException(
             ErrorCode.INVALID_REQUEST,
@@ -2018,6 +2025,11 @@ public class ProductsService {
       throw new AppException(
           ErrorCode.INVALID_REQUEST, "Giá bán (salePrice) phải lớn hơn 0!");
     }
+    if (request.getSalePrice().compareTo(request.getListPrice()) > 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST,
+          "Giá bán (salePrice) không được lớn hơn giá niêm yết (listPrice)!");
+    }
     if (request.getInitialOnHandQty() == null || request.getInitialOnHandQty() <= 0) {
       throw new AppException(
           ErrorCode.INVALID_REQUEST, "Số lượng tồn ban đầu (initialOnHandQty) phải lớn hơn 0!");
@@ -2160,6 +2172,20 @@ public class ProductsService {
         request.getCompareAtPrice() != null
             ? request.getCompareAtPrice()
             : (request.getListPrice() != null ? request.getListPrice() : effectiveSalePrice);
+
+    BigDecimal finalSalePrice =
+        effectiveSalePrice != null ? effectiveSalePrice : variant.getPrice();
+    BigDecimal finalListPrice =
+        effectiveListPrice != null
+            ? effectiveListPrice
+            : (variant.getCompareAtPrice() != null ? variant.getCompareAtPrice() : finalSalePrice);
+    if (finalSalePrice != null
+        && finalListPrice != null
+        && finalSalePrice.compareTo(finalListPrice) > 0) {
+      throw new AppException(
+          ErrorCode.INVALID_REQUEST,
+          "Giá bán (salePrice) không được lớn hơn giá niêm yết (listPrice)!");
+    }
 
     if (effectiveSalePrice != null) {
       variant.setPrice(effectiveSalePrice);
@@ -2323,13 +2349,8 @@ public class ProductsService {
     product.setStatus(newStatus);
     Product saved = productRepository.save(product);
 
-    if ("INACTIVE".equalsIgnoreCase(newStatus) || "DISCONTINUED".equalsIgnoreCase(newStatus)) {
-      List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(id);
-      for (ProductVariant v : variants) {
-        v.setStatus("INACTIVE");
-      }
-      productVariantRepository.saveAll(variants);
-    } else if ("ACTIVE".equalsIgnoreCase(newStatus)) {
+    if ("ACTIVE".equalsIgnoreCase(newStatus)
+        && Boolean.TRUE.equals(request.getReactivateAllVariants())) {
       List<ProductVariant> variants = productVariantRepository.findByProduct_ProductId(id);
       for (ProductVariant v : variants) {
         v.setStatus("ACTIVE");
