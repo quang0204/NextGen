@@ -14,4 +14,6 @@ public class UpdateProductStatusRequest {
   String status;
 
   String reason;
+
+  Boolean reactivateAllVariants;
 }
