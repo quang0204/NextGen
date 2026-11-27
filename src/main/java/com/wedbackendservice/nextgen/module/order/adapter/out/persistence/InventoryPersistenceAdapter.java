@@ -187,4 +187,10 @@ public class InventoryPersistenceAdapter implements InventoryPort {
   public int restockReturnOrder(Long orderId, User operator, String returnReason) {
     return inventoryService.restockReturnOrder(orderId, operator, returnReason);
   }
+
+  @Override
+  public int restockReturnOrder(
+      Long orderId, User operator, String returnReason, boolean isIntact) {
+    return inventoryService.restockReturnOrder(orderId, operator, returnReason, isIntact);
+  }
 }

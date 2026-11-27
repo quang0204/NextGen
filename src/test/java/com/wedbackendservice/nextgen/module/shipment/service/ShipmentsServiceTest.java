@@ -182,10 +182,9 @@ class ShipmentsServiceTest {
   }
 
   @Test
-  void failDelivery_Success_RestocksInventory() {
+  void failDelivery_Success_MovesOrderToReturningWithoutImmediateRestock() {
     when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
     when(shipmentRepository.findById(10L)).thenReturn(Optional.of(shipment));
-    when(inventoryService.restockReturnOrder(eq(100L), eq(staffUser), any())).thenReturn(1);
 
     ShipmentFailDeliveryRequest req =
         ShipmentFailDeliveryRequest.builder()
@@ -197,10 +196,12 @@ class ShipmentsServiceTest {
     assertThat(res).isNotNull();
     assertThat(res.getShipmentStatus()).isEqualTo("FAILED_DELIVERY");
     assertThat(res.getOrderStatus()).isEqualTo("RETURNING");
-    assertThat(res.getInventoryRestocked()).isTrue();
-    assertThat(res.getRestockedItemsCount()).isEqualTo(1);
+    assertThat(res.getInventoryRestocked()).isFalse();
+    assertThat(res.getRestockedItemsCount()).isZero();
 
     assertThat(order.getStatus()).isEqualTo("RETURNING");
+    verify(inventoryService, never()).restockReturnOrder(anyLong(), any(), any());
+    verify(inventoryService, never()).restockReturnOrder(anyLong(), any(), any(), anyBoolean());
     verify(notificationRepository).save(any(Notification.class));
   }
 

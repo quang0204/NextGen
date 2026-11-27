@@ -535,8 +535,8 @@ class ReturnsServiceTest {
   }
 
   @Test
-  @DisplayName("Thẩm định Chấp thuận hoàn toàn bộ đơn có voucher thì hoàn lại lượt dùng voucher")
-  void inspectReturn_FullRefund_DecrementsVoucherCount() {
+  @DisplayName("Thẩm định Chấp thuận hoàn toàn bộ đơn có voucher thì không hoàn lại lượt dùng voucher")
+  void inspectReturn_FullRefund_DoesNotDecrementVoucherCount() {
     when(securityHelper.authenticateStaffOrAdmin()).thenReturn(staffUser);
 
     Voucher testVoucher =
@@ -563,7 +563,6 @@ class ReturnsServiceTest {
     when(inventoryRepository.findWithLockByVariantId(101L)).thenReturn(Optional.of(inv));
     when(inventoryRepository.increaseQuantityAtomic(eq(101L), eq(1), any(LocalDateTime.class)))
         .thenReturn(1);
-    when(voucherRepository.decrementUsedCountAtomic(99L)).thenReturn(1);
 
     InspectReturnRequest request =
         InspectReturnRequest.builder()
@@ -577,7 +576,7 @@ class ReturnsServiceTest {
 
     assertThat(response).isNotNull();
     assertThat(response.getStatus()).isEqualTo("APPROVED");
-    verify(voucherRepository, times(1)).decrementUsedCountAtomic(99L);
+    verify(voucherRepository, never()).decrementUsedCountAtomic(anyLong());
   }
 
   @Test

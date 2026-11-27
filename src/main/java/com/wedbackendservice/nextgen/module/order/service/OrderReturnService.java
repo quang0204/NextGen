@@ -35,6 +35,11 @@ public class OrderReturnService {
 
   @Transactional
   public OrderDetailResponse receiveReturnOrder(Long orderId, String note) {
+    return receiveReturnOrder(orderId, note, "INTACT");
+  }
+
+  @Transactional
+  public OrderDetailResponse receiveReturnOrder(Long orderId, String note, String condition) {
     User operator = securityHelper.authenticateStaffOrAdmin();
     Order order =
         orderRepository
@@ -54,15 +59,11 @@ public class OrderReturnService {
               + " không thành công)!");
     }
 
+    boolean isIntact = !"DAMAGED".equalsIgnoreCase(condition != null ? condition.trim() : "INTACT");
     LocalDateTime now = LocalDateTime.now(clock);
 
-    // Kiểm tra và thực hiện hoàn kho nếu chưa hoàn (MB04) qua InventoryPort
-    inventoryPort.restockReturnOrder(order.getOrderId(), operator, note);
-
-    // Hoàn trả voucher nếu có via VoucherPort
-    if (order.getVoucher() != null) {
-      voucherPort.releaseVoucher(order.getVoucher().getVoucherId());
-    }
+    // Kiểm tra và xử lý hoàn kho theo kết quả ngoại quan (MB04) qua InventoryPort
+    inventoryPort.restockReturnOrder(order.getOrderId(), operator, note, isIntact);
 
     boolean needRefund =
         "PAID".equalsIgnoreCase(order.getPaymentStatus())
@@ -74,18 +75,18 @@ public class OrderReturnService {
       order.setPaymentStatus(PaymentStatus.CANCELLED.name());
     }
 
-    String finalReason =
+    String baseReason =
         (note != null && !note.trim().isBlank())
             ? note.trim()
             : (order.getCancelReason() != null
                 ? order.getCancelReason()
                 : "Bưu tá hoàn hàng về kho");
+    String finalReason =
+        isIntact
+            ? "Kiểm định MB04 (Nguyên vẹn - Đã nhập lại tồn khả dụng): " + baseReason
+            : "Kiểm định MB04 (Hư hại - Chuyển kho kiểm định/thanh lý): " + baseReason;
     order.setCancelReason(finalReason);
-    orderStateService.transition(
-        order,
-        OrderStatus.CANCELLED,
-        operator,
-        "Xác nhận nhận hàng hoàn về kho (MB04): " + finalReason);
+    orderStateService.transition(order, OrderStatus.CANCELLED, operator, finalReason);
     Order saved = orderRepository.save(order);
 
     paymentPort.updatePaymentStatus(

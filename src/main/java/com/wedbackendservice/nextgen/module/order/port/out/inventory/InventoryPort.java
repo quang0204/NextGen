@@ -17,4 +17,9 @@ public interface InventoryPort {
       Long orderId, User operator, String exportNote);
 
   int restockReturnOrder(Long orderId, User operator, String returnReason);
+
+  default int restockReturnOrder(
+      Long orderId, User operator, String returnReason, boolean isIntact) {
+    return restockReturnOrder(orderId, operator, returnReason);
+  }
 }

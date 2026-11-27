@@ -85,9 +85,15 @@ public class AdminOrdersController {
   @PostMapping("/{id:[0-9]+}/receive-return")
   public ApiResponse<
           com.wedbackendservice.nextgen.module.order.dto.client.response.OrderDetailResponse>
-      receiveReturnOrder(@PathVariable Long id, @RequestParam(required = false) String note) {
-    return ApiResponse.ok(
-        "Đã tiếp nhận kiện hàng hoàn về kho, hoàn kho thành công và cập nhật Đã hủy đơn!",
-        ordersService.receiveReturnOrder(id, note));
+      receiveReturnOrder(
+          @PathVariable Long id,
+          @RequestParam(required = false) String note,
+          @RequestParam(required = false, defaultValue = "INTACT") String condition) {
+    boolean isDamaged = "DAMAGED".equalsIgnoreCase(condition);
+    String message =
+        isDamaged
+            ? "Đã ghi nhận biên bản MB04 chuyển kho kiểm định/thanh lý và cập nhật Đã hủy đơn!"
+            : "Đã tiếp nhận kiện hàng nguyên vẹn (MB04), cộng lại tồn khả dụng và cập nhật Đã hủy đơn!";
+    return ApiResponse.ok(message, ordersService.receiveReturnOrder(id, note, condition));
   }
 }

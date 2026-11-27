@@ -85,6 +85,10 @@ public class OrdersService {
     return orderReturnService.receiveReturnOrder(orderId, note);
   }
 
+  public OrderDetailResponse receiveReturnOrder(Long orderId, String note, String condition) {
+    return orderReturnService.receiveReturnOrder(orderId, note, condition);
+  }
+
   /** Tự động quét và hủy các đơn hàng chờ thanh toán QR đã hết hạn */
   public int cancelExpiredOrders() {
     return orderCancellationService.cancelExpiredOrders();

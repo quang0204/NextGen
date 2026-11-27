@@ -270,6 +270,16 @@ public class InventoryService {
   /** Nhập hoàn kho (MB04 / Return restock) Tăng onHandQty và ghi nhận sổ cái RETURN (MB04). */
   @Transactional
   public int restockReturnOrder(Long orderId, User operator, String returnReason) {
+    return restockReturnOrder(orderId, operator, returnReason, true);
+  }
+
+  /**
+   * Kiểm định hoàn kho (MB04): nếu nguyên vẹn (isIntact = true) sẽ tăng onHandQty và ghi nhận
+   * RETURN; nếu hư hại (isIntact = false) chỉ ghi nhận sổ cái chuyển kho kiểm định/thanh lý,
+   * không cộng vào tồn khả dụng bán lẻ.
+   */
+  @Transactional
+  public int restockReturnOrder(Long orderId, User operator, String returnReason, boolean isIntact) {
     boolean alreadyReturned =
         inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(
             orderId, InventoryTransactionType.RETURN.name());
@@ -292,7 +302,7 @@ public class InventoryService {
 
     int restockedCount = 0;
     if (wasExported) {
-      // Đã xuất kho vật lý -> Tăng lại số lượng on-hand và ghi phiếu MB04
+      // Đã xuất kho vật lý -> Xử lý nhập hoàn hoặc chuyển kho kiểm định/thanh lý theo MB04
       List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
       for (OrderItem item : items) {
         ProductVariant variant = item.getVariant();
@@ -300,34 +310,54 @@ public class InventoryService {
           Inventory inv =
               inventoryRepository.findWithLockByVariantId(variant.getVariantId()).orElse(null);
           int qtyBefore = inv != null ? inv.getOnHandQty() : 0;
-          inventoryRepository.increaseQuantityAtomic(
-              variant.getVariantId(), item.getQuantity(), now);
-          restockedCount++;
 
-          inventoryTransactionRepository.save(
-              InventoryTransaction.builder()
-                  .variant(variant)
-                  .order(order)
-                  .performedBy(operator)
-                  .transactionType(InventoryTransactionType.RETURN.name())
-                  .formCode("MB04")
-                  .quantity(item.getQuantity())
-                  .qtyBefore(qtyBefore)
-                  .qtyAfter(qtyBefore + item.getQuantity())
-                  .reason(
-                      "Nhập hoàn kho theo biên bản MB04: "
-                          + (returnReason != null ? returnReason : "Giao hàng thất bại"))
-                  .build());
+          if (isIntact) {
+            inventoryRepository.increaseQuantityAtomic(
+                variant.getVariantId(), item.getQuantity(), now);
+            restockedCount++;
+
+            inventoryTransactionRepository.save(
+                InventoryTransaction.builder()
+                    .variant(variant)
+                    .order(order)
+                    .performedBy(operator)
+                    .transactionType(InventoryTransactionType.RETURN.name())
+                    .formCode("MB04")
+                    .quantity(item.getQuantity())
+                    .qtyBefore(qtyBefore)
+                    .qtyAfter(qtyBefore + item.getQuantity())
+                    .reason(
+                        "Nhập hoàn kho theo biên bản MB04 (Nguyên vẹn): "
+                            + (returnReason != null ? returnReason : "Giao hàng thất bại"))
+                    .build());
+          } else {
+            inventoryTransactionRepository.save(
+                InventoryTransaction.builder()
+                    .variant(variant)
+                    .order(order)
+                    .performedBy(operator)
+                    .transactionType(InventoryTransactionType.RETURN.name())
+                    .formCode("MB04")
+                    .quantity(0)
+                    .qtyBefore(qtyBefore)
+                    .qtyAfter(qtyBefore)
+                    .reason(
+                        "[KHO KIỂM ĐỊNH / THANH LÝ] Biên bản MB04 ghi nhận hàng hoàn hư hại, không"
+                            + " nhập lại tồn khả dụng: "
+                            + (returnReason != null ? returnReason : "Hư hại ngoại quan"))
+                    .build());
+          }
         }
       }
     } else {
       // Chưa xuất kho vật lý -> Chỉ giải phóng lượng giữ chỗ (RESERVED)
       releaseStockForOrder(orderId, returnReason);
-      restockedCount = 1;
+      restockedCount = isIntact ? 1 : 0;
     }
 
     log.info(
-        "[InventoryService] Restocked return items (MB04) for order #{}, items count: {}",
+        "[InventoryService] Processed return inspection (MB04, isIntact={}) for order #{}, restocked count: {}",
+        isIntact,
         orderId,
         restockedCount);
     return restockedCount;

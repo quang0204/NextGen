@@ -739,11 +739,6 @@ public class ReturnsService {
     order.setUpdatedAt(now);
     orderRepository.save(order);
 
-    // Hoàn trả lại lượt dùng voucher cho khách hàng nếu đơn hàng được hoàn trả toàn bộ
-    if (!isPartial && order.getVoucher() != null) {
-      voucherRepository.decrementUsedCountAtomic(order.getVoucher().getVoucherId());
-    }
-
     auditLogRepository.log(
         currentUser,
         "PAYMENT_REFUND",

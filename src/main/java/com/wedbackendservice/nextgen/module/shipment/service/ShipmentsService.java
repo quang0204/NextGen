@@ -447,7 +447,6 @@ public class ShipmentsService {
     order.setStatus(OrderStatus.RETURNING.name());
     order.setUpdatedAt(LocalDateTime.now());
     orderRepository.save(order);
-    restockOrderInventory(order, operator, failReason);
 
     outboxService.saveProcessedEvent(
         "SHIPMENT",
@@ -571,8 +570,6 @@ public class ShipmentsService {
     shipment.setUpdatedBy(operator);
     shipmentRepository.save(shipment);
 
-    int restockedCount = 0;
-
     if (order != null) {
       order.setCancelReason("Giao hàng thất bại: " + reason);
 
@@ -590,8 +587,6 @@ public class ShipmentsService {
               + (needRefund ? " (Đã đánh dấu chờ hoàn tiền)" : ""));
       order.setStatus(OrderStatus.RETURNING.name());
       orderRepository.save(order);
-
-      restockedCount = restockOrderInventory(order, operator, reason);
 
       if (order.getUser() != null) {
         notificationRepository.save(
@@ -636,8 +631,8 @@ public class ShipmentsService {
         .shipmentStatus("FAILED_DELIVERY")
         .failReason(reason)
         .orderStatus(OrderStatus.RETURNING.name())
-        .inventoryRestocked(restockedCount > 0)
-        .restockedItemsCount(restockedCount)
+        .inventoryRestocked(false)
+        .restockedItemsCount(0)
         .build();
   }
 

@@ -824,6 +824,34 @@ public class OrderInventoryPaymentBusinessTest {
     verify(inventoryRepository, never()).increaseQuantityAtomic(anyLong(), anyInt(), any());
   }
 
+  @Test
+  @DisplayName("Case 16b: Kiểm định MB04 hư hại chuyển kho kiểm định/thanh lý và không cộng tồn khả dụng")
+  void testInventory_damagedReturnMB04_doesNotIncreaseStock() {
+    Order order = Order.builder().orderId(5003L).orderCode("DH5003").build();
+    when(orderRepository.findById(5003L)).thenReturn(Optional.of(order));
+    when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(5003L, "RETURN"))
+        .thenReturn(false);
+    when(inventoryTransactionRepository.existsByOrder_OrderIdAndTransactionType(5003L, "EXPORT"))
+        .thenReturn(true);
+
+    OrderItem oi = OrderItem.builder().variant(variantA).quantity(2).build();
+    when(orderItemRepository.findByOrderId(5003L)).thenReturn(List.of(oi));
+    when(inventoryRepository.findWithLockByVariantId(101L)).thenReturn(Optional.of(invA));
+
+    int count = inventoryService.restockReturnOrder(5003L, staff, "Rách seal, móp hộp", false);
+    assertThat(count).isEqualTo(0);
+    verify(inventoryRepository, never()).increaseQuantityAtomic(anyLong(), anyInt(), any());
+    verify(inventoryTransactionRepository)
+        .save(
+            argThat(
+                tx ->
+                    "RETURN".equals(tx.getTransactionType())
+                        && "MB04".equals(tx.getFormCode())
+                        && tx.getQuantity() == 0
+                        && tx.getReason() != null
+                        && tx.getReason().contains("[KHO KIỂM ĐỊNH / THANH LÝ]")));
+  }
+
   // =========================================================================
   // CASE 17: Giả lập thanh toán BANK_TRANSFER thành công
   // =========================================================================
